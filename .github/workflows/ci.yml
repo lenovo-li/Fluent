@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    strategy:
+      matrix:
+        configuration: [Debug, Release]
+        platform: [x64]
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v2
+    
+    - name: Build FluentUI
+      run: |
+        msbuild Fluent.slnx -p:Configuration=${{ matrix.configuration }} -p:Platform=${{ matrix.platform }} -verbosity:minimal
+    
+    - name: Run Tests
+      run: |
+        ./x64/${{ matrix.configuration }}/FluentUITests.exe
+    
+    - name: Archive Build Artifacts
+      if: matrix.configuration == 'Release'
+      uses: actions/upload-artifact@v4
+      with:
+        name: FluentUI-Release-${{ matrix.platform }}
+        path: |
+          x64/Release/FluentUI.lib
+          x64/Release/FluentUIDemo.exe
+          FluentUI/**/*.h

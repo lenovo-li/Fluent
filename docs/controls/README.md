@@ -1,0 +1,127 @@
+﻿# 控件 API 参考
+
+本目录包含 FluentUI 所有控件的详细 API 文档。
+
+> **文档覆盖状态（诚实说明）**：本目录目前有 21 份控件文档（另有 `TEMPLATE.md` 作模板）。
+> 下面清单里标注「文档待写」的条目**没有对应文件** —— 它们此前是失效链接，点了会 404，
+> 现在改成纯文本以免误导。控件本身的权威说明始终在各自的头文件注释里。
+>
+> 已有文档中的每一段代码示例都对照真实头文件核对过。此前 `Button.md` 里出现过
+> `GetKind()`、`SetContent()`、`SetSize()`、`AddChild()`、`AddItem()` 等**并不存在**的
+> API（真实名字分别是：没有 Kind getter、`Window::SetRoot`、通过 `Show()` 的
+> `WindowState` 传尺寸、`Panel::Add`、`MenuFlyout::SetItems`），已全部修正；
+> `TEMPLATE.md` 与 `Button.md` 里写的命名空间 `FluentUI::Controls` 也不存在，
+> 全库只有 `namespace fluent`，同样已修正。
+
+
+## 按类别浏览
+
+### 基础输入控件
+
+- [Button](Button.md) — 标准按钮
+- RepeatButton（文档待写） — 按住时重复触发的按钮
+- [CheckBox](CheckBox.md) — 复选框
+- [RadioButton](RadioButton.md) — 单选按钮
+- [ToggleSwitch](ToggleSwitch.md) — 开关
+- [Slider](Slider.md) — 滑动条
+- [TextBox](TextBox.md) — 单行文本输入
+- PasswordBox（文档待写） — 密码输入
+- [NumericUpDown](NumericUpDown.md) — 数字微调器
+- [Rating](Rating.md) — 星级评分
+
+### 选择控件
+
+- [ComboBox](ComboBox.md) — 组合框（下拉选择）
+- [ListBox](ListBox.md) — 列表框（虚拟化支持）
+- TreeView（文档待写） — 树形视图（虚拟化 + 合成器滚动）
+- MenuBar（文档待写） — 菜单栏
+
+### 文本控件
+
+- [TextBlock](TextBlock.md) — 只读文本显示
+- [TextArea](TextArea.md) — 多行文本编辑（虚拟化 + 合成器滚动）
+- [Hyperlink](Hyperlink.md) — 超链接
+
+### 数据展示控件
+
+- [DataGrid](DataGrid.md) — 虚拟化只读表格（行列双向虚拟化）
+- [Chart](Chart.md) — 折线 / 柱状 / K 线图
+- [Metric](Metric.md) — 带涨跌方向的指标卡
+- [InfoBar](InfoBar.md) — 内联状态消息（四个严重级别）
+
+### 布局容器
+
+- [StackPanel](StackPanel.md) — 栈式布局（水平/垂直）
+- [Grid](Grid.md) — 网格布局（行列定义，auto/star/pixel 尺寸）
+- Canvas（文档待写） — 画布布局（绝对定位 + ZIndex）
+- DockPanel（文档待写） — 停靠布局
+- WrapPanel（文档待写） — 自动换行布局
+- [Border](Border.md) — 边框容器
+- ScrollPanel（文档待写） — 通用滚动容器
+- Separator（文档待写） — 分隔线
+- Viewbox（文档待写） — 缩放容器（Uniform/Fill/None）
+- GroupBox（文档待写） — 分组框
+- UniformGrid（文档待写） — 均匀网格
+
+### 显示控件
+
+- [ProgressBar](ProgressBar.md) — 进度条
+- Image（文档待写） — 图像显示
+- ToolTip（文档待写） — 工具提示
+- MenuFlyout（文档待写） — 弹出菜单
+- ColorPicker（文档待写） — 颜色选择器
+
+### 对话框
+
+- ContentDialog（文档待写） — 内容对话框
+- MessageDialog（文档待写） — 消息框
+
+### 导航与工具栏
+
+- TabControl（文档待写） — 选项卡控件
+- ToolBar（文档待写） — 工具栏（CommandBar 风格，溢出进 flyout）
+- StatusBar（文档待写） — 状态栏
+
+### 日期与时间
+
+- DatePicker（文档待写） — 日期选择器
+- Calendar（文档待写） — 日历
+
+### 其他
+
+- GridSplitter（文档待写） — 可拖动分隔条
+- Expander（文档待写） — 可展开/折叠容器
+
+---
+
+## 文档约定
+
+每个控件文档包含以下部分：
+
+1. **概述** — 控件用途与典型使用场景
+2. **继承层次** — 类继承关系
+3. **公开 API** — 方法、属性、事件
+4. **代码示例** — 最小可运行示例
+5. **备注** — 性能特征、使用注意事项
+6. **相关控件** — 类似或互补的控件
+
+---
+
+## 快速链接
+
+- [元素模型概述](../ELEMENT_MODEL.md) — Visual/UIElement/FrameworkElement/Control 四层
+- [布局指南](../LAYOUT_GUIDE.md) — Measure/Arrange 与各 Panel 使用场景
+- [主题定制指南](../THEMING_GUIDE.md) — ThemeTokens 与自定义品牌色
+- [性能最佳实践](../PERFORMANCE_BEST_PRACTICES.md) — 虚拟化、脏标记、compositor 动画
+
+---
+
+## 贡献
+
+控件文档模板见 [TEMPLATE.md](TEMPLATE.md)。
+
+添加新控件文档时：
+1. 复制 `TEMPLATE.md` 为 `YourControl.md`
+2. 填写所有章节
+3. 在本文件的相应类别下添加链接
+4. 提交 PR 前确保代码示例可编译运行

@@ -1,0 +1,161 @@
+# TextBox 控件
+
+## 概述
+
+单行文本输入框:插入符、选区、剪贴板、撤销/重做、输入法(IME)组字。多行编辑请用
+`TextArea`,密码输入请用 `PasswordBox`(它是 `TextBox` 的一个薄封装)。
+
+**典型使用场景**:
+- 表单字段(姓名、股票代码、搜索关键词)
+- 单行参数输入
+- 需要输入校验或字符过滤的场合
+
+---
+
+## 继承层次
+
+```
+Visual
+  └─ UIElement
+      └─ FrameworkElement
+          └─ Control
+              └─ TextEditBase
+                  └─ TextBox
+```
+
+`TextEditBase` 持有全部编辑机制(文本缓冲、插入符、选区、撤销栈、IME、输入策略);
+`TextBox` 只加单行布局与可选的密码遮蔽。`TextArea` 是它的同门兄弟。
+
+**命名空间**: `fluent`
+**头文件**: `FluentUI/controls/TextBox.h`
+
+---
+
+## 公开 API
+
+### 属性(继承自 `TextEditBase`)
+
+| 成员 | 说明 |
+| --- | --- |
+| `SetText(const std::wstring&)` / `Text()` | 内容 |
+| `SetPlaceholder(std::wstring)` | 空且未聚焦时显示的提示文字 |
+| `SetReadOnly(bool)` | 只读(仍可聚焦与选择复制) |
+| `SetMaxLength(size_t)` | 最大字符数 |
+| `SetCharacterCasing(CharacterCasing)` | 自动转大写/小写 |
+| `SetInputFilter(std::function<bool(wchar_t)>)` | 逐字符准入回调 |
+
+`SetInputFilter` 是**唯一**用 `std::function` 的地方(事件系统刻意不用),因为它不是事件
+而是一个策略对象,需要携带调用者的状态。
+
+### TextBox 自己的属性
+
+```cpp
+void SetPassword(bool on);
+```
+
+遮蔽显示。`PasswordBox` 就是预设了这个的 `TextBox`。
+
+### 事件
+
+#### TextChanged
+
+```cpp
+Event<TextEditBase, std::wstring>& TextChanged();
+```
+
+⚠️ **Sender 类型是 `TextEditBase`,不是 `TextBox`。** 事件定义在基类上,所以处理器签名要写
+基类:
+
+```cpp
+sub_ = input->TextChanged().Subscribe(this,
+    [](void* owner, TextEditBase& src, std::wstring& text) {   // TextEditBase&
+        static_cast<MyPage*>(owner)->OnQueryChanged(text);
+        (void)src;
+    });
+```
+
+**只有用户输入会触发**,程序调用 `SetText` 不触发 —— 这个区分让「回填表单」不会触发一轮
+校验副作用。
+
+#### SelectionChanged
+
+```cpp
+Event<TextEditBase, SelectionChangedArgs>& SelectionChanged();
+```
+
+⚠️ 两个事件返回的 `Subscription` 都必须持有(RAII,丢掉即退订)。
+
+---
+
+## 代码示例
+
+### 最小示例
+
+```cpp
+#include "FluentUI/controls/TextBox.h"
+
+auto* input = panel->Add(std::make_unique<TextBox>());
+input->SetPlaceholder(L"例如 600519");
+```
+
+### 只允许数字
+
+```cpp
+// InputFilter 是策略而非事件，所以它是 std::function：需要捕获调用者的状态
+input->SetInputFilter([](wchar_t c) { return c >= L'0' && c <= L'9'; });
+input->SetMaxLength(6);
+```
+
+### 表单一行(标签 + 输入 + 按钮)
+
+```cpp
+auto* form = card->Add(std::make_unique<Grid>());
+form->AddRow(GridLength::Auto());              // Auto：不要写死行高
+form->AddColumn(GridLength::Pixels(96.0f));    // 标签
+form->AddColumn(GridLength::Star(1.0f));       // 输入框吃掉剩余宽度
+form->AddColumn(GridLength::Auto());           // 按钮按内容收缩
+```
+
+---
+
+## 备注
+
+### 性能特征
+
+- **文本布局有缓存**:`TextBoxLayoutCache` 挡住重复的 DirectWrite 布局构建。文本、宽度、
+  排版参数都不变时不会每帧重建。
+- **IME 组字期间插入符位置由同一份布局计算**,所以候选窗定位和绘制不会不一致(有测试
+  钉住:`CaretRectMatchesDrawnCaretWhileComposing`)。
+- **撤销栈按操作分组**,不是逐字符 —— 连续输入算一次撤销。
+
+### 使用注意事项
+
+- **默认 `HAlign::Stretch`**,在表单里通常正是想要的(填满那一列)。
+- ⚠️ **`SetForeground` / `SetBackground` 在这里是字面文字色与底色**(不像 toggle 家族那样
+  指记号色)。禁用态**不会**淡化显式设过的值 —— 与 `Button` 同一条优先级规则:显式值胜过
+  状态机。所以自定义了配色就要自己保证两种主题、两种状态下的对比度。
+- **单行**:换行符会被 `SanitizeInput` 清掉。需要多行用 `TextArea`。
+- 焦点态边框比常态粗(见主题 token),这部分画在 `bounds_` 内,不需要外扩。
+
+### 键盘导航
+
+| 按键 | 行为 |
+| --- | --- |
+| Tab | 进入焦点顺序 |
+| ← / → / Home / End | 移动插入符;配合 Shift 选择 |
+| Ctrl+A / C / X / V / Z / Y | 全选 / 复制 / 剪切 / 粘贴 / 撤销 / 重做 |
+
+### 主题 Token
+
+| Token | 用途 |
+| --- | --- |
+| `controlFillDefault` | 输入区底色 |
+| `controlStrokeDefault` | 边框 |
+| `accent` | 聚焦态下边框(强调线) |
+| `textPrimary` | 文字与插入符 |
+| `textSecondary` | 占位符 |
+
+### 演示页
+
+demo 导航 → 输入控件 → TextBox(nav 201)。原「样式定制大全」里的 TextBox 完整演示已并入
+此页。
