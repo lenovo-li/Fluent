@@ -37,7 +37,20 @@ public:
 
     // Fired when the value changes (drag, arrow keys, or SetValue). Payload is the
     // new value. Replaces SetOnChange(std::function<void(float)>).
+    //
+    // During a drag, ValueChanging fires for every intermediate position, while
+    // ValueChanged fires ONLY when the drag completes (pointer release). Keyboard
+    // navigation and programmatic SetValue fire ValueChanged immediately (no drag).
     Event<Slider, float>& ValueChanged() { return valueChanged_; }
+
+    // Fired during a drag for every intermediate value as the thumb moves. NOT fired
+    // for keyboard navigation or programmatic SetValue — those are not previews, they
+    // are the committed value, so they skip straight to ValueChanged.
+    //
+    // Use to update a live preview (volume control, brightness) while leaving the
+    // final commit (write to settings, raise app-level PropertyChanged) to
+    // ValueChanged. Without this, every pixel the thumb drags would flush settings.
+    Event<Slider, float>& ValueChanging() { return valueChanging_; }
 
     void OnKeyDownRouted(KeyEventArgs& e) override;
 
@@ -64,9 +77,18 @@ public:
     void OnPointerReleased(PointerEventArgs& e) override;
 
 protected:
-    // RangeBase hook: fire the typed event.
+    // RangeBase hook: fire the typed event. Which event depends on whether a drag is
+    // in flight — mid-drag values are a preview (ValueChanging) and the commit is
+    // deferred to the release, everything else is already committed.
     void OnValueChanged(float /*old*/, float newVal) override {
-        valueChanged_.Raise(*this, newVal);
+        if (dragging_) {
+            valueChanging_.Raise(*this, newVal);
+            // Remember that the drag moved the value, so the release knows whether it
+            // owes a ValueChanged. A press that never moves must not fire one.
+            dragChangedValue_ = true;
+        } else {
+            valueChanged_.Raise(*this, newVal);
+        }
     }
     // RangeBase hook: clamp + step-snap.
     float CoerceValue(float v) const override;
@@ -90,7 +112,9 @@ private:
     float step_ = 1.0f;
     AnimatedValue animFill_{0.0f};  // eased fill, same units as value_
     bool  dragging_ = false;
+    bool  dragChangedValue_ = false;  // true when a drag has moved the value (owes a commit event on release)
     Event<Slider, float> valueChanged_;
+    Event<Slider, float> valueChanging_;
 };
 
 } // namespace fluent

@@ -62,9 +62,17 @@ void Panel::UpdateChildrenContextModalResize(bool inModalResize) {
 }
 
 void Panel::Measure(float availW, float availH) {
-    // MeasureOverride recurses into the children; only the panel's OWN size is
-    // written here.
-    SizeDip sz = MeasureOverride(availW, availH);
+    // Deduct padding from the available space before handing it to the subclass.
+    // Children measure against the content box, not the full panel bounds.
+    const float contentW = std::max(0.0f, availW - padding_.horizontal());
+    const float contentH = std::max(0.0f, availH - padding_.vertical());
+    SizeDip sz = MeasureOverride(contentW, contentH);
+
+    // Add padding back to the desired size: the panel needs enough space to fit
+    // both its content AND the padding around it.
+    sz.w += padding_.horizontal();
+    sz.h += padding_.vertical();
+
     // Honor an explicit size if one was set on the panel itself.
     if (!IsAuto(width_)) sz.w = width_;
     if (!IsAuto(height_)) sz.h = height_;
@@ -72,8 +80,17 @@ void Panel::Measure(float availW, float availH) {
 }
 
 void Panel::Arrange(const RectDip& finalRect) {
+    // Bounds stay the FULL rect — that is what hit-testing, background fill and
+    // the render-culling checks in Panel::Render all use. Only the rect handed to
+    // ArrangeOverride is inset, so children land inside the padding.
     SetBounds(finalRect);
-    ArrangeOverride(finalRect);
+    const RectDip content = {
+        finalRect.x + padding_.left,
+        finalRect.y + padding_.top,
+        std::max(0.0f, finalRect.w - padding_.horizontal()),
+        std::max(0.0f, finalRect.h - padding_.vertical())
+    };
+    ArrangeOverride(content);
 }
 
 void Panel::ArrangeChild(FrameworkElement* child, const RectDip& slot) {

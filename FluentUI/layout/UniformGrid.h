@@ -34,6 +34,12 @@ namespace fluent {
 
 class UniformGrid : public Panel {
 public:
+    // Cell sizing strategy: how cells should use the available width.
+    enum class CellSizing {
+        Content,   // Default: cell width = max child desired width (WPF behavior).
+        Stretch    // Stretch cells to fill available width (like st.columns).
+    };
+
     int Columns() const { return columns_; }
     void SetColumns(int c);
 
@@ -43,6 +49,9 @@ public:
     int FirstColumn() const { return firstColumn_; }
     void SetFirstColumn(int fc);
 
+    CellSizing GetCellSizing() const { return cellSizing_; }
+    void SetCellSizing(CellSizing s);
+
 protected:
     SizeDip MeasureOverride(float availW, float availH) override;
     void ArrangeOverride(const RectDip& finalRect) override;
@@ -51,6 +60,7 @@ private:
     int columns_ = 0;      // 0 = auto-fit to available width
     int rows_ = 0;         // 0 = auto-calculate from child count
     int firstColumn_ = 0;  // first child starts at this column (for asymmetry)
+    CellSizing cellSizing_ = CellSizing::Content;
 
     // Cached from Measure so Arrange doesn't have to recompute.
     float cellW_ = 0.0f;

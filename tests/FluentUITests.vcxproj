@@ -1,6 +1,14 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
     <ProjectConfiguration Include="Debug|x64">
       <Configuration>Debug</Configuration>
       <Platform>x64</Platform>
@@ -36,8 +44,13 @@
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\</OutDir>
+    <IntDir>$(Platform)\$(Configuration)\</IntDir>
+  </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <WarningLevel>Level3</WarningLevel>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
@@ -60,6 +73,7 @@
   <ItemGroup>
     <ClCompile Include="framework\TestMain.cpp" />
     <ClCompile Include="unit\GeometryTests.cpp" />
+    <ClCompile Include="unit\HangDetectorTests.cpp" />
     <ClCompile Include="unit\StackPanelTests.cpp" />
     <ClCompile Include="unit\WrapPanelTests.cpp" />
     <ClCompile Include="unit\GridTests.cpp" />
@@ -96,11 +110,10 @@
     <ClCompile Include="unit\ButtonBaseTests.cpp" />
     <ClCompile Include="unit\RepeatButtonTests.cpp" />
     <ClCompile Include="unit\RangeBaseTests.cpp" />
+    <ClCompile Include="unit\RangeBaseInvertedTests.cpp" />
     <ClCompile Include="unit\CompositionBackendTests.cpp" />
     <ClCompile Include="unit\ProgressBarCompositionTests.cpp" />
-    <ClCompile Include="unit\ScrollContentHostTests.cpp" />
-    <ClCompile Include="unit\TreeViewCompositionTests.cpp" />
-    <ClCompile Include="unit\TextAreaCompositionTests.cpp" />
+    <ClCompile Include="unit\TreeViewIncrementalApiTests.cpp" />
     <ClCompile Include="unit\LineIndexTests.cpp" />
     <ClCompile Include="unit\LineLayoutCacheTests.cpp" />
     <ClCompile Include="unit\LogSinkTests.cpp" />
@@ -124,6 +137,7 @@
     <ClCompile Include="unit\ToolBarTests.cpp" />
     <ClCompile Include="unit\StatusBarTests.cpp" />
     <ClCompile Include="unit\UniformGridTests.cpp" />
+    <ClCompile Include="unit\UniformGridStretchTests.cpp" />
     <ClCompile Include="unit\VisibleLinesTests.cpp" />
     <ClCompile Include="unit\WordBoundaryTests.cpp" />
     <ClCompile Include="unit\ClickCounterTests.cpp" />
@@ -134,7 +148,16 @@
     <ClCompile Include="unit\FramePacingTests.cpp" />
     <ClCompile Include="unit\SelectorTests.cpp" />
     <ClCompile Include="unit\ListBoxTests.cpp" />
+    <ClCompile Include="unit\ListBoxItemHeightGuardTests.cpp" />
     <ClCompile Include="unit\ListBoxMultiSelectTests.cpp" />
+    <ClCompile Include="unit\LogViewerTests.cpp" />
+    <ClCompile Include="unit\RichTextDocumentTests.cpp" />
+    <ClCompile Include="unit\RichTextBoxTests.cpp" />
+    <ClCompile Include="unit\RichTextBoxEventsTests.cpp" />
+    <ClCompile Include="unit\ScrollViewerEventsTests.cpp" />
+    <ClCompile Include="unit\GridSplitterEventsTests.cpp" />
+    <ClCompile Include="unit\MenuFlyoutEventsTests.cpp" />
+    <ClCompile Include="unit\SliderEventsTests.cpp" />
     <ClCompile Include="unit\ImageTests.cpp" />
     <ClCompile Include="unit\PopupGeometryTests.cpp" />
     <ClCompile Include="unit\FrameRingTests.cpp" />
@@ -185,6 +208,7 @@
     <ClCompile Include="component\ContentDrivenHeightTests.cpp" />
     <ClCompile Include="component\FrameWorkBudgetTests.cpp" />
     <ClCompile Include="component\TextBoxLayoutCacheTests.cpp" />
+    <ClCompile Include="unit\MenuItemEventsTests.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\FluentUI\FluentUI.vcxproj">

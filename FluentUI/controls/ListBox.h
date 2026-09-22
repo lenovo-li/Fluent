@@ -37,7 +37,7 @@ public:
     // Virtualized mode: set the item count and a text provider callback.
     // ItemTextProvider is called on-demand for visible items only.
     void SetItemCount(size_t count);
-    void SetItemHeight(float dip) { itemHeight_ = dip; UpdateScrollExtent(); }
+    void SetItemHeight(float dip);
     float ItemHeight() const { return itemHeight_; }
 
     // Callback for virtualized mode: given an item index, return its display text.

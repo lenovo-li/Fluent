@@ -97,6 +97,54 @@ TEST(WordBoundary, SelectsCjkRunWhole) {
     EXPECT_EQ(e, size_t{4});
 }
 
+TEST(WordBoundary, CjkPunctuationBreaksRun) {
+    // CJK punctuation (，。、！？「」（）etc.) must break a run, exactly like ASCII
+    // punctuation does. Without this, double-clicking 你好，世界 would select the whole
+    // string INCLUDING the comma, which is the CJK equivalent of selecting "foo.bar"
+    // with the dot, and no editor does that.
+    const std::wstring t1 = L"你好，世界";
+    auto [s1, e1] = WordRangeAt(t1, 1);   // Click inside 你好
+    EXPECT_EQ(s1, size_t{0});
+    EXPECT_EQ(e1, size_t{2});
+
+    auto [s2, e2] = WordRangeAt(t1, 3);   // Click inside 世界
+    EXPECT_EQ(s2, size_t{3});
+    EXPECT_EQ(e2, size_t{5});
+
+    // Test other CJK punctuation: 。、；：！？「」（）《》
+    const std::wstring t2 = L"前面。后面";
+    auto [s3, e3] = WordRangeAt(t2, 1);
+    EXPECT_EQ(s3, size_t{0});
+    EXPECT_EQ(e3, size_t{2});  // Stops at 。
+
+    const std::wstring t3 = L"「引用」内容";
+    auto [s4, e4] = WordRangeAt(t3, 5);   // Click inside 内容
+    EXPECT_EQ(s4, size_t{4});
+    EXPECT_EQ(e4, size_t{6});  // Starts after 」
+
+    // Fullwidth ASCII punctuation (！？（）etc.) also breaks
+    const std::wstring t4 = L"前（注释）后";
+    auto [s5, e5] = WordRangeAt(t4, 0);
+    EXPECT_EQ(s5, size_t{0});
+    EXPECT_EQ(e5, size_t{1});  // Just 前, stops at （
+}
+
+TEST(WordBoundary, IdeographicSpaceIsWhitespace) {
+    // U+3000 (ideographic space) is the CJK equivalent of U+0020, so it must be
+    // classified as Space, not Punct. Without this a double-click on either side of
+    // 你　好 (with ideographic space) would select both words.
+    EXPECT_TRUE(ClassifyChar(L'\u3000') == CharClass::Space);
+
+    const std::wstring t = L"你好\u3000世界";
+    auto [s1, e1] = WordRangeAt(t, 1);
+    EXPECT_EQ(s1, size_t{0});
+    EXPECT_EQ(e1, size_t{2});  // Stops at ideographic space
+
+    auto [s2, e2] = WordRangeAt(t, 3);
+    EXPECT_EQ(s2, size_t{3});
+    EXPECT_EQ(e2, size_t{5});  // Starts after ideographic space
+}
+
 TEST(WordBoundary, WordRangeAtStartOfText) {
     const std::wstring t = L"abc def";
     auto [s, e] = WordRangeAt(t, 0);

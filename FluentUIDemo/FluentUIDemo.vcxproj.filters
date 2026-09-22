@@ -38,6 +38,12 @@
     <ClCompile Include="pages\DataGridChartPages.cpp">
       <Filter>pages</Filter>
     </ClCompile>
+    <ClCompile Include="pages\LogViewerPage.cpp">
+      <Filter>pages</Filter>
+    </ClCompile>
+    <ClCompile Include="pages\RichTextBoxPage.cpp">
+      <Filter>pages</Filter>
+    </ClCompile>
     <ClCompile Include="pages\InspectorPage.cpp">
       <Filter>pages</Filter>
     </ClCompile>

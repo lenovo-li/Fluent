@@ -74,6 +74,7 @@ void Calendar::SetSelectedDate(int year, int month, int day) {
     // stale SetSelectedDate silently defeat a min/max set afterwards.
     if (!IsDateEnabled(year, month, day)) return;
 
+    const int oy = viewYear_, om = viewMonth_;
     selYear_ = year;
     selMonth_ = month;
     selDay_ = day;
@@ -81,6 +82,11 @@ void Calendar::SetSelectedDate(int year, int month, int day) {
     viewMonth_ = month;
     viewDay_ = day;
     Invalidate();
+    // Selecting a date in a month that is not the one on screen pages the view to
+    // it — clicking a trailing spill-over cell does exactly that. The view really
+    // did change, so it is reported; selecting within the visible month does not
+    // reach the raise (NotifyViewChanged compares first).
+    NotifyViewChanged(oy, om);
 }
 
 void Calendar::GetSelectedDate(int& year, int& month, int& day) const {
@@ -89,20 +95,35 @@ void Calendar::GetSelectedDate(int& year, int& month, int& day) const {
     day = selDay_;
 }
 
+// Raise DisplayMonthChanged if the view moved off (oldYear, oldMonth). Every path
+// that writes viewYear_/viewMonth_ ends here, so the "only on an actual change"
+// rule is in one place rather than repeated at three call sites.
+void Calendar::NotifyViewChanged(int oldYear, int oldMonth) {
+    if (viewYear_ == oldYear && viewMonth_ == oldMonth) return;
+    DisplayMonthChangedArgs args{viewYear_, viewMonth_};
+    displayMonthChanged_.Raise(*this, args);
+}
+
 void Calendar::SetViewedMonth(int year, int month) {
+    const int oy = viewYear_, om = viewMonth_;
     viewYear_ = year;
     viewMonth_ = month;
     Invalidate();
+    NotifyViewChanged(oy, om);
 }
 
 void Calendar::PreviousMonth() {
+    const int oy = viewYear_, om = viewMonth_;
     CalAddMonths(viewYear_, viewMonth_, viewDay_, -1);
     Invalidate();
+    NotifyViewChanged(oy, om);
 }
 
 void Calendar::NextMonth() {
+    const int oy = viewYear_, om = viewMonth_;
     CalAddMonths(viewYear_, viewMonth_, viewDay_, 1);
     Invalidate();
+    NotifyViewChanged(oy, om);
 }
 
 // --- Date constraints (P1-12, P1-13) -----------------------------------------

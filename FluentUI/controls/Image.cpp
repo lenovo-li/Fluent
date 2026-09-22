@@ -243,6 +243,7 @@ void Image::LoadImage() {
                 hr = dc->CreateBitmapFromWicBitmap(conv.Get(), nullptr,
                                                    bitmap_.GetAddressOf());
                 if (FAILED(hr)) { Trace(kTag, "CreateBitmapFromWicBitmap(wic) failed", hr); ClearImage(); }
+                else RaiseOpened();
             }
         }
         return;
@@ -328,6 +329,14 @@ void Image::LoadImage() {
     }
 
     FL_TRACEF(kTag, "loaded %ux%u px (%.1fx%.1f DIP)", pw, ph, nativeSize_.w, nativeSize_.h);
+    RaiseOpened();
+}
+
+void Image::RaiseOpened() {
+    ImageOpenedArgs args;
+    args.path = source_;  // empty for WIC source
+    args.size = nativeSize_;
+    imageOpened_.Raise(*this, args);
 }
 
 // ---------------------------------------------------------------------------

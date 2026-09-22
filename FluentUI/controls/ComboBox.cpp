@@ -90,9 +90,9 @@ public:
 
     void OnPointerWheelChanged(PointerEventArgs& e) override {
         if (Count() == 0) return;
-        // Scroll by ~3 items per wheel notch.
+        // Scroll by WheelScrollLines() items per wheel notch (system setting).
         float itemH = 32.0f;
-        float lines = -static_cast<float>(e.wheelDelta) / WHEEL_DELTA * 3.0f;
+        float lines = e.WheelScrollLines();
         scrollOffset_ += lines * itemH;
         scrollOffset_ = std::clamp(scrollOffset_, 0.0f, MaxScroll());
         Invalidate();
@@ -486,6 +486,13 @@ void ComboBox::OpenPopup() {
             });
         }
         TraceMsg(kTag, "OpenPopup: popup shown");
+        // Raised only on the success path: a failed Open left no dropdown, and
+        // reporting one would have a deferred-loading handler fill a list nobody
+        // can see.
+        RoutedEventArgs args;
+        args.source = this;
+        args.originalSource = this;
+        dropDownOpened_.Raise(*this, args);
     } else {
         TraceMsg(kTag, "OpenPopup: PopupHost::Open failed");
     }
@@ -497,6 +504,11 @@ void ComboBox::ClosePopup() {
     popupOpen_ = false;
     dismissSub_.reset();  // unregister the window's dismiss hook
     Invalidate();
+
+    RoutedEventArgs args;
+    args.source = this;
+    args.originalSource = this;
+    dropDownClosed_.Raise(*this, args);
 }
 
 void ComboBox::OnItemSelected(int index) {

@@ -27,6 +27,7 @@
 #pragma once
 #include "../core/Control.h"
 #include <functional>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -136,6 +137,11 @@ private:
     bool autoScaleY_ = true;
     double minY_ = 0.0;
     double maxY_ = 1.0;
+
+    // YTicks() cache: rebuilt in Measure when minY/maxY change, reused in Render.
+    mutable std::vector<double> yticksCached_;
+    mutable double yticksCacheMinY_ = -std::numeric_limits<double>::infinity();
+    mutable double yticksCacheMaxY_ = -std::numeric_limits<double>::infinity();
 
     int visibleFirst_ = 0;
     int visibleCount_ = 0;   // 0 = all points

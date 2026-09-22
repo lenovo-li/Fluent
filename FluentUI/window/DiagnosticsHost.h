@@ -12,6 +12,7 @@
 
 #include "../diagnostics/FrameRing.h"
 #include "../diagnostics/SessionLog.h"
+#include "HangDetector.h"
 
 namespace fluent {
 
@@ -33,6 +34,10 @@ public:
     SessionLog& Log() { return sessionLog_; }
     const SessionLog& Log() const { return sessionLog_; }
 
+    // Hang detector (watchdog that reports when the UI thread stops responding).
+    HangDetector& Hang() { return hangDetector_; }
+    const HangDetector& Hang() const { return hangDetector_; }
+
 private:
     // Ring of the last 120 frame BUILD costs. Fed from RenderNow; the HUD turns
     // it into the CPU-cost histogram.
@@ -44,6 +49,8 @@ private:
     FrameRing<120> intervalRing_;
 
     SessionLog sessionLog_;
+
+    HangDetector hangDetector_;
 };
 
 } // namespace fluent

@@ -41,10 +41,11 @@ void MenuBar::OnAttachedToTree() {
 
     // When the flyout closes by any path (click-outside, Esc, invoke), clear our
     // open-state — unless we're mid-switch between titles.
-    flyout_->SetOnClosed([this]() {
-        if (switching_) return;
-        openIndex_ = -1;
-        Invalidate();
+    closedSub_ = flyout_->Closed().Subscribe(this, [](void* owner, MenuFlyout&, RoutedEventArgs&) {
+        auto* bar = static_cast<MenuBar*>(owner);
+        if (bar->switching_) return;
+        bar->openIndex_ = -1;
+        bar->Invalidate();
     });
 
     // Titles added before attach measured with no DWrite (width 0); recompute now
@@ -130,12 +131,12 @@ RECT MenuBar::ItemScreenRect(int i) const {
 
 void MenuBar::OpenMenu(int i) {
     if (!flyout_ || i < 0 || i >= static_cast<int>(items_.size())) return;
-    // SetItems() closes any currently-open chain, which fires the flyout's
-    // onClosed callback. Guard it with switching_ so that callback doesn't clear
-    // the openIndex_ we're about to set. Set openIndex_ AFTER SetItems, because
-    // the close (and thus the callback) happens synchronously inside SetItems.
+    // SetItemsBorrow() closes any currently-open chain, which fires the flyout's
+    // Closed() event. Guard it with switching_ so that callback doesn't clear the
+    // openIndex_ we're about to set. Set openIndex_ AFTER SetItems, because the
+    // close (and thus the callback) happens synchronously inside SetItems.
     switching_ = true;
-    flyout_->SetItems(items_[i].items);
+    flyout_->SetItemsBorrow(&items_[i].items);
     switching_ = false;
     openIndex_ = i;
     flyout_->ShowBelow(ItemScreenRect(i));

@@ -72,7 +72,12 @@ public:
     void PointerPressed(Point p, PointerButton button, ModifierKeys mods,
                         int clickCount = 1);
     void PointerReleased(Point p, PointerButton button, ModifierKeys mods);
-    void PointerWheel(Point p, int delta, ModifierKeys mods);
+    // wheelScrollLines: the system "lines to scroll at a time" preference, stamped
+    // into the routed args. Defaults to the Windows default of 3 so existing callers
+    // and tests keep their previous behavior. 0 means "page per notch".
+    // uint32_t, not UINT — this layer does not include <windows.h>.
+    void PointerWheel(Point p, int delta, ModifierKeys mods,
+                      uint32_t wheelScrollLines = 3);
     // The pointer left the window entirely: clear hover (like a WM_MOUSELEAVE).
     void PointerLeftWindow();
     // Route a key/char to the focused element's chain. KeyDown returns true if the

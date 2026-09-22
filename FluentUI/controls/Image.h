@@ -85,6 +85,23 @@ public:
     struct ImageFailedArgs { std::wstring path; };
     Event<Image, ImageFailedArgs>& ImageFailed() { return imageFailed_; }
 
+    // Fired when a load SUCCEEDS, for either source kind (file path or a
+    // caller-supplied WIC bitmap). The mirror of ImageFailed: hide a placeholder,
+    // start a fade-in, or size a container now that NativeSize() is known.
+    //
+    // `path` is the file path that loaded, or empty for a WIC source — matching
+    // ImageFailedArgs, whose path is likewise the thing that was asked for.
+    //
+    // NOT fired for the fallback image. The fallback is what the control shows
+    // when the app's request failed, so reporting it as an "opened" would tell the
+    // app its image arrived when the opposite happened; ImageFailed has already
+    // been raised on that path and is the honest signal.
+    struct ImageOpenedArgs {
+        std::wstring path;   // empty for a WIC source
+        SizeDip size{0.0f, 0.0f};  // the loaded image's DIP extent (== NativeSize())
+    };
+    Event<Image, ImageOpenedArgs>& ImageOpened() { return imageOpened_; }
+
     void SetStretch(ImageStretch s) { SetProperty(stretch_, s, DirtyFlags::Render); }
     ImageStretch Stretch() const { return stretch_; }
 
@@ -135,7 +152,11 @@ private:
     // attempt. Reset by SetSource (a new primary deserves a fresh fallback try)
     // and by SetFailureSource.
     bool fallbackAttempted_ = false;
+    // Raise ImageOpened for whatever just loaded into bitmap_. Called from both
+    // success paths so the "what counts as opened" rule lives in one place.
+    void RaiseOpened();
     Event<Image, ImageFailedArgs> imageFailed_;
+    Event<Image, ImageOpenedArgs> imageOpened_;
 };
 
 } // namespace fluent

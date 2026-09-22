@@ -61,6 +61,12 @@ public:
         UNREFERENCED_PARAMETER(detail);
     }
 
+    // System mouse wheel scroll-lines setting (read from SPI_GETWHEELSCROLLLINES).
+    // One wheel notch (WHEEL_DELTA = 120) scrolls this many lines. Default 3 if
+    // the query fails. Updated on WM_SETTINGCHANGE so the control's wheel handler
+    // stays in sync with the user's system preference.
+    virtual UINT WheelScrollLines() const { return 3; }
+
     // Install the callback and return a Subscription that clears *this specific*
     // registration when destroyed. The host stamps each slot with a generation,
     // so a stale Subscription (whose slot was later overwritten by another popup)

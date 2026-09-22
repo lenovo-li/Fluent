@@ -115,12 +115,24 @@ void DatePicker::OpenCalendar() {
     } else {
         TraceMsg(kTag, "OpenCalendar: PopupHost::Open failed");
     }
+
+    if (popupOpen_) {
+        RoutedEventArgs args;
+        args.source = this;
+        args.originalSource = this;
+        calendarOpened_.Raise(*this, args);
+    }
 }
 
 void DatePicker::CloseCalendar() {
     if (!popup_ || !popupOpen_) return;
     popup_->Close();
     popupOpen_ = false;
+
+    RoutedEventArgs args;
+    args.source = this;
+    args.originalSource = this;
+    calendarClosed_.Raise(*this, args);
 }
 
 void DatePicker::AdjustDate(int daysDelta) {

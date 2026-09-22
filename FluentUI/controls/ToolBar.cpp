@@ -157,7 +157,7 @@ std::vector<MenuItem> ToolBar::BuildOverflowItems() const {
             // direct handler lambda on the button at AddButton time (see below),
             // so the overflow menu can invoke the same action without needing to
             // reach into the button's protected activation path.
-            mi.onInvoke = item.clickHandler;
+            mi.AddInvokeHandler(item.clickHandler);
             out.push_back(std::move(mi));
         }
     }
@@ -194,6 +194,11 @@ void ToolBar::ShowOverflowMenu() {
                                    overflowBtnRect_.w, 4.0f,
                                    win->DpiScale());
     overflowFlyout_->ShowBelow(anchor);
+
+    RoutedEventArgs args;
+    args.source = this;
+    args.originalSource = this;
+    overflowOpened_.Raise(*this, args);
 }
 
 void ToolBar::Render(const DrawingContext& dc) {

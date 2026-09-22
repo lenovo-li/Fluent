@@ -100,7 +100,9 @@ void SetOrientation(Orientation o);
 Event<Slider, float>& ValueChanged();
 ```
 
-值改变时触发,拖动、键盘、`SetValue` 都会触发。
+值**提交**时触发。**键盘方向键**、**`SetValue`**、以及**拖动松手**时触发。
+
+拖动过程中的**中间值不触发此事件**——那些是预览（见 `ValueChanging`）,最终提交只在松手时触发一次。
 
 处理器是**无捕获函数指针**,且 `Args` 是**引用**:
 
@@ -114,6 +116,32 @@ sub_ = slider->ValueChanged().Subscribe(label,
         static_cast<TextBlock*>(owner)->SetText(buf);
     });
 ```
+
+#### ValueChanging
+
+```cpp
+Event<Slider, float>& ValueChanging();
+```
+
+**拖动过程中的每个中间值**都触发此事件。键盘和 `SetValue` 不触发（那些已经是提交值,直接走 `ValueChanged`）。
+
+**用法**: 拖滑块时实时预览（音量、亮度）,松手时才提交到 `ValueChanged` 做最终落盘/通知。
+
+```cpp
+slider->ValueChanging().Subscribe(preview,
+    [](void* owner, Slider&, float& v) {
+        // 实时预览: 更新 UI 但不写配置
+        static_cast<VolumeBar*>(owner)->UpdatePreview(v);
+    });
+
+slider->ValueChanged().Subscribe(settings,
+    [](void* owner, Slider&, float& v) {
+        // 最终提交: 写配置文件、触发应用级 PropertyChanged
+        static_cast<Settings*>(owner)->SetVolume(v);
+    });
+```
+
+如果每个中间值都写配置文件,一次拖动 100 像素 = 100 次文件写入。`ValueChanging` + `ValueChanged` 分离就是为此。
 
 ⚠️ **返回的 `Subscription` 必须持有**(RAII,丢掉即退订)。
 

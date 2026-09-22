@@ -49,13 +49,47 @@ enum class CharClass {
     Punct,   // everything else: . , ; ( ) { } + - = etc.
 };
 
+// Non-ASCII punctuation that must NOT join a word run.
+//
+// WHY THIS EXISTS. The rule below is "everything >= 0x80 is Word", which is what makes
+// CJK text select as one run and keeps accented Latin (café) intact. But CJK punctuation
+// also lives above 0x80 — ，。、！？「」（）《》 are all U+3000..U+303F or U+FF00..U+FFEF —
+// so without this test a double-click on 你好，世界 selects the whole string INCLUDING the
+// comma, instead of just 你好. That is the CJK equivalent of double-clicking "foo.bar" and
+// getting "foo.bar", which the ASCII path already refuses to do.
+//
+// The ranges are the punctuation blocks only, deliberately narrow: CJK ideographs
+// (U+4E00..U+9FFF), Hiragana/Katakana, Hangul, and every accented Latin letter stay Word.
+inline bool IsNonAsciiPunct(wchar_t c) {
+    // U+2000..U+206F General Punctuation (— … ‘ ’ “ ” † ‰ ‹ ›)
+    if (c >= 0x2000 && c <= 0x206F) return true;
+    // U+3000..U+303F CJK Symbols and Punctuation (ideographic space, 、。〈〉《》「」『』【】)
+    if (c >= 0x3000 && c <= 0x303F) return true;
+    // U+FE10..U+FE1F Vertical forms; U+FE30..U+FE4F CJK Compatibility Forms
+    if (c >= 0xFE10 && c <= 0xFE1F) return true;
+    if (c >= 0xFE30 && c <= 0xFE4F) return true;
+    // U+FF01..U+FF20 and U+FF3B..U+FF40 and U+FF5B..U+FF65: fullwidth ASCII punctuation
+    // (！＂＃＄％＆＇（）＊＋，－．／：；＜＝＞？＠［＼］＾＿｀｛｜｝～｡｢｣､･). The gaps are
+    // fullwidth digits (U+FF10..U+FF19), uppercase (U+FF21..U+FF3A) and lowercase
+    // (U+FF41..U+FF5A), which are Word — they are letters and digits, merely wide.
+    if (c >= 0xFF01 && c <= 0xFF0F) return true;
+    if (c >= 0xFF1A && c <= 0xFF20) return true;
+    if (c >= 0xFF3B && c <= 0xFF40) return true;
+    if (c >= 0xFF5B && c <= 0xFF65) return true;
+    return false;
+}
+
 inline CharClass ClassifyChar(wchar_t c) {
     if (c == L' ' || c == L'\t' || c == L'\n' || c == L'\r' || c == 0x0B || c == 0x0C)
         return CharClass::Space;
+    // Ideographic space (U+3000) is whitespace, not punctuation — it is the CJK ' '.
+    if (c == 0x3000) return CharClass::Space;
     if ((c >= L'a' && c <= L'z') || (c >= L'A' && c <= L'Z') ||
         (c >= L'0' && c <= L'9') || c == L'_')
         return CharClass::Word;
-    // Everything at or above 0x80 is Word. This is what makes CJK select as one run,
+    // CJK / general punctuation above 0x80 breaks a run, exactly like ASCII '.' does.
+    if (IsNonAsciiPunct(c)) return CharClass::Punct;
+    // Everything else at or above 0x80 is Word. This is what makes CJK select as one run,
     // and it also gets accented Latin (é, ü) and Cyrillic right, which the ASCII test
     // above would otherwise class as Punct and break in the middle of a word.
     if (c >= 0x80) return CharClass::Word;

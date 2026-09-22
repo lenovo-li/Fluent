@@ -36,15 +36,15 @@ DWriteContext& Ctx() {
 // A configured TextBlock with a valid layout width (CreateLayout needs bounds).
 // DWrite is now injected through the tree UIContext (roadmap §6.2) instead of a
 // manual SetDWrite: build a context carrying the DWrite pointer and attach it.
-// The context is a plain value stored in the element, so it survives the by-value
-// return (move) of the TextBlock.
-TextBlock MakeBlock(DWriteContext& ctx) {
-    TextBlock tb;
+// Returns a pointer to avoid moving the TextBlock: UIElement now has Event<>
+// members which are not movable (Phase 1), so TextBlock is also not movable.
+std::unique_ptr<TextBlock> MakeBlock(DWriteContext& ctx) {
+    auto tb = std::make_unique<TextBlock>();
     UIContext uictx;
     uictx.dwrite = &ctx;
-    tb.AttachToContext(uictx);
-    tb.SetText(L"Hello, layout cache");
-    tb.SetBounds({0.0f, 0.0f, 200.0f, 40.0f});
+    tb->AttachToContext(uictx);
+    tb->SetText(L"Hello, layout cache");
+    tb->SetBounds({0.0f, 0.0f, 200.0f, 40.0f});
     return tb;
 }
 }  // namespace
@@ -53,9 +53,9 @@ TextBlock MakeBlock(DWriteContext& ctx) {
 TEST(TextBlockLayoutCache, SameInputsReuseLayout) {
     auto& ctx = Ctx();
     if (!ctx.Valid()) return;
-    TextBlock tb = MakeBlock(ctx);
-    ComPtr<IDWriteTextLayout> a = TextBlockTestPeer::Layout(tb);
-    ComPtr<IDWriteTextLayout> b = TextBlockTestPeer::Layout(tb);
+    auto tb = MakeBlock(ctx);
+    ComPtr<IDWriteTextLayout> a = TextBlockTestPeer::Layout(*tb);
+    ComPtr<IDWriteTextLayout> b = TextBlockTestPeer::Layout(*tb);
     EXPECT_TRUE(a.Get() != nullptr);
     EXPECT_TRUE(a.Get() == b.Get());  // reused, not rebuilt
 }
@@ -64,10 +64,10 @@ TEST(TextBlockLayoutCache, SameInputsReuseLayout) {
 TEST(TextBlockLayoutCache, TextChangeRebuilds) {
     auto& ctx = Ctx();
     if (!ctx.Valid()) return;
-    TextBlock tb = MakeBlock(ctx);
-    ComPtr<IDWriteTextLayout> before = TextBlockTestPeer::Layout(tb);
-    tb.SetText(L"Different text");
-    ComPtr<IDWriteTextLayout> after = TextBlockTestPeer::Layout(tb);
+    auto tb = MakeBlock(ctx);
+    ComPtr<IDWriteTextLayout> before = TextBlockTestPeer::Layout(*tb);
+    tb->SetText(L"Different text");
+    ComPtr<IDWriteTextLayout> after = TextBlockTestPeer::Layout(*tb);
     EXPECT_TRUE(before.Get() != nullptr);
     EXPECT_TRUE(after.Get() != nullptr);
     EXPECT_TRUE(before.Get() != after.Get());
@@ -77,10 +77,10 @@ TEST(TextBlockLayoutCache, TextChangeRebuilds) {
 TEST(TextBlockLayoutCache, WidthChangeRebuilds) {
     auto& ctx = Ctx();
     if (!ctx.Valid()) return;
-    TextBlock tb = MakeBlock(ctx);
-    ComPtr<IDWriteTextLayout> before = TextBlockTestPeer::Layout(tb);
-    tb.SetBounds({0.0f, 0.0f, 120.0f, 40.0f});  // narrower wrap width
-    ComPtr<IDWriteTextLayout> after = TextBlockTestPeer::Layout(tb);
+    auto tb = MakeBlock(ctx);
+    ComPtr<IDWriteTextLayout> before = TextBlockTestPeer::Layout(*tb);
+    tb->SetBounds({0.0f, 0.0f, 120.0f, 40.0f});  // narrower wrap width
+    ComPtr<IDWriteTextLayout> after = TextBlockTestPeer::Layout(*tb);
     EXPECT_TRUE(before.Get() != after.Get());
 }
 
@@ -88,10 +88,10 @@ TEST(TextBlockLayoutCache, WidthChangeRebuilds) {
 TEST(TextBlockLayoutCache, FontSizeChangeRebuilds) {
     auto& ctx = Ctx();
     if (!ctx.Valid()) return;
-    TextBlock tb = MakeBlock(ctx);
-    ComPtr<IDWriteTextLayout> before = TextBlockTestPeer::Layout(tb);
-    tb.SetFontSize(24.0f);
-    ComPtr<IDWriteTextLayout> after = TextBlockTestPeer::Layout(tb);
+    auto tb = MakeBlock(ctx);
+    ComPtr<IDWriteTextLayout> before = TextBlockTestPeer::Layout(*tb);
+    tb->SetFontSize(24.0f);
+    ComPtr<IDWriteTextLayout> after = TextBlockTestPeer::Layout(*tb);
     EXPECT_TRUE(before.Get() != after.Get());
 }
 
@@ -99,8 +99,8 @@ TEST(TextBlockLayoutCache, FontSizeChangeRebuilds) {
 TEST(TextBlockLayoutCache, EmptyTextClearsCache) {
     auto& ctx = Ctx();
     if (!ctx.Valid()) return;
-    TextBlock tb = MakeBlock(ctx);
-    EXPECT_TRUE(TextBlockTestPeer::Layout(tb).Get() != nullptr);
-    tb.SetText(L"");
-    EXPECT_TRUE(TextBlockTestPeer::Layout(tb).Get() == nullptr);
+    auto tb = MakeBlock(ctx);
+    EXPECT_TRUE(TextBlockTestPeer::Layout(*tb).Get() != nullptr);
+    tb->SetText(L"");
+    EXPECT_TRUE(TextBlockTestPeer::Layout(*tb).Get() == nullptr);
 }

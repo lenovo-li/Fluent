@@ -206,8 +206,8 @@ void TextBlock::OnPointerWheelChanged(PointerEventArgs& e)
     UpdateMetrics();
     // Nothing to scroll: leave unhandled so the event bubbles to a parent scroller.
     if (contentHeight_ <= bounds_.h) return;
-    // One notch (WHEEL_DELTA = 120) scrolls ~3 lines of text.
-    float lines = -static_cast<float>(e.wheelDelta) / WHEEL_DELTA * 3.0f;
+    // One notch scrolls WheelScrollLines() lines of text (system setting).
+    float lines = e.WheelScrollLines();
     SetScrollOffset(scrollOffset_ + lines * ResolveTypographySize() * 1.4f);
     e.handled = true;
 }

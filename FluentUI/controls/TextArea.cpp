@@ -8,6 +8,7 @@
 #include "../animation/Animation.h"     // CaretBlinkHalfPeriodSec
 #include "../text/VisibleLines.h"
 #include "../core/ScrollMath.h"         // EnsureVisibleOffset (shared with TreeView)
+#include "../graphics/PixelSnapping.h"
 #include "../diagnostics/LayoutCostProbe.h"
 #include <algorithm>
 #include <cmath>
@@ -706,7 +707,7 @@ float TextArea::ScrollExtentXDip() const {
     if (!LayoutWidthKnown()) return 0.0f;
 
     // Warm the mark with the CARET's line before answering. Without this, the sequence
-    // "edit -> RefreshComposition -> clamp offsetX" runs before any line has been drawn
+    // "edit -> clamp offsetX" runs before any line has been drawn
     // at the new text, so the mark would be 0, MaxOffsetX() would be 0, and the offset
     // would be clamped to 0 — snapping the view back to column 0 on every keystroke
     // typed at column 300. The caret's line is the one line guaranteed to matter, and
@@ -734,7 +735,6 @@ void TextArea::SyncScroll() {
 float TextArea::MaxOffsetDip() const {
     // Mirrors what the active scroll path uses as its own bound, so a test asking
     // "is the view at the tail" gets the same number the control clamps against.
-    if (CompositionActive()) return content_->MaxOffset();
     return scroll_.MaxOffset();
 }
 
@@ -815,12 +815,7 @@ void TextArea::AppendText(std::wstring_view s) {
     SyncScroll();
     (void)dropped;   // the trim already compensated the offset; nothing else needs it
     if (autoScrollEnabled_ && followingTail_) {
-        ScrollToTail();   // re-rasterizes and commits on its own
-    } else if (CompositionActive()) {
-        // New text at the bottom of the document is new pixels on the surface whenever
-        // the drawn band reaches it, and a trim moved the whole band's content. Both need
-        // the surface re-rasterized; the offset itself was already handled above.
-        RefreshComposition(/*redrawText*/ true, /*overlayForce*/ true);
+        ScrollToTail();
     }
     Invalidate();
 
@@ -841,7 +836,6 @@ void TextArea::SetMaxLines(size_t n) {
     // a already-huge buffer is capping it precisely to release the memory.
     if (TrimToMaxLines() > 0) {
         SyncScroll();
-        if (CompositionActive()) RefreshComposition(true, true);
         Invalidate();
     }
 }
@@ -908,28 +902,8 @@ size_t TextArea::TrimToMaxLines() {
     if (wrapMode_ == TextWrapMode::NoWrap) {
         const float gone = drop * LineHeight();
         const float extent = ScrollExtentDip();
-        if (CompositionActive()) {
-            const float target = std::max(0.0f, content_->EffectiveOffset() - gone);
-            content_->SetContentHeight(extent);
-            content_->SetOffsetImmediate(target,
-                [this](ID2D1DeviceContext* dc, float o, float h) {
-                    DrawTextToSurface(dc, o, h);
-                });
-            // CRITICAL: sync scroll_ to match. Same reasoning as ScrollToTail — scroll_ is
-            // the UI-thread scrollbar model that wheel/drag/tail-follow all read to judge
-            // where the user is. Leaving it stale after the trim compensation makes the
-            // scrollbar thumb render at the wrong position (stuck wherever it was before
-            // the trim), and UpdateTailFollow reads an outdated offset.
-            //
-            // Use content_'s compensated target directly, NOT recomputing from scroll_:
-            // the two MaxOffset values differ by 2*kPadY, and recomputing scroll_.Offset()
-            // from scroll_.MaxOffset() would land 16 DIP off from where content_ actually is.
-            scroll_.SetContentHeight(extent);
-            scroll_.SetOffset(target);  // target from content_, not scroll_.Offset() - gone
-        } else {
-            scroll_.SetContentHeight(extent);
-            scroll_.SetOffset(std::max(0.0f, scroll_.Offset() - gone));
-        }
+        scroll_.SetContentHeight(extent);
+        scroll_.SetOffset(std::max(0.0f, scroll_.Offset() - gone));
     }
     return drop;
 }
@@ -938,39 +912,46 @@ void TextArea::ScrollToTail() {
     // Push the new extent before asking for the bound: the append that called this grew
     // the content, and MaxOffset() is derived from the extent the host was last told.
     const float extent = ScrollExtentDip();
-    if (CompositionActive()) {
-        content_->SetContentHeight(extent);
-        // Immediate, not animated: a tween would be permanently chasing a target that
-        // moves again on the next batch, so at any real log rate the view would never
-        // actually reach the bottom and would smear instead of tracking.
-        const float maxOff = content_->MaxOffset();
-        content_->SetOffsetImmediate(maxOff,
-            [this](ID2D1DeviceContext* dc, float o, float h) {
-                DrawTextToSurface(dc, o, h);
-            });
-        RefreshComposition(/*redrawText*/ true, /*overlayForce*/ true);
-        // CRITICAL: sync scroll_ to match. scroll_ is the UI-thread scrollbar model;
-        // wheel/drag/tail-follow all read scroll_.TargetOffset() to decide whether the
-        // user is at the bottom, so leaving it stale (at some old offset from a wheel
-        // scroll before the tail following started) causes UpdateTailFollow to judge the
-        // user as scrolled-away and detach incorrectly.
-        //
-        // Use content_'s MaxOffset directly, NOT scroll_.MaxOffset(): the two differ by
-        // 2*kPadY (16 DIP) because content_ scrolls within the text inset while scroll_
-        // measures from bounds.top. Using scroll_.MaxOffset() here put scroll_.Offset()
-        // 16 DIP SHORT of where content_ actually is, breaking tail-follow detection.
-        scroll_.SetContentHeight(extent);
-        scroll_.SetOffset(maxOff);  // maxOff from content_, not scroll_.MaxOffset()
-    } else {
-        scroll_.SetContentHeight(extent);
-        const float maxOff = scroll_.MaxOffset();
-        scroll_.SetOffset(maxOff);
-    }
+    scroll_.SetContentHeight(extent);
+    const float maxOff = scroll_.MaxOffset();
+    scroll_.SetOffset(maxOff);
     followingTail_ = true;
 }
 
 void TextArea::JumpToTail() {
     ScrollToTail();
+}
+
+void TextArea::Clear() {
+    // SetText does the document work: drops the text, resets the caret, clears undo
+    // (a clear is a new document, not an edit to undo across) and invalidates the line
+    // index, layout cache and horizontal high-water mark via OnTextLayoutDirty.
+    SetText(std::wstring());
+
+    // What SetText deliberately does NOT touch, and why this method exists.
+    //
+    // followingTail_ survives SetText, which is correct for "replace the document" but
+    // wrong here. The path that matters: the user scrolls up to read history (which sets
+    // followingTail_ = false), then clears. Without the line below they are left with a
+    // log that no longer follows new appends, with nothing on screen explaining why —
+    // and the only way back is to manually scroll to the bottom of an empty view.
+    //
+    // Guarded on autoScrollEnabled_ so this cannot arm following on a TextArea whose
+    // owner never asked for it: followingTail_ is meaningless while the feature is off
+    // (UpdateTailFollow early-returns), and setting it true unconditionally would take
+    // effect later if the feature were armed mid-session.
+    followingTail_ = autoScrollEnabled_;
+
+    // An empty document has no width to scroll across, and OnTextLayoutDirty already
+    // reset maxSeenLineWidth_ to 0 — so a stale non-zero OffsetX would be clamped
+    // against a zero extent and leave the view shifted with no way to scroll back.
+    // Wrap mode never scrolls horizontally, so this is a no-op there.
+    scroll_.SetOffsetX(0.0f);
+
+    // Push the emptied extents to the scrollbar. Without this the thumb keeps the
+    // geometry of the discarded content until the next append or resize recomputes it.
+    SyncScroll();
+    Invalidate();
 }
 
 void TextArea::SetAutoScrollToTail(bool enable) {
@@ -998,10 +979,6 @@ void TextArea::ScrollHorizontallyBy(float deltaDip) {
     const float before = scroll_.OffsetX();
     scroll_.SetOffsetX(before + deltaDip);
     if (scroll_.OffsetX() == before) return;   // clamped: nothing moved, nothing to redraw
-    // The horizontal offset is baked into the content surface's pixels (there is no
-    // compositor OffsetX in this design — see the header), so a horizontal move must
-    // force a text re-rasterize. The caret's surface position also shifts with it.
-    if (CompositionActive()) RefreshComposition(/*redrawText*/ true, /*overlayForce*/ true);
     Invalidate();
 }
 
@@ -1014,9 +991,6 @@ void TextArea::EnsureCaretVisible() {
     // same pure helper the vertical axis and TreeView use, with the caret's own width as
     // the "item": a caret pressed against the right edge must bring its full 1 DIP into
     // view, not just its left edge, or typing at the edge leaves the bar half-clipped.
-    //
-    // Done BEFORE the vertical block so the single RefreshComposition below publishes
-    // both axes in one re-rasterize instead of two.
     if (wrapMode_ == TextWrapMode::NoWrap) {
         const float targetX = EnsureVisibleOffset(x, kCaretW, scroll_.OffsetX(),
                                                   ContentWidth());
@@ -1032,18 +1006,7 @@ void TextArea::EnsureCaretVisible() {
     if (top < viewTop) target = top;
     else if (bottom > viewBottom) target = bottom - ContentHeight();
 
-    if (CompositionActive()) {
-        // Typing / keyboard nav jumps immediately (no glide), matching TreeView.
-        if (std::fabs(target - content_->EffectiveOffset()) > 0.5f) {
-            content_->SetOffsetImmediate(target,
-                [this](ID2D1DeviceContext* dc, float o, float h2) {
-                    DrawTextToSurface(dc, o, h2);
-                });
-        }
-        // The caret moved even when the offset did not, and the text surface must
-        // re-rasterize because the caret's old cell may have held a selection edge.
-        RefreshComposition(/*redrawText*/ true, /*overlayForce*/ true);
-    } else if (target != scroll_.Offset()) {
+    if (target != scroll_.Offset()) {
         scroll_.SetOffset(target);
     }
     // Keyboard navigation is user-driven scrolling too, so it decides the follow state:
@@ -1067,23 +1030,12 @@ void TextArea::OnBoundsChanged() {
     // most of the resize cost (DComp:ourDrawing was 5.5-6.5ms across a page's twelve
     // composited surfaces, against 0.4-0.55ms for the surface allocation). A
     // conditional second pass was tried and deleted: by the time the first
-    // RefreshComposition returns, Rebase has already rasterized and set contentDrawn_,
-    // so any "did the pixels survive" test after it is always false — dead code that
     // reads as a working optimization. Skipping the redraw for real needs the geometry
     // and the pixels to be separable (push viewport/clip/extent now, rasterize on
-    // WM_EXITSIZEMOVE), which is a change to ScrollContentHost, not a flag here.
-    if (CompositionActive()) RefreshComposition(true, true);  // reposition + reclip
+    // WM_EXITSIZEMOVE).
 }
 
-void TextArea::UpdateContextModalResize(bool inModalResize) {
-    UIElement::UpdateContextModalResize(inModalResize);
-    // On the falling edge (modal resize ends), force a composition refresh even if
-    // bounds didn't change: the DComp surfaces were scaled/clipped to a placeholder
-    // size during the drag, and now need to be rasterized at the final resolution.
-    if (!inModalResize && CompositionActive()) {
-        RefreshComposition(/*redrawText*/ true, /*overlayForce*/ true);
-    }
-}
+
 
 // ---------------------------------------------------------------------------
 // Navigation
@@ -1144,7 +1096,6 @@ void TextArea::OnPointerPressed(PointerEventArgs& e) {
         }
         scroll_.BeginDrag(dipY);
         if (Context().input) Context().input->CapturePointer(this);
-        if (CompositionActive()) RefreshComposition(false, true);
         e.handled = true;
         return;
     }
@@ -1161,7 +1112,6 @@ void TextArea::OnPointerPressed(PointerEventArgs& e) {
         }
         scroll_.BeginHDrag(dipX);
         if (Context().input) Context().input->CapturePointer(this);
-        if (CompositionActive()) RefreshComposition(false, true);
         e.handled = true;
         return;
     }
@@ -1175,7 +1125,6 @@ void TextArea::OnPointerPressed(PointerEventArgs& e) {
     selecting_ = true;
     if (Context().input) Context().input->CapturePointer(this);
     ResetBlink();
-    if (CompositionActive()) RefreshComposition(true, false);
     Invalidate();
     e.handled = true;
 }
@@ -1194,27 +1143,13 @@ void TextArea::AutoScrollForDragSelect(float dipY) {
     if (!dragOutsideEdge_) return;
 
     const float step = std::clamp(overshoot, -LineHeight() * 3.0f, LineHeight() * 3.0f);
-    if (CompositionActive()) {
-        content_->SetOffsetImmediate(content_->EffectiveOffset() + step,
-            [this](ID2D1DeviceContext* dc, float o, float h) {
-                DrawTextToSurface(dc, o, h);
-            });
-    } else {
-        scroll_.SetOffset(scroll_.Offset() + step);
-    }
+    scroll_.SetOffset(scroll_.Offset() + step);
 }
 
 void TextArea::OnPointerMoved(PointerEventArgs& e) {
     float dipX = e.position.x, dipY = e.position.y;
     if (scroll_.IsDragging()) {
         scroll_.DragTo(dipY);
-        if (CompositionActive()) {
-            content_->SetOffsetImmediate(scroll_.Offset(),
-                [this](ID2D1DeviceContext* dc, float o, float h) {
-                    DrawTextToSurface(dc, o, h);
-                });
-            RefreshComposition(false, true);
-        }
         // A thumb drag is a user-driven scroll, so it is one of the places that decides
         // whether the view is still following the tail (dragging to the bottom re-attaches,
         // dragging away detaches). Appends must never make this call — see UpdateTailFollow.
@@ -1223,9 +1158,6 @@ void TextArea::OnPointerMoved(PointerEventArgs& e) {
     }
     if (scroll_.IsHDragging()) {
         scroll_.HDragTo(dipX);
-        // Horizontal motion bakes into pixels, so force a content redraw. No tail-follow
-        // update: the horizontal axis has nothing to do with being at the bottom.
-        if (CompositionActive()) RefreshComposition(true, true);
         Invalidate(); e.handled = true; return;
     }
     if (selecting_) {
@@ -1239,7 +1171,6 @@ void TextArea::OnPointerMoved(PointerEventArgs& e) {
     scroll_.Wake();
     scroll_.SetBarHover(scroll_.HitBarRegion(dipX, dipY));
     scroll_.SetHBarHover(scroll_.HitHBarRegion(dipX, dipY));
-    if (CompositionActive()) RefreshComposition(false, false);
 }
 
 void TextArea::OnPointerLeft() {
@@ -1257,7 +1188,6 @@ void TextArea::OnPointerReleased(PointerEventArgs& e) {
         Context().input->ReleaseCapture(this);
     if (active) {
         e.handled = true;
-        if (CompositionActive()) RefreshComposition(false, true);
     }
 }
 
@@ -1267,7 +1197,7 @@ void TextArea::OnPointerWheelChanged(PointerEventArgs& e) {
     const bool shift = (e.modifiers & ModifierKeys::Shift) != ModifierKeys::None;
     if (shift && wrapMode_ == TextWrapMode::NoWrap) {
         if (scroll_.MaxOffsetX() <= 0.0f) return;  // nothing to scroll (bubbles up)
-        float lines = -static_cast<float>(e.wheelDelta) / WHEEL_DELTA * 3.0f;
+        float lines = e.WheelScrollLines();
         ScrollHorizontallyBy(lines * LineHeight());
         scroll_.Wake();   // fade the scrollbar in so the user sees horizontal motion
         e.handled = true;
@@ -1275,29 +1205,8 @@ void TextArea::OnPointerWheelChanged(PointerEventArgs& e) {
     }
 
     // Vertical scrolling: same path both modes.
-    if (CompositionActive()) {
-        if (content_->MaxOffset() <= 0.0f) return;
-        float lines = -static_cast<float>(e.wheelDelta) / WHEEL_DELTA * 3.0f;
-        content_->AnimateBy(lines * LineHeight(),
-            [this](ID2D1DeviceContext* dc, float o, float h) {
-                DrawTextToSurface(dc, o, h);
-            });
-        scroll_.Wake();
-        RefreshComposition(false, true);
-        // Detach from the tail as soon as the wheel aims away from the bottom. Judged on
-        // the TARGET, not the effective offset: a wheel scroll is a tween, so the
-        // effective offset is still at the bottom on this frame and the user would have to
-        // keep scrolling to make it stick. The fling's landing is re-judged on each tick
-        // (OnAnimationTick), which is what re-attaches a scroll back down to the end.
-        if (autoScrollEnabled_)
-            followingTail_ = AtTailOffset(content_->TargetOffset(), content_->MaxOffset(),
-                                         LineHeight());
-        Invalidate();
-        e.handled = true;
-        return;
-    }
     if (scroll_.MaxOffset() <= 0.0f) return;
-    float lines = -static_cast<float>(e.wheelDelta) / WHEEL_DELTA * 3.0f;
+    float lines = e.WheelScrollLines();
     scroll_.AnimateBy(lines * LineHeight());
     // Target, not Offset, for the same reason as the composited branch above.
     if (autoScrollEnabled_)
@@ -1323,12 +1232,11 @@ bool TextArea::CaretRectDip(RectDip& out) const {
 }
 
 // ---------------------------------------------------------------------------
-// Compositor scrolling (Phase 4). Every path is a no-op when CompositionActive()
-// is false — the control then uses the UI-thread scroll_ path unchanged.
+// Scroll offsets
 // ---------------------------------------------------------------------------
 
 float TextArea::CurrentOffset() const {
-    return CompositionActive() ? content_->EffectiveOffset() : scroll_.Offset();
+    return scroll_.Offset();
 }
 
 // The horizontal offset is always read from scroll_, because there is no compositor
@@ -1338,26 +1246,11 @@ float TextArea::CurrentOffsetX() const {
     return scroll_.OffsetX();
 }
 
-ScrollContentHost::Inset TextArea::TextInset() const {
-    // The text scrolls inside the padding and left of the scrollbar gutter; the
-    // scrollbar and the box frame paint over the full bounds (so they are NOT inset).
-    ScrollContentHost::Inset in;
-    in.left = ContentLeft();
-    in.top = ContentTop();
-    in.right = kScrollReserve;
-    in.bottom = ContentTop();
-    return in;
-}
+
 
 bool TextArea::WantsAnimationTick() const {
     if (!IsEffectivelyVisible()) return false;
-    if (CompositionActive()) {
-        // The text tween runs on the compositor (no UI tick needed for it), but we
-        // still tick to advance the scrollbar fade, to track the thumb during a fling,
-        // and to keep auto-scrolling while a drag-select holds outside the edge.
-        return content_->IsAnimating() || scroll_.NeedsTick() || dragOutsideEdge_;
-    }
-    return scroll_.NeedsTick();
+    return scroll_.NeedsTick() || dragOutsideEdge_;
 }
 
 void TextArea::OnAnimationTick(float dtSec) {
@@ -1372,23 +1265,15 @@ void TextArea::OnAnimationTick(float dtSec) {
         // what drives the selection once the pointer stops moving.
         AutoScrollForDragSelect(dragPointerY_);
         ExtendDragSelection(HitIndex(bounds_.x + ContentLeft(), dragPointerY_));
-        if (CompositionActive()) { RefreshComposition(true, true); return; }
     }
     // A fling settles over several frames, so its LANDING is only known here. Re-judging
     // each tick is what lets "scroll back down to the bottom" re-attach tail following
     // without the user having to nudge the wheel again once it stops.
     UpdateTailFollow();
-    // Ticks never change the TEXT, so never force a text redraw here; the overlay is
-    // redrawn only when its signature actually moved (a static idle-visible scrollbar
-    // must not be re-rasterized every frame — that shimmers its edges).
-    if (CompositionActive()) RefreshComposition(false, false);
-    else Invalidate();  // fallback path: scroll_ is a member whose Invalidate() cannot
-                        // reach the tree, so fade/expand steps need this to repaint
+    Invalidate();
 }
 
 void TextArea::OnBlink() {
-    // Composition mode never gets here (WantsBlink() is false — the compositor owns
-    // the blink). This is the UI-thread fallback.
     caretVisible_ = !caretVisible_;
     Invalidate();
 }
@@ -1412,7 +1297,6 @@ void TextArea::OnTextLayoutDirty() {
     // Composition layout cache is stale (it's keyed by paragraph number + width, but
     // the paragraph structure/width may have changed).
     compositionLayoutPara_ = static_cast<size_t>(-1);
-    if (CompositionActive()) RefreshComposition(true, true);
 }
 
 // An IME composition changed, but text_ did not. Under NoWrap that means the line
@@ -1425,63 +1309,13 @@ void TextArea::OnTextLayoutDirty() {
 // Wrap has no per-line model to preserve, so it takes the full path unchanged.
 void TextArea::OnCompositionDirty() {
     if (wrapMode_ != TextWrapMode::NoWrap) { OnTextLayoutDirty(); return; }
-    if (CompositionActive()) RefreshComposition(/*redrawText*/ true, /*overlayForce*/ true);
 }
 
 void TextArea::OnSelectionChanged() {
-    // redrawText: the highlight is part of the text surface's pixels.
-    // overlayForce false: the scrollbar and frame did not move, so let the signature
-    // gate decide — re-rasterizing a static overlay shimmers its antialiased edges.
-    if (CompositionActive()) RefreshComposition(/*redrawText*/ true, /*overlayForce*/ false);
     Invalidate();
 }
 
-void TextArea::DrawTextToSurface(ID2D1DeviceContext* dc, float surfaceOriginDip,
-                                 float surfaceHeightDip) {
-    if (!dc) return;
-    const ColorTokens& pal = Theme().colors;
 
-    ComPtr<ID2D1SolidColorBrush> brush;
-    if (FAILED(dc->CreateSolidColorBrush(D2D1::ColorF(0, 0, 0), brush.GetAddressOf())))
-        return;
-    DrawingContext rc{dc, brush.Get(), Context().dpiScale};
-
-    // The dc arrives scaled to DIPs with (0,0) at the text region's top-left (the host
-    // put the padding on the clip node). Layout-local Y maps to local y = Y -
-    // surfaceOriginDip; X is layout-local already.
-    const float originX = 0.0f;
-    const float originY = -surfaceOriginDip;
-
-    // Only emptiness matters here (placeholder vs real text); DisplayEmpty() answers it
-    // without composing the string.
-    if (DisplayEmpty() && !placeholder_.empty()) {
-        if (IDWriteTextFormat* fmt = Dwrite() ? Dwrite()->Format(
-                EffectiveFontSize(), EffectiveFontWeight(DWRITE_FONT_WEIGHT_NORMAL), DWRITE_TEXT_ALIGNMENT_LEADING,
-                DWRITE_PARAGRAPH_ALIGNMENT_NEAR, DWRITE_WORD_WRAPPING_WRAP) : nullptr) {
-            rc.DrawText(placeholder_.c_str(), static_cast<UINT32>(placeholder_.size()),
-                        fmt, D2D1::RectF(originX, originY, originX + ContentWidth(),
-                                         originY + ContentHeight()),
-                        pal.textSecondary, D2D1_DRAW_TEXT_OPTIONS_CLIP);
-        }
-        return;
-    }
-
-    // Both modes draw only the band, from per-row cached layouts. The rows differ (a
-    // NoWrap row is a logical line of constant height; a Wrap row is a paragraph of
-    // measured height) but the shape does not — and neither path builds anything
-    // document-sized.
-    //
-    // NOTE: no caret in either — it is its own visual so it can blink on the compositor
-    // without re-rasterizing this surface (see ScrollContentHost::SetCaret).
-    // originX/originY 故意不传：DrawLinesToSurface 内部已经按
-    // localY = originY + lineTop - surfaceOriginDip 做过带偏移的换算，
-    // 这里再传 originY = -surfaceOriginDip 会把 surfaceOriginDip 减两次，
-    // 文字落到负坐标（surface 外），看起来就是"黑框里什么都没有"。
-    if (wrapMode_ == TextWrapMode::NoWrap)
-        DrawLinesToSurface(rc, surfaceOriginDip, surfaceHeightDip);
-    else
-        DrawParagraphsToSurface(rc, surfaceOriginDip, surfaceHeightDip);
-}
 
 // The virtualized draw loop. Same shape as TreeView::DrawRowsToSurface: derive the
 // first visible row from the surface origin, walk forward until past the surface's
@@ -1800,123 +1634,13 @@ void TextArea::DrawParagraphsToSurface(DrawingContext& rc, float surfaceOriginDi
     }
 }
 
-void TextArea::DrawOverlayToSurface(ID2D1DeviceContext* dc, float /*wDip*/,
-                                    float /*hDip*/) {
-    if (!dc) return;
-    const float s = Context().dpiScale;
-    ComPtr<ID2D1SolidColorBrush> brush;
-    if (FAILED(dc->CreateSolidColorBrush(D2D1::ColorF(0, 0, 0), brush.GetAddressOf())))
-        return;
-    // scroll_.Render draws in WINDOW DIPs (bounds_-relative). PREMULTIPLY onto the
-    // incoming transform — it carries the surface's atlas tile origin, which moves
-    // between draws; replacing it puts the drawing outside our tile (it flickers).
-    D2D1_MATRIX_3X2_F base;
-    dc->GetTransform(&base);
-    dc->SetTransform(SurfaceTransformFromWindowDip(base, bounds_.x, bounds_.y, s));
-    DrawingContext rc{dc, brush.Get(), s};
-    scroll_.Render(rc);
-}
 
-void TextArea::SyncCaretVisual() {
-    if (!CompositionActive()) return;
-    const bool show = IsFocused();
-    if (!show) { content_->SetCaretVisible(false); return; }
 
-    float x = 0, y = 0, h = 0;
-    CaretMetrics(caret_ + static_cast<UINT32>(composition_.size()), x, y, h);
-    if (h <= 0.0f) h = LineHeight();
-    // The caret's parent is the content visual, whose left edge is the surface's left.
-    // The surface draws glyphs at (lineX - offsetX) = content-space X minus the scroll
-    // offset, so the caret must be placed at the same shifted X to sit ON the cursor
-    // position rather than n columns to its right.
-    const float caretSurfaceX = x - CurrentOffsetX();
-    content_->SetCaret({caretSurfaceX, y, kCaretW, h}, Theme().colors.textPrimary);
-    content_->SetCaretVisible(true);
-    content_->StartCaretBlink(CaretBlinkHalfPeriodSec());
-}
 
-OverlaySignature TextArea::CurrentOverlaySig() const {
-    OverlaySignature s;
-    s.visibility = scroll_.Visibility();
-    s.expand     = scroll_.ExpandFactor();
-    s.thumbY     = scroll_.ThumbRect().y;
-    s.focused    = IsFocused();
-    s.dragging   = scroll_.IsDragging();
-    s.expandX    = scroll_.HExpandFactor();
-    s.thumbX     = scroll_.HThumbRect().x;
-    s.draggingX  = scroll_.IsHDragging();
-    return s;
-}
 
-void TextArea::RefreshComposition(bool redrawText, bool overlayForce) {
-    {
-        char buf[192];
-        _snprintf_s(buf, sizeof(buf), _TRUNCATE,
-                    "[TA::Refresh] %p redrawText=%d overlayForce=%d ctxModal=%d bounds=%.0fx%.0f\n",
-                    (void*)this, redrawText ? 1 : 0, overlayForce ? 1 : 0,
-                    Context().inModalResize ? 1 : 0, bounds_.w, bounds_.h);
-        OutputDebugStringA(buf);
-    }
-    if (!CompositionActive()) return;
-    if (!IsEffectivelyVisible()) {
-        content_->SetTreeVisible(false);
-        return;
-    }
-    content_->SetTreeVisible(true);
-    // No document-wide layout build in either mode: ScrollExtentDip derives the Wrap
-    // extent from the paragraph map, which is arithmetic. This line used to be
-    // EnsureLayout(), and it was the reason a wrapped resize drag re-wrapped the whole
-    // buffer on every frame — RefreshComposition runs on bounds changes.
-    const float extent = ScrollExtentDip();
-    // Visibility is handled by root membership above; opacity remains an independent
-    // appearance property and is only pushed while the tree is visible.
-    content_->SetOpacity(EffectiveOpacity());
-    // Full bounds as the viewport, ancestor clip supplied SEPARATELY: inside a
-    // scrolling container this control is arranged with bounds past the container's
-    // viewport, and a D2D clip cannot reach a DComp visual. The host needs the clip
-    // as its own operand to express it relative to this control's true position (see
-    // ScrollContentHost::SetAncestorClip).
-    RectDip ancestorClip;
-    if (AncestorViewportClip(ancestorClip)) content_->SetAncestorClip(ancestorClip);
-    else content_->ClearAncestorClip();
-    // Defer surface rasterization while a resize border is held: BeginDraw is a GPU
-    // sync point and dominated the worst measured resize frame. Geometry below still
-    // goes through, so the compositor keeps showing correctly placed pixels.
-    content_->SetModalResize(Context().inModalResize);
-    content_->SetViewport(bounds_);
-    content_->SetContentInset(TextInset());
-    content_->SetContentHeight(extent);
-    // The text surface is its own DComp visual, so the themed box Render() painted into
-    // the window frame is NOT under these pixels — the compositor blends the surface
-    // onto whatever the window shows there. Clearing to transparent therefore gave the
-    // glyphs no base to sit on, and dark theme's controlFillDefault (white at alpha
-    // 0.06) over a dark Mica window rendered light text as dark-on-dark: the code
-    // blocks looked empty while still being selectable. Hand the host the same resolved
-    // fill Render() uses so both paths put the glyphs on an identical base.
-    content_->SetSurfaceClearColor(EffectiveBackground(Theme().colors.controlFillDefault));
-    scroll_.SetBounds(bounds_);
-    scroll_.SetContentHeight(extent);
-    // Horizontal extent: warm the mark first (ScrollExtentXDip does this), then push.
-    // Must come before EnsureContent so the scrollbar is sized correctly even on the
-    // first frame after a text change.
-    scroll_.SetContentWidth(ScrollExtentXDip());
-    scroll_.SetOffset(content_->EffectiveOffset());
 
-    content_->EnsureContent(
-        [this](ID2D1DeviceContext* dc, float o, float h) { DrawTextToSurface(dc, o, h); },
-        /*forceRedraw=*/redrawText);
-    if (redrawText) SyncCaretVisual();
 
-    const OverlaySignature sig = CurrentOverlaySig();
-    if (overlayForce || sig.Differs(lastOverlaySig_)) {
-        content_->RedrawOverlay([this](ID2D1DeviceContext* dc, float w, float h) {
-            DrawOverlayToSurface(dc, w, h);
-        });
-        lastOverlaySig_ = sig;
-    }
-    if (WindowServices* win = Window())
-        if (ICompositionBackend* comp = win->Composition()) comp->RequestCommit();
-}
+
 
 void TextArea::OnAttachedToTree() {
     TextEditBase::OnAttachedToTree();   // marks the layout dirty + invalidates
@@ -1938,93 +1662,33 @@ void TextArea::OnAttachedToTree() {
     // overflows, so "there is more to see" stays discoverable instead of fading out.
     scroll_.SetKeepVisibleWhenOverflow(true);
 
-    if (WindowServices* win = Window()) {
-        if (ICompositionBackend* comp = win->Composition()) {
-            content_ = std::make_unique<ScrollContentHost>();
-            content_->SetTreeVisible(IsEffectivelyVisible());
-            if (SUCCEEDED(content_->Create(comp, Context().dpiScale))) {
-                RefreshComposition(true, true);
-            } else {
-                content_.reset();       // creation failed → UI-thread fallback
-            }
-        }
-    }
     Invalidate();
 }
 
 void TextArea::OnDetachedFromTree() {
-    if (content_) { content_->Destroy(); content_.reset(); }
     // Clear the scroll model's context — it is no longer valid.
     scroll_.DetachFromContext();
 }
 
 void TextArea::OnFocusChanged() {
     TextEditBase::OnFocusChanged();
-    if (CompositionActive()) {
-        SyncCaretVisual();                  // show/hide + (re)arm the blink
-        RefreshComposition(true, true);     // selection highlight depends on focus
-    }
     Invalidate();
 }
 
 void TextArea::OnThemeChanged() {
-    if (CompositionActive()) RefreshComposition(true, true);  // recolor both surfaces
     Invalidate();
 }
 
-void TextArea::OnOpacityChanged(float) {
-    // Composition path only: one visual property, no surface redraw. In fallback
-    // mode the Render-dirty flag from the base class suffices (the host repaints
-    // through a faded DrawingContext).
-    if (CompositionActive()) {
-        // Hidden hosts cache this value without committing and apply it on reveal.
-        content_->SetOpacity(EffectiveOpacity());
-    }
-}
 
-void TextArea::OnVisibilityChanged(bool visible) {
-    UNREFERENCED_PARAMETER(visible);
-    UpdateCompositionVisibility();
-}
 
-void TextArea::OnAncestorVisibilityChanged() {
-    UpdateCompositionVisibility();
-}
 
-void TextArea::UpdateCompositionVisibility() {
-    if (!CompositionActive()) return;
-    if (!IsEffectivelyVisible()) {
-        content_->SetTreeVisible(false);
-        return;
-    }
-    content_->SetTreeVisible(true);
-    RefreshComposition(true, true);
-}
 
 void TextArea::OnDpiChanged(float dpiScale) {
     lineHeightCache_ = 0.0f;
-    if (CompositionActive()) {
-        content_->SetDpiScale(dpiScale);
-        RefreshComposition(true, true);
-    }
     Invalidate();
 }
 
-void TextArea::OnDeviceLost() {
-    if (content_) content_->OnDeviceLost();  // drop visuals, keep scroll position
-}
 
-void TextArea::OnDeviceRestored() {
-    if (content_) {
-        if (WindowServices* win = Window()) {
-            if (ICompositionBackend* comp = win->Composition()) {
-                content_->OnDeviceRestored(comp, Context().dpiScale);
-                RefreshComposition(true, true);
-            }
-        }
-    }
-    Invalidate();
-}
 
 // ---------------------------------------------------------------------------
 // Render
@@ -2045,15 +1709,13 @@ void TextArea::Render(const DrawingContext& dc) {
                                                         : pal.controlStrokeDefault),
                        EffectiveBorderThickness(IsFocused() ? 1.5f : 1.0f));
 
-    // Composition mode: the box above stays in the WINDOW content frame — the
-    // composition visuals are parented above it, so it reads as the background behind
-    // the text. Everything that scrolls (text, selection, IME underline), the caret and
-    // the scrollbar live on surfaces the compositor owns, and those are refilled
-    // OUTSIDE this frame (a nested BeginDraw would fail here). So stop after the box.
-    if (CompositionActive()) return;
-
+    // Snap scroll offset to physical pixel boundary to eliminate subpixel rendering jitter.
+    // Without snapping, fractional scroll offsets (e.g., 15.7 DIPs) cause text to render at
+    // non-integer pixel coordinates, producing visible blur/shimmer during scrolling.
+    const float dpiScale = dc.DpiScale();
+    const float snappedOffset = SnapToPixel(scroll_.Offset(), dpiScale);
     const float originX = bounds_.x + ContentLeft();
-    const float originY = bounds_.y + ContentTop() - scroll_.Offset();
+    const float originY = bounds_.y + ContentTop() - snappedOffset;
 
     // Clip to the text region (inside padding, left of the scroll gutter). The
     // guard is scoped to this block so the clip pops before the scrollbar draws.
@@ -2080,7 +1742,7 @@ void TextArea::Render(const DrawingContext& dc) {
             // Both modes take the virtualized per-row path. The band is the visible text
             // region; there is no overscan on the UI-thread fallback, so the band is
             // exactly what is on screen.
-            const float bandTop = scroll_.Offset();
+            const float bandTop = snappedOffset;
             DrawingContext rc = dc;
             if (wrapMode_ == TextWrapMode::NoWrap) {
                 DrawLinesToSurface(rc, bandTop, ContentHeight(), originX,
@@ -2107,7 +1769,7 @@ void TextArea::Render(const DrawingContext& dc) {
         // drifting apart.) bandTop is read here too; when the placeholder branch ran there
         // is no scroll, so it is 0 and the caret lands at the first line.
         if (IsFocused() && caretVisible_) {
-            const float bandTopForCaret = scroll_.Offset();
+            const float bandTopForCaret = snappedOffset;
             float x = 0, y = 0, h = 0;
             CaretMetrics(caret_ + static_cast<UINT32>(composition_.size()), x, y, h);
             const float cx = originX + x - CurrentOffsetX();

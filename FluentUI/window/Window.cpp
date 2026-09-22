@@ -139,16 +139,35 @@ void Window::OnLayout() {
     // The measure cost never went anywhere — it was accounted to a different thread
     // while the UI thread waited for exactly as long, plus the spawn. And with
     // arrange at 4-12ms, even a perfect non-blocking measure could not have made the
-    // drag smooth. See docs/design/async-layout-postmortem.md.
+    // drag smooth.
     //
     // The real fix for a slow resize: skip the work instead of moving it.
     // UIContext::inModalResize (set by NativeWindowHost on WM_ENTERSIZEMOVE) defers
     // DComp surface rasterization until WM_EXITSIZEMOVE, which took resize layout
     // from 7-13ms to 2-3ms — geometry updates every frame, pixels converge once.
     const int64_t tMeasureStart = QpcNow();
-    root_->Measure(width, height);
+    // Apply root element's Margin in BOTH Measure and Arrange passes.
+    // Without this, a Grid with Margin={20,20,20,20} at the window root would:
+    // - receive too much space in Measure (leading to inflated Star-row constraints)
+    // - have its bottom margin ignored in Arrange (visual clipping)
+    float availW = width;
+    float availH = height;
+    if (auto* rootFE = dynamic_cast<FrameworkElement*>(root_.get())) {
+        const Thickness& m = rootFE->Margin();
+        availW = std::max(0.0f, availW - m.horizontal());
+        availH = std::max(0.0f, availH - m.vertical());
+    }
+    root_->Measure(availW, availH);
     const int64_t tMeasured = QpcNow();
-    root_->Arrange({0.0f, top, width, height});
+    RectDip arrangeRect = {0.0f, top, width, height};
+    if (auto* rootFE = dynamic_cast<FrameworkElement*>(root_.get())) {
+        const Thickness& m = rootFE->Margin();
+        arrangeRect.x += m.left;
+        arrangeRect.y += m.top;
+        arrangeRect.w = std::max(0.0f, arrangeRect.w - m.horizontal());
+        arrangeRect.h = std::max(0.0f, arrangeRect.h - m.vertical());
+    }
+    root_->Arrange(arrangeRect);
     const int64_t tArranged = QpcNow();
 
     // Publish the split unconditionally. It is two QPC reads and two stores on a

@@ -148,15 +148,30 @@ int Chart::PixelToIndex(float dipX) const {
 }
 
 std::vector<double> Chart::YTicks() const {
+    // Cache hit: minY_/maxY_ unchanged since the last build. Render() calls this
+    // every frame but the range only moves when data or the visible window changes,
+    // so the common case is a straight vector copy instead of a rebuild.
+    if (minY_ == yticksCacheMinY_ && maxY_ == yticksCacheMaxY_)
+        return yticksCached_;
+
     std::vector<double> ticks;
     const double range = maxY_ - minY_;
-    if (range <= 0.0) return ticks;
+    if (range <= 0.0) {
+        yticksCached_.clear();
+        yticksCacheMinY_ = minY_;
+        yticksCacheMaxY_ = maxY_;
+        return ticks;
+    }
     const double step = NiceStep(range / kTargetYTicks);
     // Start at the first nice multiple at or above minY so labels are round numbers rather
     // than minY + k*step (which reintroduces the ugly values NiceStep exists to avoid).
     double v = std::ceil(minY_ / step) * step;
     for (int guard = 0; v <= maxY_ + step * 1e-6 && guard < 64; ++guard, v += step)
         ticks.push_back(v);
+
+    yticksCached_ = ticks;
+    yticksCacheMinY_ = minY_;
+    yticksCacheMaxY_ = maxY_;
     return ticks;
 }
 

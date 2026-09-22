@@ -13,11 +13,11 @@ option(FLUENTUI_BUILD_EXAMPLES "Build FluentUI examples" OFF)
 option(FLUENTUI_STATIC_RUNTIME "Use the static MSVC runtime" ON)
 
 set(FLUENTUI_SOURCES
+    FluentUI/pch.cpp
     FluentUI/Application.cpp
     FluentUI/animation/Animation.cpp
     FluentUI/animation/AnimationRegistry.cpp
     FluentUI/composition/DCompCompositionBackend.cpp
-    FluentUI/composition/ScrollContentHost.cpp
     FluentUI/controls/Button.cpp
     FluentUI/controls/Calendar.cpp
     FluentUI/controls/Chart.cpp
@@ -32,6 +32,7 @@ set(FLUENTUI_SOURCES
     FluentUI/controls/Image.cpp
     FluentUI/controls/InfoBar.cpp
     FluentUI/controls/ListBox.cpp
+    FluentUI/controls/LogViewer.cpp
     FluentUI/controls/MenuBar.cpp
     FluentUI/controls/MenuFlyout.cpp
     FluentUI/controls/MessageDialog.cpp
@@ -43,6 +44,8 @@ set(FLUENTUI_SOURCES
     FluentUI/controls/RadioButton.cpp
     FluentUI/controls/Rating.cpp
     FluentUI/controls/RepeatButton.cpp
+    FluentUI/controls/RichTextBox.cpp
+    FluentUI/controls/RichTextDocument.cpp
     FluentUI/controls/Separator.cpp
     FluentUI/controls/Slider.cpp
     FluentUI/controls/StatusBar.cpp
@@ -111,11 +114,16 @@ target_include_directories(FluentUI PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 target_compile_definitions(FluentUI PUBLIC UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+
+# Precompiled header: mirrors the MSBuild <PrecompiledHeader> setup in
+# FluentUI/FluentUI.vcxproj. Stable system headers are parsed once instead of
+# once per translation unit. Keep FluentUI/pch.h in sync between both paths.
+target_precompile_headers(FluentUI PRIVATE FluentUI/pch.h)
 target_link_libraries(FluentUI PUBLIC
     d3d11 d2d1 dxgi dcomp dwrite dwmapi user32 shcore imm32 psapi)
 
 if(MSVC)
-    target_compile_options(FluentUI PRIVATE /W3 /permissive-)
+    target_compile_options(FluentUI PRIVATE /W3 /permissive- /MP)
     # /utf-8 must be PUBLIC, not PRIVATE. This repo's convention is "comments
     # explain why, at length", and ~80 installed headers carry Chinese prose. On a
     # non-UTF-8 default code page (936 here) MSVC reads those bytes as the ANSI page

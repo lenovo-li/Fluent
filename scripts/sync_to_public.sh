@@ -25,7 +25,7 @@ INCLUDE_PATTERNS=(
     "examples/"
     "scripts/"
     "cmake/"
-    "docs/screenshots/"
+    "docs/controls/"
     "CMakeLists.txt"
     "Fluent.slnx"
     "LICENSE"

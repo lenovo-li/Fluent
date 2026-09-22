@@ -21,11 +21,14 @@
 #include "../core/Control.h"
 #include "../core/Subscription.h"
 #include "../core/IContextMenu.h"
+#include "../base/Event.h"
+#include "../input/RoutedEvent.h"
 #include "../graphics/DWriteContext.h"
 #include <string>
 #include <vector>
 #include <functional>
 #include <memory>
+#include <optional>
 
 namespace fluent {
 
@@ -34,20 +37,117 @@ class PopupHost;
 
 // One row in a menu. A separator is a thin non-interactive divider. A non-empty
 // submenu makes this a parent item (drawn with a right chevron); clicking it
-// opens the child level instead of invoking. Otherwise onInvoke fires on click.
-struct MenuItem {
+// opens the child level instead of invoking. Otherwise Invoked() event fires on click.
+//
+// Migration note (P1 event model unification): MenuItem was a struct with a public
+// std::function<void()> onInvoke field. It is now a class with an Event<> + RAII
+// subscription. Old code that set `item.onInvoke = [...]` must change to
+// `item.Invoked().Subscribe(...)` and store the returned Subscription.
+//
+// Temporary compat: SetOnInvoke(std::function<void()>) is provided (deprecated) and
+// forwards to the event, so existing code compiles but with a deprecation warning.
+// Why the event lives behind a unique_ptr: MenuItem is a VALUE type. Menus are
+// authored as `std::vector<MenuItem>`, built with push_back(std::move(item)), and
+// nested one vector inside another (`submenu`). Event<> is deliberately
+// non-copyable AND non-movable — subscriptions capture its address, so it must
+// never relocate. Holding one by value would make MenuItem non-movable too and
+// break every `std::vector<MenuItem>` in the codebase.
+//
+// The indirection fixes that: the vector moves the pointer, the Event stays put at
+// its heap address, and outstanding Subscriptions keep pointing at a live object.
+// The node is allocated lazily on the first Invoked() call, so a menu of plain
+// separators or submenu parents costs nothing extra.
+class MenuItem {
+public:
+    MenuItem() = default;
+
+    // Movable (what vectors need). Copy is deliberately NOT provided: copying an
+    // item would have to either share one event (two rows firing each other's
+    // handlers) or silently drop the subscriptions. Both are wrong, and neither is
+    // needed — menus are built by move.
+    MenuItem(MenuItem&&) noexcept = default;
+    MenuItem& operator=(MenuItem&&) noexcept = default;
+    MenuItem(const MenuItem&) = delete;
+    MenuItem& operator=(const MenuItem&) = delete;
+
     std::wstring text;
     std::wstring accelerator;        // right-aligned hint, e.g. L"Ctrl+C"
     bool separator = false;
     bool enabled = true;
     bool checked = false;            // draws a leading check glyph
     std::vector<MenuItem> submenu;   // non-empty => parent item (chevron)
-    std::function<void()> onInvoke;  // fired when a leaf item is chosen
 
     bool HasSubmenu() const { return !submenu.empty(); }
     bool Selectable() const { return enabled && !separator; }
 
     static MenuItem Sep() { MenuItem m; m.separator = true; m.enabled = false; return m; }
+
+    // Fired when this leaf item is chosen (click, or Enter while selected).
+    //
+    //     Subscription sub_;   // MUST be stored — dropping it unsubscribes
+    //     sub_ = item.Invoked().Subscribe(this, [](void* o, MenuItem&, RoutedEventArgs&) {
+    //         static_cast<MyDialog*>(o)->OnCut();
+    //     });
+    //
+    // The handler is a captureless function pointer (Event<>'s zero-allocation
+    // contract); pass state via the owner pointer. For the common "just run this
+    // lambda" case, AddInvokeHandler below owns the subscription for you.
+    Event<MenuItem, RoutedEventArgs>& Invoked() {
+        if (!invoked_) invoked_ = std::make_unique<Event<MenuItem, RoutedEventArgs>>();
+        return *invoked_;
+    }
+
+    // Convenience for the authoring style this replaces (`item.onInvoke = [...]`).
+    // Takes a capturing callable, keeps it alive inside this item, and subscribes it
+    // to Invoked() — so the caller has no Subscription to store. Additive: call it
+    // more than once and every callback runs, which is the multi-subscriber property
+    // the old single `std::function` field could not offer.
+    //
+    // This is the one place a heap-allocated closure is accepted, and only because
+    // menu authoring happens once per menu build, never per frame.
+    void AddInvokeHandler(std::function<void()> cb) {
+        if (!cb) return;
+        if (!handlers_) handlers_ = std::make_unique<HandlerList>();
+        handlers_->list.push_back(std::move(cb));
+        // Subscribe once; the thunk walks every registered handler. Subscribing per
+        // handler would need one Subscription each for no benefit.
+        if (!handlers_->sub.has_value()) {
+            handlers_->sub = Invoked().Subscribe(
+                handlers_.get(), [](void* owner, MenuItem&, RoutedEventArgs&) {
+                    // Copy first: a handler may rebuild the menu (and destroy this
+                    // list) while we are iterating it.
+                    auto snapshot = static_cast<HandlerList*>(owner)->list;
+                    for (auto& fn : snapshot) if (fn) fn();
+                });
+        }
+    }
+
+    // Raise Invoked(). Called by MenuFlyout when the row is chosen; also useful to
+    // drive an item programmatically (a keyboard accelerator invoking the same
+    // action as its menu row). No-op when nothing is subscribed.
+    void RaiseInvoked() {
+        if (!invoked_) return;              // nobody subscribed: nothing to raise
+        RoutedEventArgs args;               // MenuItem is not a UIElement, so both
+        args.source = nullptr;              // source fields stay null.
+        args.originalSource = nullptr;
+        invoked_->Raise(*this, args);
+    }
+
+    bool HasInvokeHandler() const {
+        return invoked_ && invoked_->HasSubscribers();
+    }
+
+private:
+    // Heap node so its address survives MenuItem being moved inside a vector.
+    std::unique_ptr<Event<MenuItem, RoutedEventArgs>> invoked_;
+
+    // Storage for AddInvokeHandler's closures, also heap-stable for the same reason:
+    // the subscription's owner pointer is this node's address.
+    struct HandlerList {
+        std::vector<std::function<void()>> list;
+        std::optional<Subscription> sub;
+    };
+    std::unique_ptr<HandlerList> handlers_;
 };
 
 class MenuFlyout : public IContextMenu {
@@ -70,7 +170,18 @@ public:
     void SetContext(const UIContext& ctx) { ctx_ = ctx; window_ = ctx.window; }
 
     // Replace the menu items. Closes the menu if open.
+    //
+    // Takes ownership: the items are moved into the flyout. For callers whose items
+    // outlive the flyout (e.g. a MenuBar rebuilding its own stable list on every
+    // open), the borrowing overload below avoids the copy/move.
     void SetItems(std::vector<MenuItem> items);
+
+    // Borrow items from a vector the caller owns and keeps stable. The flyout does
+    // not copy — it just points at the caller's storage, which must outlive the
+    // flyout's open period. MenuBar uses this to reopen the same menu multiple times
+    // without copying the vector each time. Close() clears the borrow.
+    void SetItemsBorrow(const std::vector<MenuItem>* items);
+
 
     // Open as a context menu with the top-left corner at the cursor (flips /
     // clamps to the work area). screenX/screenY are physical screen pixels.
@@ -86,6 +197,12 @@ public:
     bool IsOpen() const;
 
     // Fired after the whole chain closes (from any dismiss path).
+    //
+    // Prefer subscribing to this event over SetOnClosed. The callback API is kept for
+    // compatibility but will be removed in a future version.
+    Event<MenuFlyout, RoutedEventArgs>& Closed() { return closed_; }
+
+    [[deprecated("Use Closed() event instead")]]
     void SetOnClosed(std::function<void()> cb) { onClosed_ = std::move(cb); }
 
     // Owner-supplied dismiss guard: a click at the given screen point that
@@ -160,6 +277,7 @@ private:
     UIContext ctx_;
     WindowServices* window_ = nullptr;
     std::vector<MenuItem> items_;
+    const std::vector<MenuItem>* borrowedItems_ = nullptr;  // non-null = using borrow
     std::vector<Level> levels_;      // levels_[0] = root; deeper = submenus
     // Closed-but-not-yet-destroyed levels. Closing a level can happen while we are
     // *inside* that PopupHost's WndProc (a menu item's onInvoke closes the chain
@@ -177,7 +295,8 @@ private:
     // [this] callback after this flyout is destroyed.
     Subscription keySub_;
     Subscription dismissSub_;
-    std::function<void()> onClosed_;
+    Event<MenuFlyout, RoutedEventArgs> closed_;
+    std::function<void()> onClosed_;  // deprecated, kept for compat; forwarded to closed_
     // Owner-supplied hit test: a click at these screen pixels keeps the menu open
     // (the owner, e.g. a MenuBar, handles the toggle/switch itself). May be null.
     std::function<bool(int, int)> dismissGuard_;

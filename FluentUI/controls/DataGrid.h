@@ -46,6 +46,8 @@
 
 namespace fluent {
 
+class TextBox;   // edit overlay; only the .cpp needs the definition
+
 class DataGrid : public Control {
 public:
     // How a column's text sits in its cell. Numeric data is read by comparing digits in a
@@ -53,10 +55,16 @@ public:
     // right-aligned; that is why this exists rather than one global alignment.
     enum class Align { Left, Right, Center };
 
+    enum class SortDirection { None, Ascending, Descending };
+
+    enum class SelectionMode { Single, Multiple };
+
     struct Column {
         std::wstring header;
         float width = 96.0f;      // DIPs; fixed (no auto-fit — see the note on Measure)
         Align align = Align::Left;
+        bool resizable = true;    // Allow user to drag column divider to resize
+        bool frozen = false;      // Pin column to left edge (does not scroll horizontally)
     };
 
     // (row, col) -> the text to draw. Called only for visible cells, once per cell per
@@ -70,14 +78,23 @@ public:
     using RowColorProvider = std::function<bool(int row, D2D1_COLOR_F& out)>;
 
     DataGrid();
+    ~DataGrid();  // out-of-line so unique_ptr<TextBox> doesn't need the definition here
 
     // --- Data ------------------------------------------------------------
     void SetColumns(std::vector<Column> columns);
     const std::vector<Column>& Columns() const { return columns_; }
 
     // Row COUNT, not rows: the grid pulls text on demand.
+    // No-ops when the count is unchanged — so a caller whose BACKING DATA changed
+    // while the row count stayed the same must call RefreshCells() as well, or the
+    // grid keeps painting the text it last pulled.
     void SetRowCount(int count);
     int RowCount() const { return rowCount_; }
+
+    // Re-pull every visible cell from the provider. For the common case of
+    // "same rows, new values" (a polling refresh, an in-place edit): geometry is
+    // unchanged, so this is a render-level invalidation, not a re-measure.
+    void RefreshCells() { Invalidate(); }
 
     void SetCellProvider(CellProvider provider);
     void SetRowColorProvider(RowColorProvider provider);
@@ -94,12 +111,94 @@ public:
     void SetShowGridLines(bool on);
     bool ShowGridLines() const { return showGridLines_; }
 
+    // --- Column features (Phase 1) ---------------------------------------
+    // Enable/disable column resize dragging globally. When enabled, draggable columns
+    // (Column::resizable=true) show a resize cursor on their divider and allow dragging.
+    void SetColumnResizeEnabled(bool enabled) { columnResizeEnabled_ = enabled; }
+    bool ColumnResizeEnabled() const { return columnResizeEnabled_; }
+
+    // Set which column is sorted and in which direction. The grid does NOT sort data —
+    // the application sorts its backing data and calls this to update the visual indicator
+    // (▲▼ arrow in header). Call SetSortColumn(col, SortDirection::None) to clear.
+    void SetSortColumn(int col, SortDirection dir);
+    void ClearSort() { sortColumn_ = -1; sortDirection_ = SortDirection::None; Invalidate(); }
+    int SortColumn() const { return sortColumn_; }
+    SortDirection GetSortDirection() const { return sortDirection_; }
+
+    // Enable Ctrl+C to copy selected rows to clipboard as TSV.
+    void SetCopyEnabled(bool enabled) { copyEnabled_ = enabled; }
+    bool CopyEnabled() const { return copyEnabled_; }
+
+    // --- Phase 4: row reordering -----------------------------------------
+    // Enable drag-and-drop row reordering. When enabled, dragging a selected row moves it
+    // (and any other selected rows in Multiple mode) to a new position. The grid does NOT
+    // reorder backing data — the app receives RowsReordered(oldIndices, newIndex) and must
+    // update its own storage. Call RefreshCells() after reordering.
+    void SetRowReorderEnabled(bool enabled) { rowReorderEnabled_ = enabled; }
+    bool RowReorderEnabled() const { return rowReorderEnabled_; }
+
+    // Fired when the user drops rows at a new position. oldIndices is the ORIGINAL row
+    // indices (before the move) in ascending order, newIndex is where they land (the first
+    // row's new index). The app must reorder its backing data and call RefreshCells().
+    Event<DataGrid, RoutedEventArgs>& RowsReordered() { return rowsReordered_; }
+    const std::vector<int>& ReorderedOldIndices() const { return reorderedOldIndices_; }
+    int ReorderedNewIndex() const { return reorderedNewIndex_; }
+
+    // --- Phase 5: column autosizing --------------------------------------
+    // Fit a column to its content by measuring all visible cells plus the header. Returns
+    // the new width in DIPs. Does NOT change the column — the caller applies it via
+    // SetColumns(). Measuring all rows would be O(N), so this samples only the viewport.
+    float MeasureColumnContent(int col) const;
+    // Convenience: measure and apply in one call.
+    void AutosizeColumn(int col);
+
+    // --- Cell editing (Phase 3) ------------------------------------------
+    // Enable in-place editing. When enabled, F2 or double-click on a cell opens a text
+    // box overlay. Enter commits, Escape cancels. The validation callback is called before
+    // commit; return false to reject the edit and keep the overlay open.
+    void SetEditingEnabled(bool enabled) { editingEnabled_ = enabled; }
+    bool EditingEnabled() const { return editingEnabled_; }
+
+    // (row, col, newText) -> true to accept, false to reject. Called when the user presses
+    // Enter in the edit overlay, before CellEdited is raised. Return false to block invalid
+    // input (out-of-range numbers, duplicate keys). The callback can modify its own backing
+    // data here — CellEdited fires afterward for the app to refresh other dependent cells.
+    using CellValidator = std::function<bool(int row, int col, const std::wstring& text)>;
+    void SetCellValidator(CellValidator validator) { cellValidator_ = std::move(validator); }
+
+    // Fired after a successful commit (validation passed). Payload: row/col in
+    // EditedRow()/EditedColumn(), new text in EditedText(). The app should update its
+    // backing data and call RefreshCells() if other cells are affected.
+    Event<DataGrid, RoutedEventArgs>& CellEdited() { return cellEdited_; }
+    int EditedRow() const { return editedRow_; }
+    int EditedColumn() const { return editedColumn_; }
+    const std::wstring& EditedText() const { return editedText_; }
+
+    // Programmatically start editing a cell. Same as F2 on that cell.
+    void BeginEdit(int row, int col);
+    void CancelEdit();
+    // editingRow_ is the live flag, not the overlay pointer: the overlay is kept alive
+    // between edits for its layout cache, so a non-null pointer does not mean "editing".
+    bool IsEditing() const { return editingRow_ >= 0; }
+    int EditingRow() const { return editingRow_; }
+    int EditingColumn() const { return editingColumn_; }
+
     // --- Selection -------------------------------------------------------
-    // Single full-row selection, or -1 for none. Row selection (not cell) because the
-    // consumer's interaction is "pick this instrument", and a cell cursor would imply
-    // editing.
+    // Selection mode: Single (default, one row) or Multiple (Ctrl/Shift modifiers).
+    void SetSelectionMode(SelectionMode mode);
+    SelectionMode GetSelectionMode() const { return selectionMode_; }
+
+    // Single-selection API (legacy, kept for compatibility). In Multiple mode, these
+    // operate on the first selected row or -1 when none are selected.
     void SetSelectedRow(int row);
-    int SelectedRow() const { return selectedRow_; }
+    int SelectedRow() const;
+
+    // Multi-selection API (Phase 2). In Single mode, SelectedRows() returns a 0- or
+    // 1-element vector. ClearSelection() works in both modes.
+    const std::vector<int>& SelectedRows() const { return selectedRows_; }
+    bool IsRowSelected(int row) const;
+    void ClearSelection();
+
     Event<DataGrid, RoutedEventArgs>& SelectionChanged() { return selectionChanged_; }
 
     // A header click, so the app can implement sorting. Payload is the column index in
@@ -145,21 +244,48 @@ public:
     void Render(const DrawingContext& dc) override;
     UIElement* HitTestDeep(float dipX, float dipY) override;
     void OnPointerPressed(PointerEventArgs& e) override;
+    void OnPointerMoved(PointerEventArgs& e) override;
+    void OnPointerReleased(PointerEventArgs& e) override;
+    void OnPointerLeft() override;
     void OnPointerWheelChanged(PointerEventArgs& e) override;
     void OnKeyDownRouted(KeyEventArgs& e) override;
     float VisualOverflowDip() const override;
+    HCURSOR Cursor() const override;
     // Smooth scrolling: the ScrollViewer eases toward its target, so the grid has to be
     // ticked while it does. Same wiring as ListBox.
     bool WantsAnimationTick() const override { return scroll_.NeedsTick(); }
     void OnAnimationTick(float dtSec) override;
+    // The member sub-controls (scroll_, editOverlay_) are not tree children, so nothing
+    // propagates the context to them automatically. Same wiring ListBox does for scroll_.
+    void OnAttachedToTree() override;
+    void OnDetachedFromTree() override;
 
 private:
     // Row under a point, or -1. Shared by pointer handling and tests.
     int RowAtPoint(float dipY) const;
+    // Column divider under a point (returns the column index whose RIGHT edge is hit),
+    // or -1. Used for resize cursor and drag detection.
+    int DividerAtPoint(float dipX, float dipY) const;
     // Clamp both scroll offsets to their current extents. Called after anything that
     // changes content size or viewport size, because a resize that shrinks the content
     // below the current offset would otherwise leave the view scrolled into blank space.
     void ClampScroll();
+    // Copy the selected rows to the clipboard as TSV. Returns true on success.
+    bool CopySelectionToClipboard() const;
+    // Commit the active edit overlay. Returns false if validation rejected it.
+    bool CommitEdit();
+    // Total width of the frozen (pinned) columns at the left edge, in DIPs. Zero when no
+    // column is frozen. The frozen band never scrolls, so it is excluded from the
+    // horizontal scroll extent and from the scrollable columns' x origin.
+    float FrozenWidth() const;
+    // X coordinate of the left edge of column `col`, accounting for frozen columns.
+    // Frozen columns are never offset by the horizontal scroll; scrolling columns start
+    // after the frozen band and are offset.
+    float ColumnLeft(int col) const;
+    // Multi-selection helpers. Each raises SelectionChanged exactly once.
+    void ToggleRowSelection(int row);
+    void RangeSelectTo(int row);
+    void SelectSingleRow(int row);
 
     std::vector<Column> columns_;
     int rowCount_ = 0;
@@ -169,8 +295,65 @@ private:
     float rowHeight_ = 28.0f;
     bool alternating_ = false;
     bool showGridLines_ = true;
-    int selectedRow_ = -1;
     int clickedColumn_ = -1;
+
+    // Selection. selectedRows_ is kept SORTED ASCENDING so SelectedRow() can return
+    // front() as "the first selected row" and so a range select produces a predictable
+    // order for clipboard copy. Single mode holds at most one entry, which keeps one
+    // code path for both modes instead of a bool plus an int.
+    SelectionMode selectionMode_ = SelectionMode::Single;
+    std::vector<int> selectedRows_;
+    // Shift-select pivot: the row a range extends FROM. Set by a plain click and by a
+    // Ctrl+click, not by a Shift+click, so repeated Shift+clicks re-extend from the same
+    // origin instead of walking the anchor along.
+    int selectionAnchor_ = -1;
+
+    // --- Phase 1 features ------------------------------------------------
+    bool columnResizeEnabled_ = true;
+    bool copyEnabled_ = true;
+    int sortColumn_ = -1;
+    SortDirection sortDirection_ = SortDirection::None;
+
+    // Column resize drag state. resizingColumn_ >= 0 while a divider is being dragged.
+    int resizingColumn_ = -1;
+    float resizeStartX_ = 0.0f;
+    float resizeStartWidth_ = 0.0f;
+    // Divider currently under the pointer (for cursor feedback), or -1.
+    mutable int hoverDivider_ = -1;
+
+    // --- Phase 4: row reordering -----------------------------------------
+    bool rowReorderEnabled_ = false;
+    Event<DataGrid, RoutedEventArgs> rowsReordered_;
+    std::vector<int> reorderedOldIndices_;
+    int reorderedNewIndex_ = -1;
+    // Drag state: draggingRow_ >= 0 while a row is being dragged for reordering.
+    int draggingRow_ = -1;
+    float dragStartY_ = 0.0f;
+    // Visual drop indicator position (row index where the drop would land).
+    int dropTargetRow_ = -1;
+
+    // --- Phase 3: cell editing -------------------------------------------
+    bool editingEnabled_ = false;
+    CellValidator cellValidator_;
+    Event<DataGrid, RoutedEventArgs> cellEdited_;
+    // Payload for CellEdited event: which cell was edited and what the new text is.
+    int editedRow_ = -1;
+    int editedColumn_ = -1;
+    std::wstring editedText_;
+
+    // The edit overlay. A MEMBER, not a tree child, for the same reason scroll_ is: a
+    // Control has no child list, and DataGrid already owns the Arrange/Render/hit-test
+    // calls for its internal parts. Created on first edit and reused, because a TextBox
+    // carries a DWrite layout cache that is wasteful to rebuild per double-click.
+    // editingRow_ >= 0 is the "editing is active" flag, NOT the pointer.
+    //
+    // Defined in the .cpp: a TextBox subclass that commits the grid's edit when it loses
+    // focus (Excel/WPF behaviour). It cannot live here because this header only
+    // forward-declares TextBox — deriving needs the complete type.
+    class EditOverlay;
+    std::unique_ptr<EditOverlay> editOverlay_;
+    int editingRow_ = -1;
+    int editingColumn_ = -1;
 
     // ONE ScrollViewer, not two: it already carries both axes, and they deliberately share
     // the fade/idle state so the two rails appear and disappear together (see the comment

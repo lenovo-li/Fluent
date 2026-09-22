@@ -138,7 +138,8 @@ void InputManager::PointerReleased(Point p, PointerButton button, ModifierKeys m
     RequestInvalidate();
 }
 
-void InputManager::PointerWheel(Point p, int delta, ModifierKeys mods) {
+void InputManager::PointerWheel(Point p, int delta, ModifierKeys mods,
+                                uint32_t wheelScrollLines) {
     UIElement* target = HitTest(p);
     if (target) {
         std::vector<UIElement*> route;
@@ -148,6 +149,9 @@ void InputManager::PointerWheel(Point p, int delta, ModifierKeys mods) {
         args.wheelDelta = delta;
         args.modifiers = mods;
         args.originalSource = target;
+        // The window reads SPI_GETWHEELSCROLLLINES and passes it down; the element
+        // tree has no access to the HWND-level setting. 0 = page-per-notch request.
+        args.wheelScrollLines = wheelScrollLines;
         RoutePointer(route, args, nullptr, &UIElement::OnPointerWheelChanged);
     }
     RequestInvalidate();

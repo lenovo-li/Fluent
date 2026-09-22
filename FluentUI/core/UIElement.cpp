@@ -81,6 +81,24 @@ void UIElement::SetFocused(bool f) {
     if (focused_ == f) return;
     focused_ = f;
     OnFocusChanged();
+    
+    // Raise GotFocus / LostFocus events (Phase 1)
+    if (f) {
+        if (gotFocus_.HasSubscribers()) {
+            RoutedEventArgs args;
+            args.source = this;
+            args.originalSource = this;
+            gotFocus_.Raise(*this, args);
+        }
+    } else {
+        if (lostFocus_.HasSubscribers()) {
+            RoutedEventArgs args;
+            args.source = this;
+            args.originalSource = this;
+            lostFocus_.Raise(*this, args);
+        }
+    }
+    
     Invalidate();
 }
 
@@ -88,12 +106,29 @@ void UIElement::OnPointerEnter() {
     if (!enabled_ || pointerInside_) return;
     pointerInside_ = true;
     UpdateState();
+    
+    // Raise PointerEntered event (Phase 1)
+    if (pointerEntered_.HasSubscribers()) {
+        RoutedEventArgs args;
+        args.source = this;
+        args.originalSource = this;
+        pointerEntered_.Raise(*this, args);
+    }
 }
 
 void UIElement::OnPointerLeave() {
     if (!pointerInside_ && !pointerDown_) return;
     pointerInside_ = false;
     pointerDown_ = false;
+    
+    // Raise PointerExited event (Phase 1)
+    if (pointerExited_.HasSubscribers()) {
+        RoutedEventArgs args;
+        args.source = this;
+        args.originalSource = this;
+        pointerExited_.Raise(*this, args);
+    }
+    
     OnPointerLeft();
     UpdateState();
 }
@@ -108,6 +143,12 @@ void UIElement::OnPointerLeave() {
 // with custom press/drag semantics overrides these without chaining to the base.
 
 void UIElement::OnPointerPressed(PointerEventArgs& e) {
+    // Raise PointerPressed event first (Phase 1)
+    if (pointerPressed_.HasSubscribers()) {
+        pointerPressed_.Raise(*this, e);
+        if (e.handled) return;  // Subscriber prevented default behavior
+    }
+    
     if (!clickable_ || !enabled_) return;
     if (e.button != PointerButton::Left) return;
     pointerDown_ = true;
@@ -118,6 +159,12 @@ void UIElement::OnPointerPressed(PointerEventArgs& e) {
 }
 
 void UIElement::OnPointerReleased(PointerEventArgs& e) {
+    // Raise PointerReleased event first (Phase 1)
+    if (pointerReleased_.HasSubscribers()) {
+        pointerReleased_.Raise(*this, e);
+        if (e.handled) return;  // Subscriber prevented default behavior
+    }
+    
     if (!clickable_) return;
     if (e.button != PointerButton::Left) return;
     bool wasDown = pointerDown_;

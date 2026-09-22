@@ -44,6 +44,18 @@ public:
     // index. Replaces SetOnChange(std::function<void(int)>).
     Event<ComboBox, int>& SelectionChanged() { return selectionChanged_; }
 
+    // --- Drop-down open/close (WPF parity) --------------------------------
+    // Raised after the popup opens / after it closes, by ANY path — click, keyboard,
+    // item selection, light dismiss, or a detach that closes it. Both fire exactly
+    // once per transition: OpenPopup and ClosePopup return early when the popup is
+    // already in the requested state, so a second click does not re-raise.
+    //
+    // DropDownOpened is what deferred loading hangs off (fill the list only when the
+    // user actually looks at it). It is raised AFTER the popup window is up, so a
+    // handler calling SetItems still lands before the first paint.
+    Event<ComboBox, RoutedEventArgs>& DropDownOpened() { return dropDownOpened_; }
+    Event<ComboBox, RoutedEventArgs>& DropDownClosed() { return dropDownClosed_; }
+
     // --- Editable mode ----------------------------------------------------
     // In editable mode the header accepts typed text instead of only showing the
     // selected item, so the user can enter a value that is not in the list (the
@@ -175,6 +187,8 @@ private:
     Subscription dismissSub_;
 
     Event<ComboBox, int> selectionChanged_;
+    Event<ComboBox, RoutedEventArgs> dropDownOpened_;
+    Event<ComboBox, RoutedEventArgs> dropDownClosed_;
 };
 
 } // namespace fluent

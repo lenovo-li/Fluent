@@ -9,25 +9,7 @@ token 化主题），有 XAML 经验即可平移。
 
 ## 截图
 
-<div align="center">
-  <img src="docs/screenshots/01-button.png" alt="Button 控件" width="800"/>
-  <p><em>Button - 多种样式、状态和自定义外观</em></p>
-</div>
-
-<div align="center">
-  <img src="docs/screenshots/02-checkbox.png" alt="CheckBox 控件" width="800"/>
-  <p><em>CheckBox - 基础状态、复选框组、自定义样式</em></p>
-</div>
-
-<div align="center">
-  <img src="docs/screenshots/03-datagrid.png" alt="DataGrid 虚拟化" width="800"/>
-  <p><em>DataGrid - 5 万行虚拟化表格，只渲染可见行</em></p>
-</div>
-
-<div align="center">
-  <img src="docs/screenshots/04-infobar.png" alt="InfoBar 控件" width="800"/>
-  <p><em>InfoBar - 四个严重级别，可配置标题和关闭按钮</em></p>
-</div>
+演示应用展示了各种控件的状态、样式与交互效果。
 
 ## 特性
 

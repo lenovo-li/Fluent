@@ -59,7 +59,43 @@ void  SetMinimum(float v);  void SetMaximum(float v);
 ⚠️ **`SetValue` 会顺带把控件切回确定态。** 这是刻意的:给出一个具体进度的调用者显然不再
 想要「不知道还要多久」的扫动,让他记得先关掉不确定态是多余的负担。
 
-默认区间是 `RangeBase` 的默认值。用 0..1 的小数还是 0..100 的百分数由你的 min/max 决定。
+**值范围说明:**
+
+`ProgressBar` 继承自 `RangeBase`，默认值范围是 **0.0 - 1.0** (最小值 0.0，最大值 1.0)。
+这是一个归一化的比例范围，符合以下设计约定:
+
+- **0.0** = 0% (未开始)
+- **0.5** = 50% (进行到一半)
+- **1.0** = 100% (完成)
+
+这个设计选择参考了:
+- iOS `UIProgressView` 的 `progress` 属性 (0.0-1.0)
+- macOS `NSProgressIndicator` 的分数模式
+- 数学上的归一化范围 (0-1 表示比例更自然)
+
+**如果你习惯用百分比 (0-100):**
+
+方式一：调用时除以 100
+```cpp
+bar->SetValue(progress / 100.0f);  // 68% → 0.68
+```
+
+方式二：修改值范围
+```cpp
+bar->SetMinimum(0.0f);
+bar->SetMaximum(100.0f);
+bar->SetValue(68.0f);  // 现在可以直接用百分数
+```
+
+方式三：封装辅助函数
+```cpp
+void SetProgressPercent(ProgressBar* bar, float percent) {
+    bar->SetValue(percent / 100.0f);
+}
+```
+
+**注意:** 无论用哪种方式，传给 `SetValue` 的值都会被限制在 `[Minimum, Maximum]` 范围内。
+超出范围的值不会报错，而是被自动截断。
 
 **脏标记等级:Render**。
 

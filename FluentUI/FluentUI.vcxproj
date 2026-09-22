@@ -1,6 +1,14 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
     <ProjectConfiguration Include="Debug|x64">
       <Configuration>Debug</Configuration>
       <Platform>x64</Platform>
@@ -16,6 +24,7 @@
     <ProjectGuid>{dcce72dd-3d48-4f95-9746-89b4ec20677e}</ProjectGuid>
     <RootNamespace>FluentUI</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <MultiProcessorCompilation>true</MultiProcessorCompilation>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)'=='Debug'" Label="Configuration">
@@ -36,8 +45,16 @@
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\</OutDir>
+    <IntDir>$(Platform)\$(Configuration)\</IntDir>
+  </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <ForcedIncludeFiles>pch.h</ForcedIncludeFiles>
       <WarningLevel>Level3</WarningLevel>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
@@ -50,6 +67,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="fl_common.h" />
+    <ClInclude Include="pch.h" />
     <ClInclude Include="Api.h" />
     <ClInclude Include="Application.h" />
     <ClInclude Include="FluentUI.h" />
@@ -65,7 +83,6 @@
     <ClInclude Include="graphics\DCompHost.h" />
     <ClInclude Include="composition\ICompositionBackend.h" />
     <ClInclude Include="composition\DCompCompositionBackend.h" />
-    <ClInclude Include="composition\ScrollContentHost.h" />
     <ClInclude Include="composition\OverlaySignature.h" />
     <ClInclude Include="graphics\ResourceCache.h" />
     <ClInclude Include="graphics\DeviceLostController.h" />
@@ -131,6 +148,9 @@
     <ClInclude Include="controls\InfoBar.h" />
     <ClInclude Include="controls\Metric.h" />
     <ClInclude Include="controls\DataGrid.h" />
+    <ClInclude Include="controls\LogViewer.h" />
+    <ClInclude Include="controls\RichTextBox.h" />
+    <ClInclude Include="controls\RichTextDocument.h" />
     <ClInclude Include="controls\Chart.h" />
     <ClInclude Include="controls\Separator.h" />
     <ClInclude Include="controls\ProgressBar.h" />
@@ -178,12 +198,14 @@
     <ClInclude Include="diagnostics\SessionLog.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="pch.cpp">
+      <PrecompiledHeader>Create</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="Application.cpp" />
     <ClCompile Include="graphics\D2DContext.cpp" />
     <ClCompile Include="graphics\DWriteContext.cpp" />
     <ClCompile Include="graphics\DCompHost.cpp" />
     <ClCompile Include="composition\DCompCompositionBackend.cpp" />
-    <ClCompile Include="composition\ScrollContentHost.cpp" />
     <ClCompile Include="graphics\ResourceCache.cpp" />
     <ClCompile Include="graphics\DeviceLostController.cpp" />
     <ClCompile Include="styling\ThemeManager.cpp" />
@@ -232,6 +254,9 @@
     <ClCompile Include="controls\InfoBar.cpp" />
     <ClCompile Include="controls\Metric.cpp" />
     <ClCompile Include="controls\DataGrid.cpp" />
+    <ClCompile Include="controls\LogViewer.cpp" />
+    <ClCompile Include="controls\RichTextBox.cpp" />
+    <ClCompile Include="controls\RichTextDocument.cpp" />
     <ClCompile Include="controls\Chart.cpp" />
     <ClCompile Include="controls\Separator.cpp" />
     <ClCompile Include="controls\ProgressBar.cpp" />

@@ -8,6 +8,7 @@
 #include "../framework/Test.h"
 #include "LayoutTestHelpers.h"
 #include "../../FluentUI/layout/StackPanel.h"
+#include "../../FluentUI/window/NativeWindowHost.h"
 
 using namespace fluent;
 
@@ -21,6 +22,13 @@ class InvalidatingLeaf : public TestLeaf {
 public:
     using TestLeaf::TestLeaf;
     void Poke() { Invalidate(); }
+};
+
+// Minimal NativeWindowHost for headless testing (no HWND, no graphics).
+// Exposes AddElement so we can verify it installs the invalidate callback.
+class HostProbe : public NativeWindowHost {
+public:
+    using NativeWindowHost::AddElement;
 };
 }  // namespace
 
@@ -79,4 +87,54 @@ TEST(Invalidation, ClearSeversParent) {
     // child is destroyed by Clear(); capture the pointer relationship first.
     root.Clear();
     EXPECT_EQ(root.ChildCount(), static_cast<size_t>(0));
+}
+
+// Regression test: NativeWindowHost::AddElement must install an invalidate callback
+// on root elements (elements with no parent), or InvalidateDirty has no way to reach
+// RequestFrame. Without it, Invalidate() on a control walks up to the root, finds no
+// callback, and silently drops the frame request — the window never repaints until an
+// unrelated event (mouse move, resize) happens to trigger a frame. Symptom: the UI
+// looks frozen after a programmatic update and refreshes the moment you move the mouse
+// over it.
+//
+// This calls the REAL AddElement (it needs no HWND — it only pushes to elements_ and,
+// with graphicsReady_ false, skips the AttachToContext branch). We assert on the
+// element's own state rather than NeedsFrame(), because NeedsFrame() is gated on
+// graphicsReady_ and would report false headlessly no matter what the callback does.
+//
+// Mutation check: deleting the `if (!e->Parent())` block in AddElement fails both
+// EXPECT_TRUEs below.
+TEST(Invalidation, AddElementInstallsInvalidateCallbackOnRoot) {
+    HostProbe host;
+    StackPanel root;
+
+    EXPECT_FALSE(root.Parent());                  // it is a root
+    EXPECT_FALSE(root.HasInvalidateCallback());   // nothing wired it yet
+
+    host.AddElement(&root);
+
+    // AddElement recognised the root and gave it a way to request a frame.
+    EXPECT_TRUE(root.HasInvalidateCallback());
+
+    // And a nested control's Invalidate() now reaches that callback instead of
+    // walking off the top of the tree. Note the dirty flag lands on the element that
+    // was invalidated, not on the root — the root only receives the frame REQUEST
+    // (via the callback), which is exactly the half that was missing before the fix.
+    auto* leaf = root.Emplace<InvalidatingLeaf>();
+    leaf->Poke();
+    EXPECT_TRUE(Has(leaf->Dirty(), DirtyFlags::Render));
+}
+
+// A child element (one that already has a parent) must NOT get its own callback:
+// it has to keep delegating up the chain, or a subtree registered as a non-root
+// element would start swallowing its descendants' invalidations.
+TEST(Invalidation, AddElementLeavesChildElementsWithoutCallback) {
+    HostProbe host;
+    StackPanel root;
+    auto* child = root.Emplace<StackPanel>();
+
+    host.AddElement(child);   // registering a non-root (e.g. an overlay subtree)
+
+    EXPECT_TRUE(child->Parent() == &root);
+    EXPECT_FALSE(child->HasInvalidateCallback());
 }

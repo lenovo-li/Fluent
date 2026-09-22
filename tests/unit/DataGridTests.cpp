@@ -17,6 +17,8 @@
 #include "../../FluentUI/window/WindowServices.h"
 #include "../../FluentUI/graphics/D2DContext.h"
 #include "../../FluentUI/graphics/DWriteContext.h"
+#include "../../FluentUI/input/FocusManager.h"
+#include "../../FluentUI/input/InputManager.h"
 
 #include <cstdio>
 #include <string>
@@ -277,4 +279,272 @@ TEST(DataGrid, EmptyGridReportsNothingVisible) {
     EXPECT_EQ(first, 0);
     EXPECT_EQ(last, -1);
     EXPECT_TRUE(last < first);          // the "empty" signal callers loop against
+}
+
+// --- Phase 1: Keyboard row navigation -----------------------------------------
+
+TEST(DataGrid, ArrowDownSelectsNextRow) {
+    Fixture f(50);
+    f.grid.SetSelectedRow(5);
+    KeyEventArgs e;
+    e.vk = VK_DOWN;
+    f.grid.OnKeyDownRouted(e);
+    EXPECT_EQ(f.grid.SelectedRow(), 6);
+    EXPECT_TRUE(e.handled);
+}
+
+TEST(DataGrid, ArrowUpSelectsPreviousRow) {
+    Fixture f(50);
+    f.grid.SetSelectedRow(5);
+    KeyEventArgs e;
+    e.vk = VK_UP;
+    f.grid.OnKeyDownRouted(e);
+    EXPECT_EQ(f.grid.SelectedRow(), 4);
+    EXPECT_TRUE(e.handled);
+}
+
+TEST(DataGrid, ArrowDownAtBottomStaysOnLastRow) {
+    Fixture f(50);
+    f.grid.SetSelectedRow(49);
+    KeyEventArgs e;
+    e.vk = VK_DOWN;
+    f.grid.OnKeyDownRouted(e);
+    EXPECT_EQ(f.grid.SelectedRow(), 49);
+    EXPECT_TRUE(e.handled);
+}
+
+TEST(DataGrid, ArrowUpAtTopStaysOnFirstRow) {
+    Fixture f(50);
+    f.grid.SetSelectedRow(0);
+    KeyEventArgs e;
+    e.vk = VK_UP;
+    f.grid.OnKeyDownRouted(e);
+    EXPECT_EQ(f.grid.SelectedRow(), 0);
+    EXPECT_TRUE(e.handled);
+}
+
+TEST(DataGrid, PageDownJumpsOneScreenful) {
+    Fixture f(50);
+    // Viewport: 300 total - 32 header (28 row + 4 extra) = 268 body
+    // pageRows = floor(268/28) - 1 = 9 - 1 = 8
+    f.grid.SetSelectedRow(0);
+    KeyEventArgs e;
+    e.vk = VK_NEXT;  // Page Down
+    f.grid.OnKeyDownRouted(e);
+    EXPECT_EQ(f.grid.SelectedRow(), 8);
+    EXPECT_TRUE(e.handled);
+}
+
+TEST(DataGrid, PageUpJumpsOneScreenful) {
+    Fixture f(50);
+    f.grid.SetSelectedRow(20);
+    KeyEventArgs e;
+    e.vk = VK_PRIOR;  // Page Up
+    f.grid.OnKeyDownRouted(e);
+    EXPECT_EQ(f.grid.SelectedRow(), 12);  // 20 - 8
+    EXPECT_TRUE(e.handled);
+}
+
+TEST(DataGrid, HomeJumpsToFirstRow) {
+    Fixture f(50);
+    f.grid.SetSelectedRow(25);
+    KeyEventArgs e;
+    e.vk = VK_HOME;
+    f.grid.OnKeyDownRouted(e);
+    EXPECT_EQ(f.grid.SelectedRow(), 0);
+    EXPECT_TRUE(e.handled);
+}
+
+TEST(DataGrid, EndJumpsToLastRow) {
+    Fixture f(50);
+    f.grid.SetSelectedRow(0);
+    KeyEventArgs e;
+    e.vk = VK_END;
+    f.grid.OnKeyDownRouted(e);
+    EXPECT_EQ(f.grid.SelectedRow(), 49);
+    EXPECT_TRUE(e.handled);
+}
+
+// --- Phase 2: Copy to clipboard -----------------------------------------------
+
+// Copy is ON by default: Ctrl+C on a table is what every user expects, and a grid that
+// silently ignores it reads as broken. Apps that must block it call SetCopyEnabled(false).
+TEST(DataGrid, CopyEnabledByDefault) {
+    Fixture f(10);
+    EXPECT_TRUE(f.grid.CopyEnabled());
+}
+
+TEST(DataGrid, CtrlCIsIgnoredWhenCopyDisabled) {
+    Fixture f(10);
+    f.grid.SetCopyEnabled(false);
+    f.grid.SetSelectedRow(5);
+    KeyEventArgs e;
+    e.vk = 'C';
+    e.modifiers = ModifierKeys::Ctrl;
+    f.grid.OnKeyDownRouted(e);
+    // Not handled: the app disabled copy, so the key must stay available to an ancestor
+    // (a window-level "copy the whole report" command, for instance).
+    EXPECT_FALSE(e.handled);
+}
+
+TEST(DataGrid, CopyEnabledAllowsCtrlC) {
+    Fixture f(10);
+    f.grid.SetCopyEnabled(true);
+    f.grid.SetSelectedRow(5);
+    KeyEventArgs e;
+    e.vk = 'C';
+    e.modifiers = ModifierKeys::Ctrl;
+    f.grid.OnKeyDownRouted(e);
+    EXPECT_TRUE(e.handled);  // handler runs when enabled
+    // The actual clipboard write is tested manually (can't mock Win32 clipboard).
+}
+
+// --- Frozen columns -----------------------------------------------------------
+
+TEST(DataGrid, FrozenColumnsStayLeftDuringHorizontalScroll) {
+    MockHost host;
+    DataGrid grid;
+    grid.AttachToContext(MakeCtx(host));
+    std::vector<DataGrid::Column> cols;
+    // First two columns frozen, next four scrollable.
+    for (int i = 0; i < 6; ++i) {
+        DataGrid::Column c{L"C" + std::to_wstring(i), 80.0f, DataGrid::Align::Left};
+        c.frozen = (i < 2);
+        cols.push_back(c);
+    }
+    grid.SetColumns(std::move(cols));
+    grid.SetRowCount(10);
+    grid.SetRowHeight(28.0f);
+    grid.SetCellProvider([](int r, int c) { return std::to_wstring(r) + L":" + std::to_wstring(c); });
+    grid.Measure(300.0f, 300.0f);
+    grid.Arrange(RectDip{0.0f, 0.0f, 300.0f, 300.0f});
+
+    // Before scroll: frozen columns at x=0, x=80; non-frozen at x=160, x=240, ...
+    auto r0 = grid.CellRect(0, 0);
+    auto r1 = grid.CellRect(0, 1);
+    auto r2 = grid.CellRect(0, 2);
+    EXPECT_NEAR(r0.x, 0.0f, 0.01f);
+    EXPECT_NEAR(r1.x, 80.0f, 0.01f);
+    EXPECT_NEAR(r2.x, 160.0f, 0.01f);
+
+    // Scroll horizontally by 100 DIP. Frozen columns stay put; non-frozen shift left.
+    grid.SetHorizontalOffset(100.0f);
+    r0 = grid.CellRect(0, 0);
+    r1 = grid.CellRect(0, 1);
+    r2 = grid.CellRect(0, 2);
+    auto r3 = grid.CellRect(0, 3);
+    EXPECT_NEAR(r0.x, 0.0f, 0.01f);       // frozen: unchanged
+    EXPECT_NEAR(r1.x, 80.0f, 0.01f);      // frozen: unchanged
+    EXPECT_NEAR(r2.x, 60.0f, 0.01f);      // 160 - 100 scroll offset
+    EXPECT_NEAR(r3.x, 140.0f, 0.01f);     // 240 - 100
+}
+
+// Clicking a different row while editing commits the edit and clears the overlay state,
+// preventing the stuck-edit box that cannot be dismissed. This is what users expect from
+// every grid: clicking away means "keep what I typed and select the new row."
+TEST(DataGrid, ClickingADifferentRowWhileEditingCommitsTheEdit) {
+    MockHost host;
+    DataGrid grid;
+    grid.AttachToContext(MakeCtx(host));
+    std::vector<DataGrid::Column> cols = {
+        {L"Task", 200.0f, DataGrid::Align::Left}
+    };
+    grid.SetColumns(std::move(cols));
+    grid.SetRowCount(3);
+    grid.SetCellProvider([](int r, int) { return L"Row" + std::to_wstring(r); });
+    grid.SetEditingEnabled(true);
+
+    grid.Measure(300.0f, 200.0f);
+    grid.Arrange(RectDip{0.0f, 0.0f, 300.0f, 200.0f});
+
+    // Begin editing row 0 via F2 (keyboard path, not double-click).
+    grid.SetSelectedRow(0);
+    KeyEventArgs key{};
+    key.vk = VK_F2;
+    grid.OnKeyDownRouted(key);
+    EXPECT_TRUE(grid.IsEditing());
+    EXPECT_EQ(grid.EditingRow(), 0);
+
+    // Click row 1 body region. This should commit row 0's edit and select row 1.
+    PointerEventArgs click{};
+    click.position = Point{10.0f, 60.0f};  // row 1, below the 32 DIP header
+    click.button = PointerButton::Left;
+    grid.OnPointerPressed(click);
+
+    // The click on row 1 should have committed the edit on row 0 and selected row 1.
+    EXPECT_FALSE(grid.IsEditing());       // editing ended
+    EXPECT_EQ(grid.SelectedRow(), 1);     // selection moved
+}
+
+// Scrolling while editing commits the edit, preventing the overlay from floating over the
+// wrong row (it would keep its screen position while the cell scrolls away — a ghost box).
+TEST(DataGrid, ScrollingWhileEditingCommitsTheEdit) {
+    MockHost host;
+    DataGrid grid;
+    grid.AttachToContext(MakeCtx(host));
+    std::vector<DataGrid::Column> cols = {
+        {L"Task", 200.0f, DataGrid::Align::Left}
+    };
+    grid.SetColumns(std::move(cols));
+    grid.SetRowCount(20);
+    grid.SetCellProvider([](int r, int) { return L"Row" + std::to_wstring(r); });
+    grid.SetEditingEnabled(true);
+
+    grid.Measure(300.0f, 200.0f);
+    grid.Arrange(RectDip{0.0f, 0.0f, 300.0f, 200.0f});
+
+    // Begin editing row 0.
+    grid.SetSelectedRow(0);
+    KeyEventArgs key{};
+    key.vk = VK_F2;
+    grid.OnKeyDownRouted(key);
+    EXPECT_TRUE(grid.IsEditing());
+
+    // Scroll down by 100 DIP (about 3-4 rows). This should commit the edit.
+    grid.SetVerticalOffset(100.0f);
+    EXPECT_FALSE(grid.IsEditing());
+
+    // Same for horizontal scroll.
+    grid.OnKeyDownRouted(key);  // start editing again
+    EXPECT_TRUE(grid.IsEditing());
+    grid.SetHorizontalOffset(50.0f);
+    EXPECT_FALSE(grid.IsEditing());
+}
+
+// Clicking outside the edit overlay (e.g. a button) should commit the edit so the typed
+// value isn't lost. This requires a FocusManager to track focus changes.
+TEST(DataGrid, LosingFocusCommitsTheEdit) {
+    MockHost host;
+    FocusManager focusMgr;
+    InputManager inputMgr;
+    DataGrid grid;
+    UIContext ctx;
+    ctx.window = &host;
+    ctx.dpiScale = 1.0f;
+    ctx.focus = &focusMgr;
+    ctx.input = &inputMgr;
+    grid.AttachToContext(ctx);
+
+    std::vector<DataGrid::Column> cols = {
+        {L"Task", 200.0f, DataGrid::Align::Left}
+    };
+    grid.SetColumns(std::move(cols));
+    grid.SetRowCount(3);
+    grid.SetCellProvider([](int r, int) { return L"Row" + std::to_wstring(r); });
+    grid.SetEditingEnabled(true);
+
+    grid.Measure(300.0f, 200.0f);
+    grid.Arrange(RectDip{0.0f, 0.0f, 300.0f, 200.0f});
+
+    // Begin editing row 0.
+    grid.SetSelectedRow(0);
+    KeyEventArgs key{};
+    key.vk = VK_F2;
+    grid.OnKeyDownRouted(key);
+    EXPECT_TRUE(grid.IsEditing());
+
+    // Simulate another control stealing focus (e.g. a button click).
+    // The overlay loses focus → OnFocusChanged should commit.
+    focusMgr.SetFocus(&grid);  // move focus away from the overlay
+    EXPECT_FALSE(grid.IsEditing());
 }

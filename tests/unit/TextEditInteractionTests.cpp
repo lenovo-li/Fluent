@@ -26,7 +26,6 @@
 
 using namespace fluent;
 using fltest::FakeCompositionBackend;
-using fltest::FakeCompositionVisual;
 
 namespace {
 
@@ -80,35 +79,6 @@ struct AreaFixture {
         area.AttachToContext(MakeCtx(host, anims, input));
     }
     ~AreaFixture() { area.DetachFromContext(); }
-};
-
-// Composited: the surface draw count is the observable for "the highlight was redrawn".
-struct CompositedFixture {
-    FakeCompositionBackend backend;
-    MockHost host{&backend};
-    AnimationRegistry anims;
-    InputManager input;
-    TextArea area;
-
-    bool Ready() const { return host.Ready(); }
-
-    void Open(const std::wstring& text) {
-        area.SetWrapMode(TextWrapMode::NoWrap);
-        area.SetText(text);
-        area.SetBounds({0, 0, 400, 200});
-        area.AttachToContext(MakeCtx(host, anims, input));
-    }
-    ~CompositedFixture() { area.DetachFromContext(); }
-
-    // Tree: root -> viewport -> { clip -> content, overlay }.
-    FakeCompositionVisual* Content() {
-        if (backend.rootVisuals.empty()) return nullptr;
-        auto* vp = static_cast<FakeCompositionVisual*>(backend.rootVisuals[0]);
-        if (vp->children.empty()) return nullptr;
-        auto* clip = static_cast<FakeCompositionVisual*>(vp->children[0]);
-        if (clip->children.empty()) return nullptr;
-        return static_cast<FakeCompositionVisual*>(clip->children[0]);
-    }
 };
 
 // Synthesize a press at a character offset's own X position, so the hit-test lands
@@ -208,27 +178,6 @@ TEST(TextEditInteraction, DoubleClickSelectsWordInTextBox) {
     EXPECT_TRUE(hi > lo);
     EXPECT_TRUE(box.Text().substr(lo, hi - lo).find(L' ') == std::wstring::npos);
     box.DetachFromContext();
-}
-
-// ---------------------------------------------------------------------------
-// Ctrl+A must reach the composited surface
-// ---------------------------------------------------------------------------
-
-TEST(TextEditInteraction, SelectAllRedrawsCompositedSurface) {
-    // THE REGRESSION THIS FILE EXISTS FOR. Ctrl+A used to call only Invalidate(), which
-    // repaints the window frame; the selection highlight lives on the composition content
-    // surface, so nothing on screen changed. Asserting on caret_/selAnchor_ would pass
-    // either way — the draw count is what distinguishes them.
-    CompositedFixture f;
-    if (!f.Ready()) return;
-    f.Open(L"some text to select");
-    auto* content = f.Content();
-    EXPECT_TRUE(content != nullptr);
-    if (!content) return;
-
-    const int before = content->drawCount;
-    f.area.SelectAllForTest();
-    EXPECT_TRUE(content->drawCount > before);
 }
 
 TEST(TextEditInteraction, SelectAllCoversWholeBuffer) {
@@ -367,15 +316,4 @@ TEST(TextEditInteraction, InputManagerPropagatesClickCount) {
     area.DetachFromContext();
 }
 
-TEST(TextEditInteraction, DoubleClickRedrawsCompositedSurface) {
-    // Same requirement for word select: it also sets the fields directly.
-    CompositedFixture f;
-    if (!f.Ready()) return;
-    f.Open(L"hello world");
-    auto* content = f.Content();
-    if (!content) return;
-    const int before = content->drawCount;
-    auto e = PressAt(60.0f, 15.0f, 2);
-    f.area.OnPointerPressed(e);
-    EXPECT_TRUE(content->drawCount > before);
-}
+

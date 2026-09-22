@@ -1,7 +1,13 @@
 <Solution>
   <Configurations>
+    <Platform Name="Win32" />
     <Platform Name="x64" />
   </Configurations>
+  <Folder Name="/demos/">
+    <Project Path="demos/TrayAppDemo/TrayAppDemo.vcxproj" Id="a5c7d8e3-1234-4567-89ab-cdef01234567">
+      <Platform Project="x64" />
+    </Project>
+  </Folder>
   <Project Path="FluentSettings/FluentSettings.vcxproj" Id="a5f1c3e2-7b84-4d16-9c0a-2e6f8d3b1a44" />
   <Project Path="FluentUI/FluentUI.vcxproj" Id="dcce72dd-3d48-4f95-9746-89b4ec20677e" />
   <Project Path="FluentUIDemo/FluentUIDemo.vcxproj" Id="927b222f-9b0b-48ed-a4c9-b46437007680" />

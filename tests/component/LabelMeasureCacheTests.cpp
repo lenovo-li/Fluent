@@ -18,7 +18,7 @@
 // NOT covered here: MenuFlyout::MeasureText, the heaviest site of all (O(items) per
 // MeasureLevel). Its measurement lives on a private inner class reached only
 // through an open popup window, so it is not headlessly testable — it was fixed by
-// inspection and needs the real-hardware check noted in docs/OPTIMIZATIONS.md.
+// inspection and still needs a real-hardware check.
 //
 // A Measure re-runs whenever the offered constraint changes, and a resize drag
 // changes it every frame — MeasureCached cannot short-circuit that. So the cost

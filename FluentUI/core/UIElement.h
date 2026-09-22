@@ -20,6 +20,7 @@
 #include "IContextMenu.h"
 #include "../input/RoutedEvent.h"
 #include "../input/DragDrop.h"
+#include "../base/Event.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -67,6 +68,14 @@ public:
         // so BoundsChangedTotal is a superset, not a sibling, of those rows.
         LayoutCostProbe::Scope probe(LayoutCostKey::BoundsChangedTotal);
         OnBoundsChanged();
+        
+        // Raise SizeChanged event (Phase 1)
+        if (sizeChanged_.HasSubscribers()) {
+            RoutedEventArgs args;
+            args.source = this;
+            args.originalSource = this;
+            sizeChanged_.Raise(*this, args);
+        }
     }
     const RectDip& Bounds() const { return bounds_; }
 
@@ -107,7 +116,7 @@ public:
     // background worker could measure without racing the UI thread. Removed after
     // measurement showed it was a net loss — the UI thread blocked on the worker
     // for the full measure cost anyway, and paid ~0.8ms per WM_SIZE to spawn the
-    // thread on top. Read docs/design/async-layout-postmortem.md before
+    // thread on top. See the postmortem comment in Window.cpp's resize path before
     // reintroducing anything shaped like it.
     void MeasureCached(float availW, float availH) {
         if (!NeedsRemeasure() && measureCacheValid_ &&
@@ -321,6 +330,49 @@ public:
         UNREFERENCED_PARAMETER(dipX);
         UNREFERENCED_PARAMETER(dipY);
     }
+
+    // --- Routed Events (Phase 1: Expose virtual functions as Event<>) ----
+    // These events allow user code to subscribe to low-level interactions without
+    // inheriting from controls. Handlers are invoked from the corresponding OnXxx
+    // virtuals, which subclasses can still override for custom behavior.
+    //
+    // Pattern: Event<Sender, Args> with Args carrying `.handled` flag. Setting
+    // `.handled = true` stops further routing and (for some events) prevents the
+    // default behavior. Multiple subscribers can coexist on one element.
+
+    Event<UIElement, PointerEventArgs>& PointerPressed() { return pointerPressed_; }
+    Event<UIElement, PointerEventArgs>& PointerReleased() { return pointerReleased_; }
+    Event<UIElement, PointerEventArgs>& PointerMoved() { return pointerMoved_; }
+    Event<UIElement, PointerEventArgs>& PointerWheelChanged() { return pointerWheel_; }
+    
+    // PointerEntered / PointerExited fire when the pointer crosses the element
+    // boundary (hover state change). Previously only available via overriding
+    // OnPointerEnter/Leave, now exposed as subscribable events.
+    Event<UIElement, RoutedEventArgs>& PointerEntered() { return pointerEntered_; }
+    Event<UIElement, RoutedEventArgs>& PointerExited() { return pointerExited_; }
+
+    Event<UIElement, KeyEventArgs>& KeyDown() { return keyDown_; }
+    Event<UIElement, KeyEventArgs>& PreviewKeyDown() { return previewKeyDown_; }
+    
+    // TextInput fires for printable characters after keyboard processing.
+    // Args is wchar_t directly (not wrapped in a struct for simplicity).
+    Event<UIElement, wchar_t>& TextInput() { return textInput_; }
+
+    // GotFocus / LostFocus fire when the element gains/loses keyboard focus.
+    Event<UIElement, RoutedEventArgs>& GotFocus() { return gotFocus_; }
+    Event<UIElement, RoutedEventArgs>& LostFocus() { return lostFocus_; }
+
+    // SizeChanged fires when bounds change (position or size). The event does not
+    // carry old/new rects; query Bounds() for the new value.
+    Event<UIElement, RoutedEventArgs>& SizeChanged() { return sizeChanged_; }
+
+    // ContextMenuOpening fires just before the context menu appears, with the
+    // right-click position in window DIPs. Allows dynamic menu population.
+    struct ContextMenuEventArgs : RoutedEventArgs {
+        float x = 0.0f;
+        float y = 0.0f;
+    };
+    Event<UIElement, ContextMenuEventArgs>& ContextMenuOpening() { return contextMenuOpening_; }
 
     // --- Focus ------------------------------------------------------------
     // Whether this element can receive keyboard focus (Tab / click). Default
@@ -578,6 +630,23 @@ private:
     // owner context is fed on attach (and immediately when set if already attached).
     std::unique_ptr<IContextMenu> contextMenu_;
     IContextMenu* contextMenuRef_ = nullptr;
+
+    // Routed events (Phase 1). These are invoked from the corresponding OnXxx
+    // virtuals, allowing user code to subscribe without subclassing. Zero overhead
+    // when no subscribers (Event<> checks HasSubscribers before building args).
+    Event<UIElement, PointerEventArgs> pointerPressed_;
+    Event<UIElement, PointerEventArgs> pointerReleased_;
+    Event<UIElement, PointerEventArgs> pointerMoved_;
+    Event<UIElement, PointerEventArgs> pointerWheel_;
+    Event<UIElement, RoutedEventArgs> pointerEntered_;
+    Event<UIElement, RoutedEventArgs> pointerExited_;
+    Event<UIElement, KeyEventArgs> keyDown_;
+    Event<UIElement, KeyEventArgs> previewKeyDown_;
+    Event<UIElement, wchar_t> textInput_;
+    Event<UIElement, RoutedEventArgs> gotFocus_;
+    Event<UIElement, RoutedEventArgs> lostFocus_;
+    Event<UIElement, RoutedEventArgs> sizeChanged_;
+    Event<UIElement, ContextMenuEventArgs> contextMenuOpening_;
 };
 
 } // namespace fluent

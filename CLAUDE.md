@@ -2,6 +2,15 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Agent usage policy
+
+For complex or multi-step tasks in this repository, you are authorized to use the
+Agent tool to spawn specialized sub-agents (architect, implementer, test-runner,
+reviewer, visual-reviewer) as defined in `.claude/agents/`. Judge task complexity
+yourself: simple bug fixes and small changes can be done directly; architectural
+changes, multi-file refactors, or tasks requiring specialized analysis should use
+agents. Ultracode/workflows are also permitted when appropriate for the task scale.
+
 ## What this is
 
 FluentUI — a from-scratch retained-mode UI framework for Windows desktop, built on
@@ -236,12 +245,15 @@ testable headless against `tests/framework/FakeCompositionBackend.h`.
 **Every caller must null-check and fall back to its UI-thread path** — that
 fallback is also the revert path if a migration regresses.
 
-`composition/ScrollContentHost.h` is the shared overscan-scrolling engine
-(TreeView, TextArea). It draws viewport-plus-margin into one surface and lets the
-compositor translate it; short scrolls never touch the UI thread. The invariant
-everything rests on: `content OffsetY(px) = (surfaceOrigin - effectiveOffset) * dpiScale`.
-Hit-testing must use `EffectiveOffset()` (QPC-evaluated, matching what the
-compositor is showing), never `TargetOffset()`.
+**Compositor-driven scrolling (ScrollContentHost) was removed on 2026-08-31
+(commit 92f13bc).** The engine drew viewport-plus-margin into one DComp surface
+and let the compositor translate it, making short scrolls frame-independent. It
+was removed after sustained white-screen bugs that could not be fixed: scroll
+tweens occasionally left surfaces blank, root cause undiagnosed despite
+coordinate-system fixes and repro attempts. TextArea and TreeView now scroll on
+the UI thread only. The last working compositor version is commit c3b3c4e; its
+diff is the blueprint if the feature is re-introduced. ProgressBar still uses
+ICompositionBackend for indeterminate-mode sweeps.
 
 **When drawing into a DComp surface, always `GetTransform` and pre-multiply
 (`mine * base`) — never `SetTransform` outright.** `BeginDraw` hands back a tile
@@ -644,24 +656,14 @@ bundle. Inspect the original repository files instead.
 Headers reference a "roadmap §N" throughout. That document is no longer in the
 repo; treat the section numbers as historical labels, not something to look up.
 
-What actually exists under `docs/` (this list drifted once — three of the paths it
-used to name did not exist, so verify with `ls` rather than trusting any prose here,
-including this paragraph):
+What actually exists under `docs/`:
 
-- `docs/ROADMAP_2026.md` — the active roadmap.
-- `docs/OPTIMIZATIONS.md` — one entry per performance fix to an existing control.
-  Each entry states where it was slow, the mechanism, **how it was proven** (which
-  assertion fails when the fix is deliberately broken), and what stayed unverified.
-  The third part is not optional: a performance fix with no record of how it was
-  shown to work reads as redundant code to the next person, and deleting it
-  regresses silently.
-- `docs/design/` — `async-layout-postmortem.md` (why async layout was deleted),
-  `fps-measurement.md` (what the HUD's FPS does and does not measure, and why a
-  separate measurement thread would not help), `pixel-testing.md` (the offscreen
-  pixel harness, and why this repo does not use golden-image screenshots).
+- `docs/api-surface.md` — public API conventions.
+- `docs/BUILD_OPTIMIZATION.md` — build performance notes.
 - `docs/controls/` — per-control reference pages off `TEMPLATE.md`.
-- `docs/GETTING_STARTED.md`, `docs/api-surface.md`, `docs/README.md`, plus two
-  Chinese technical notes on compositor clipping and borderless-window resize.
+- `docs/design/` — design documents for specific features (RichTextBox, LogViewer plans).
+- `docs/dual-repo-workflow.md` — workflow for syncing between internal and public repos.
+- `docs/learn/` — Chinese technical notes on compositor clipping and borderless-window resize.
 
 Long-running task state lives in `.claude/TASK_STATE.md` (regimen at the end of this
 file). That path is **gitignored**, so it is local scratch rather than a repo

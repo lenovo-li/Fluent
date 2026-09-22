@@ -79,6 +79,12 @@ void GridSplitter::OnPointerPressed(PointerEventArgs& e) {
         trackAfterStart_ = resolved[idx + 1];
     }
 
+    // Fire DragStarted after capturing and setting up state.
+    RoutedEventArgs startArgs;
+    startArgs.source = this;
+    startArgs.originalSource = this;
+    dragStarted_.Raise(*this, startArgs);
+
     e.handled = true;
 }
 
@@ -113,6 +119,15 @@ void GridSplitter::OnPointerMoved(PointerEventArgs& e) {
         grid->SetRowAt(static_cast<size_t>(idx) + 1, GridLength::Pixels(newAfter));
     }
 
+    // Fire DragDelta after the tracks are resized, so a handler reading the grid
+    // sees the new sizes. delta is cumulative from the anchor, matching what the
+    // tracks were actually resized by.
+    if (dragDelta_.HasSubscribers()) {
+        GridSplitterDragDeltaArgs args;
+        args.deltaDip = delta;
+        dragDelta_.Raise(*this, args);
+    }
+
     e.handled = true;
 }
 
@@ -123,6 +138,14 @@ void GridSplitter::OnPointerReleased(PointerEventArgs& e) {
     dragging_ = false;
     trackBeforeStart_ = std::nullopt;
     trackAfterStart_ = std::nullopt;
+
+    // Fire DragCompleted after clearing drag state: a handler that persists the
+    // layout should see a settled splitter, not one still marked as dragging.
+    RoutedEventArgs endArgs;
+    endArgs.source = this;
+    endArgs.originalSource = this;
+    dragCompleted_.Raise(*this, endArgs);
+
     e.handled = true;
 }
 

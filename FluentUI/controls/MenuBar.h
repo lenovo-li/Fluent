@@ -13,6 +13,7 @@
 #pragma once
 
 #include "../core/Control.h"
+#include "../core/Subscription.h"
 #include "../graphics/DWriteContext.h"
 #include "MenuFlyout.h"
 #include <string>
@@ -84,10 +85,13 @@ private:
     WindowServices* window_ = nullptr;
     std::unique_ptr<MenuFlyout> flyout_;
     std::vector<TopItem> items_;
+    // Holds the flyout's Closed() registration. RAII: destroyed with the bar, and
+    // reset on detach before the flyout itself goes away.
+    Subscription closedSub_;
 
     int hovered_ = -1;
     int openIndex_ = -1;
-    bool switching_ = false;  // guards SetOnClosed while switching menus
+    bool switching_ = false;  // guards the Closed() handler while switching menus
 };
 
 } // namespace fluent

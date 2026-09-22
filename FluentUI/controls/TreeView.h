@@ -14,8 +14,6 @@
 #include "../base/Event.h"
 #include "../graphics/DWriteContext.h"
 #include "../layout/ScrollViewer.h"
-#include "../composition/ScrollContentHost.h"
-#include "../composition/OverlaySignature.h"
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -47,6 +45,7 @@ struct TreeViewRow {
     bool expanded = true;
     TreeViewIcon icon = TreeViewIcon::Device;
     void* user = nullptr;
+    ID2D1Bitmap* customIcon = nullptr;  // Custom bitmap icon (takes priority over icon enum)
 };
 
 // Payload for TreeView::SelectionChanged: the visible index of the newly selected
@@ -54,6 +53,14 @@ struct TreeViewRow {
 struct TreeSelection {
     int visibleIndex = -1;
     const TreeViewRow* row = nullptr;
+};
+
+// Payload for TreeView::ItemDoubleClick: the double-clicked row with a handled
+// flag. Setting handled=true prevents the default behavior (expand/collapse).
+struct TreeViewItemDoubleClickArgs {
+    int visibleIndex = -1;
+    const TreeViewRow* row = nullptr;
+    bool handled = false;
 };
 
 // SelectionMode now lives in Selector (primitives/Selector.h) — the enum moved
@@ -70,6 +77,29 @@ public:
     // shared store owns the vector; OnItemsChanged rebuilds the tree indices and
     // restores the selection by id. Kept as SetRows for API compatibility.
     void SetRows(std::vector<TreeViewRow> rows);
+
+    // --- Incremental mutation API (WP-06 ergonomics) ---------------------------
+    // Add/remove/modify individual nodes without reading/writing the whole vector.
+    // All methods preserve the selection by id and trigger OnItemsChanged (which
+    // rebuilds indices + visible rows). The caller still supplies id/parentId, but
+    // depth/hasChildren are computed automatically.
+
+    // Add a root node (parentId = -1, depth = 0 auto-filled).
+    void AddRoot(TreeViewRow row);
+    // Add a child under parentId. Automatically fills row.parentId and row.depth,
+    // and marks the parent as hasChildren=true. Inserts immediately after the parent
+    // in the items_ vector so it appears in tree order.
+    void AddChild(int parentId, TreeViewRow row);
+    // Remove nodeId plus ALL its descendants (recursive). No-op if id not found.
+    void RemoveNode(int nodeId);
+    // Set expanded state of a single node. No-op if id not found or !hasChildren.
+    void SetNodeExpanded(int nodeId, bool expanded);
+    // Expand/collapse all nodes that have children.
+    void ExpandAll();
+    void CollapseAll();
+    // Find a mutable row by id. Returns nullptr if not found.
+    TreeViewRow* FindNode(int nodeId);
+    const TreeViewRow* FindNode(int nodeId) const;
 
     // Selection: SetSelectedIndex takes a VISIBLE index (mapped to a row index);
     // SelectedIndex() returns the ROW index (inherited from Selector). SelectedRow
@@ -95,6 +125,17 @@ public:
     // Shift+click, or programmatic ToggleRowSelection / RangeSelectTo).
     Event<TreeView, std::vector<int>>& SelectionSetChanged() { return selectionSetChanged_; }
 
+    // Fired when a row is double-clicked (Phase 2). The default behavior (when
+    // args.handled is false) toggles expansion for rows with children. Set
+    // handled=true to prevent the toggle and implement custom behavior (e.g., open
+    // a file). Control the default behavior via SetDoubleClickTogglesExpansion.
+    Event<TreeView, TreeViewItemDoubleClickArgs>& ItemDoubleClick() { return itemDoubleClick_; }
+    
+    // Whether double-clicking a row with children toggles its expansion (default: true).
+    // Has no effect when the ItemDoubleClick event has a subscriber that sets handled=true.
+    void SetDoubleClickTogglesExpansion(bool enable) { doubleClickTogglesExpansion_ = enable; }
+    bool DoubleClickTogglesExpansion() const { return doubleClickTogglesExpansion_; }
+
     void ScrollBy(float deltaDip) { scroll_.ScrollBy(deltaDip); Invalidate(); }
     void OnKeyDownRouted(KeyEventArgs& e) override;
     void OnTextInput(wchar_t ch) override;
@@ -110,70 +151,46 @@ public:
     void OnPointerReleased(PointerEventArgs& e) override;
 
 protected:
-    // Tree-attach: create the compositor scroll host if the window offers a
-    // composition backend (else fall back to the UI-thread scroll_ path).
     void OnAttachedToTree() override;
     void OnDetachedFromTree() override;
     void OnBoundsChanged() override;
-    void UpdateContextModalResize(bool inModalResize) override;
     void OnFocusChanged() override;
     void OnThemeChanged() override;
     void OnDpiChanged(float dpiScale) override;
-    void OnDeviceLost() override;
-    void OnDeviceRestored() override;
     void OnPointerLeft() override;
-    // In composited mode Render() draws nothing, so opacity has to reach the
-    // composition sub-tree instead of the host's DrawingContext.
-    void OnOpacityChanged(float opacity) override;
-
-    // Same reason, for the collapsed state: skipping Render cannot hide a DComp
-    // visual, so hiding has to reach the compositor too.
-    void OnVisibilityChanged(bool visible) override;
-    void OnAncestorVisibilityChanged() override;
 
     // ItemsControl hook: rebuild derived indices + restore selection by id.
     void OnItemsChanged() override;
     // Selector hook: ensure the new row is visible + raise the rich TreeSelection.
     void OnSelectionChanged(int oldIndex, int newIndex) override;
     // Selector hook: the multi-select set changed via ToggleSelection /
-    // RangeSelectTo. Repaint the composited rows and raise SelectionSetChanged.
+    // RangeSelectTo. Raise SelectionSetChanged.
     void OnSelectionSetChanged() override;
 
 private:
-    // --- Compositor scroll (Phase 3) --------------------------------------
-    // True when the overscan content host is live (a composition backend was
-    // available at attach). When false everything falls back to the UI-thread
-    // scroll_ path unchanged.
-    bool CompositionActive() const { return content_ && content_->Valid(); }
-    // The scroll offset currently shown: the content host's effective (possibly
-    // mid-tween) offset in composition mode, else scroll_'s offset.
-    float CurrentOffset() const;
-    // Reconcile the compositor surfaces with the current state and commit. Safe
-    // only OUTSIDE the window content frame (attach / bounds / theme / dpi / input
-    // / tick) — never from Render.
-    //   redrawContent: re-rasterize the row surface (selection/items/theme/bounds
-    //     changed its pixels). false = only refill when scrolling near a buffer
-    //     edge; the compositor owns the offset otherwise.
-    //   overlayForce: re-rasterize the scrollbar+focus overlay unconditionally
-    //     (focus/hover/theme/bounds). false = redraw ONLY if the bar's visual
-    //     signature changed since last time — this is what stops the idle-hide
-    //     countdown from re-rasterizing a static bar every frame (the flicker).
-    void RefreshComposition(bool redrawContent, bool overlayForce);
-    void UpdateCompositionVisibility();
-    // The overlay's current visual determinants (shared with TextArea — see
-    // OverlaySignature.h for why the comparison exists).
-    OverlaySignature CurrentOverlaySig() const;
-    // Draw all visible rows intersecting [surfaceOriginDip, +heightDip) into the
-    // content surface's device context, in DIPs local to the surface origin.
-    void DrawRowsToSurface(ID2D1DeviceContext* dc, float surfaceOriginDip,
-                           float surfaceHeightDip);
-    // Draw the scrollbar + focus ring into the overlay surface (viewport-local DIPs).
-    void DrawOverlayToSurface(ID2D1DeviceContext* dc, float viewportWDip,
-                              float viewportHDip);
-    // Shared single-row draw (used by both the fallback Render and the surface
-    // refill). `rowTopY` is the row's top in the target's DIP space.
+    // The scroll offset currently shown. Kept as a named accessor (rather than
+    // inlining scroll_.Offset()) because hit-testing and EnsureVisible both need
+    // "the offset on screen right now" and reading it through one function is what
+    // kept them consistent back when a compositor tween could own it.
+    float CurrentOffset() const { return scroll_.Offset(); }
+    // Shared single-row draw. `rowTopY` is the row's top in the target's DIP space.
     void DrawRow(const DrawingContext& dc, IDWriteTextFormat* fmt, int rowIndex,
                  float rowTopY, float leftX, float rightX);
+
+    // --- Incremental mutation helpers ----------------------------------------
+    // Snapshot the selected row's id into pendingSelectedId_ so OnItemsChanged can
+    // restore the selection after items_ moves. Every mutator calls this BEFORE
+    // touching items_ (an index captured after the edit means a different row).
+    void CaptureSelectedId();
+    // Is items_[rowIndex] a descendant of items_[ancestorIndex]? Walks parentIndex_,
+    // so it is only valid while that array matches items_ (i.e. before an edit).
+    bool IsDescendantOf(int rowIndex, int ancestorIndex) const;
+    // Recompute every row's hasChildren from the parentId links, and clear the
+    // collapsed flag on rows that are now leaves. Called after a removal, which is
+    // the one edit that can orphan an expander glyph.
+    void RefreshHasChildren();
+    // Shared body of ExpandAll / CollapseAll.
+    void SetAllExpanded(bool expanded);
 
     int HitRow(float dipY) const;
     int VisibleCapacity() const;
@@ -197,17 +214,18 @@ private:
     std::vector<int> parentIndex_;
     int pendingSelectedId_ = -1;   // captured across a SetRows to restore selection
     float rowHeight_ = 28.0f;
-    ScrollViewer scroll_;  // scrollbar visual model + fallback UI-thread scroll
-    // Compositor overscan content host (null → UI-thread fallback via scroll_).
-    // In composition mode scroll_ is used only for the scrollbar's fade/expand
-    // visual state + hit-testing; the content OFFSET is owned by content_.
-    std::unique_ptr<ScrollContentHost> content_;
-    float dragStartOffset_ = 0.0f;  // content offset at thumb-drag start (comp mode)
-    OverlaySignature lastOverlaySig_;  // last-rasterized overlay state (tick gating)
+    ScrollViewer scroll_;  // scrollbar visual model + UI-thread scroll offset
     std::wstring typeSearch_;
     DWORD lastTypeTick_ = 0;
     Event<TreeView, TreeSelection> selectionChanged_;
     Event<TreeView, std::vector<int>> selectionSetChanged_;
+    Event<TreeView, TreeViewItemDoubleClickArgs> itemDoubleClick_;
+    
+    // Double-click detection state (Phase 2)
+    DWORD lastClickTime_ = 0;
+    int lastClickRow_ = -1;
+    bool doubleClickTogglesExpansion_ = true;
+    
     // Multi-select state (selectionMode_ / selectedIndices_ / selectionAnchor_)
     // lives in the Selector base — see primitives/Selector.h for the invariants.
 };

@@ -21,6 +21,14 @@ void UniformGrid::SetFirstColumn(int fc) {
         InvalidateDirty(DirtyFlags::Arrange);
 }
 
+void UniformGrid::SetCellSizing(CellSizing s) {
+    // Measure, not Arrange: Stretch changes the desired width this panel reports
+    // (cols * availW/cols == availW, vs cols * maxChildW), so the parent's own
+    // measure result depends on it.
+    if (SetProperty(cellSizing_, s, DirtyFlags::Measure))
+        InvalidateDirty(DirtyFlags::Measure);
+}
+
 SizeDip UniformGrid::MeasureOverride(float availW, float availH) {
     UNREFERENCED_PARAMETER(availH);
 
@@ -70,13 +78,28 @@ SizeDip UniformGrid::MeasureOverride(float availW, float availH) {
         }
     }
 
+    // Step 3: cell width. Content keeps the historical child-driven cell; Stretch
+    // divides the offered width evenly so N children split the panel like
+    // st.columns / a Grid of N Star tracks. An unbounded offer (infinite availW,
+    // which is what a WrapPanel or an unconstrained measure pass hands down) has
+    // no width to divide, so Stretch falls back to content sizing rather than
+    // reporting inf.
+    float cellW = maxChildW;
+    if (cellSizing_ == CellSizing::Stretch && cols > 0 &&
+        availW > 0.0f && std::isfinite(availW)) {
+        cellW = availW / static_cast<float>(cols);
+        // Never shrink below content: a too-narrow offer should overflow, the same
+        // way Content mode does, instead of silently clipping every child.
+        cellW = std::max(cellW, maxChildW);
+    }
+
     // Cache the results so Arrange can reuse them without recomputing.
-    cellW_ = maxChildW;
+    cellW_ = cellW;
     cellH_ = maxChildH;
     measuredCols_ = cols;
 
     // Desired size: all cells occupied.
-    return {cols * maxChildW, rows * maxChildH};
+    return {cols * cellW, rows * maxChildH};
 }
 
 void UniformGrid::ArrangeOverride(const RectDip& finalRect) {

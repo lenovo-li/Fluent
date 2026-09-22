@@ -422,7 +422,13 @@ void PopupHost::RouteMouseUp(int px, int py) {
 
 void PopupHost::RouteMouseWheel(int px, int py, int delta) {
     float s = 96.0f / dpi_;
-    input_.PointerWheel(Point{px * s, py * s}, delta, ModifierKeys::None);
+    // Popups live in a separate HWND: read the scroll-lines setting fresh. The parent
+    // window's setting is unavailable (no back-reference), and tying popups to that
+    // would violate their independence. Default 3 if the query fails.
+    UINT lines = 3;
+    if (SystemParametersInfoW(SPI_GETWHEELSCROLLLINES, 0, &lines, 0) && lines == WHEEL_PAGESCROLL)
+        lines = 0;  // normalize 0xFFFFFFFF to 0 for the element tree
+    input_.PointerWheel(Point{px * s, py * s}, delta, ModifierKeys::None, lines);
 }
 
 } // namespace fluent

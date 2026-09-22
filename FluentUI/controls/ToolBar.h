@@ -23,7 +23,7 @@ namespace fluent {
 
 class Button;
 class MenuFlyout;
-struct MenuItem;
+class MenuItem;
 
 class ToolBar : public Panel {
 public:
@@ -50,6 +50,9 @@ public:
         return n;
     }
     bool HasOverflow() const { return overflowActive_; }
+
+    // Fired when the overflow menu ("...") is opened.
+    Event<ToolBar, RoutedEventArgs>& OverflowOpened() { return overflowOpened_; }
 
     void Render(const DrawingContext& dc) override;
     void OnPointerPressed(PointerEventArgs& e) override;

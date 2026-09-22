@@ -59,6 +59,7 @@ class Slider;
 class ComboBox;
 class NumericUpDown;
 class Rating;
+class LogViewer;
 
 // 五个强调色样本，被所有 AccentColor 演示复用，放一处以免各页给出不同的五个。
 struct AccentSwatch {
@@ -157,6 +158,8 @@ private:
     // 新控件的独立展示页（pages/InfoBarMetricPages.cpp、pages/DataGridChartPages.cpp）。
     std::unique_ptr<ScrollPanel> CreateInfoBarPage();
     std::unique_ptr<ScrollPanel> CreateMetricPage();
+    std::unique_ptr<ScrollPanel> CreateLogViewerPage();
+    std::unique_ptr<ScrollPanel> CreateRichTextBoxPage();
     std::unique_ptr<ScrollPanel> CreateDataGridPage();
     std::unique_ptr<ScrollPanel> CreateChartPage();
     // 自我调试页：用本框架的控件检查本框架的运行状态（pages/InspectorPage.cpp）。
@@ -271,6 +274,15 @@ private:
     TextBlock* clickResultText_ = nullptr;
     int clickCount_ = 0;
 
+    // LogViewer 页「复制选中」按钮要同时操作 viewer 和回显 TextBlock。Event 的
+    // handler 只有一个 owner 指针，所以把两者配成一个结构体存在这里，订阅时传它
+    // 的地址（GalleryApp 的成员，生命期覆盖整个页面）。
+    struct LogSelectionEcho {
+        LogViewer* viewer = nullptr;
+        TextBlock* echo = nullptr;
+    };
+    LogSelectionEcho logSelectionEcho_;
+
     // TreeView 页"动态加载"示例的状态，同上。
     struct TreeContext {
         TreeView* tree = nullptr;
@@ -321,6 +333,13 @@ private:
     Subscription metricLiveSub_;
     DataGrid* gridDemo_ = nullptr;
     TextBlock* gridStatus_ = nullptr;
+    // Frozen-column / switches card: the grid plus the readout that prints
+    // MeasureColumnContent's answer without applying it.
+    DataGrid* wideGridDemo_ = nullptr;
+    TextBlock* wideGridMeasure_ = nullptr;
+    // Multi-select card: the grid plus its live selection readout.
+    DataGrid* multiGridDemo_ = nullptr;
+    TextBlock* multiGridStatus_ = nullptr;
     SubscriptionBag gridSubs_;
     Chart* chartDemo_ = nullptr;
     TextBlock* chartStatus_ = nullptr;

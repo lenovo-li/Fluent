@@ -26,9 +26,16 @@ namespace fluent {
 class RangeBase : public Control {
 public:
     // --- Value management -------------------------------------------------
+    // The two setters PUSH the other end rather than rejecting: min_ > max_ would
+    // make CoerceValue's std::clamp undefined behaviour ([alg.clamp]/2 requires
+    // !(hi < lo)), and the two ends are set by independent calls that cannot see
+    // each other's argument. Pushing keeps the last call authoritative — a caller
+    // moving min past max means "the range starts here", so max follows — while
+    // rejecting would silently drop the value the caller just asked for.
     void SetMinimum(float v) {
         if (min_ == v) return;
         min_ = v;
+        if (max_ < min_) max_ = min_;
         // Re-coerce and notify if the value was pushed out of the new range.
         float coerced = CoerceValue(value_);
         if (coerced != value_) { value_ = coerced; OnValueChanged(value_, value_); }
@@ -37,6 +44,7 @@ public:
     void SetMaximum(float v) {
         if (max_ == v) return;
         max_ = v;
+        if (min_ > max_) min_ = max_;
         float coerced = CoerceValue(value_);
         if (coerced != value_) { value_ = coerced; OnValueChanged(value_, value_); }
         Invalidate();

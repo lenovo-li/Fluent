@@ -11,7 +11,7 @@
 #  endif
 #else
 #  define FLUENTUI_API
-#endif
+#endif 
 
 #if defined(_MSC_VER)
 #  define FLUENTUI_DEPRECATED(message) __declspec(deprecated(message))

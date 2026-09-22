@@ -49,6 +49,17 @@ protected:
         // 对话框演示需要 NativeWindowHost& 引用（DialogWindow::ShowDialog/Show）。
         gallery_->SetOwnerWindowProvider([this] { return this; });
 
+        // Hang detector. 回调跑在检测线程上，不是 UI 线程 —— 所以这里只能做
+        // 线程安全的事。OutputDebugStringA 是安全的；LogSessionEvent 不是
+        // （SessionLog 是 UI 线程独占的，从这里写就是数据竞争），所以不写它。
+        // 卡死的当时 UI 线程正忙着，也没法 Post 回去让它写。
+        SetOnHang([](double stalledMs) {
+            char buf[128];
+            sprintf_s(buf, "[fluent:hang] UI thread unresponsive for %.0f ms\n", stalledMs);
+            OutputDebugStringA(buf);
+        });
+        EnableHangDetector(true, 5000.0, 500.0);  // 阈值 5s，每 500ms 轮询
+
         SetRoot(gallery_->BuildContent());
     }
 

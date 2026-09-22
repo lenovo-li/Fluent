@@ -28,11 +28,17 @@
 
 #pragma once
 #include "../core/Control.h"
+#include "../base/Event.h"
+#include "../input/RoutedEvent.h"
 #include <optional>
 
 namespace fluent {
 
 class Grid;
+
+struct GridSplitterDragDeltaArgs {
+    float deltaDip = 0.0f;  // 本次拖动增量（水平或垂直，取决于 Orientation）
+};
 
 class GridSplitter final : public Control {
 public:
@@ -45,6 +51,20 @@ public:
 
     // Override: show resize cursor when hovering.
     HCURSOR Cursor() const override;
+
+    // --- Drag events ------------------------------------------------------
+    // Fired when the user starts dragging the splitter (pointer press on a
+    // resizable splitter). Use to snapshot layout state before the resize.
+    Event<GridSplitter, RoutedEventArgs>& DragStarted() { return dragStarted_; }
+
+    // Fired on every pointer move during a drag, after the tracks are resized.
+    // deltaDip is the cumulative offset from the drag anchor, not a per-move
+    // increment — it matches what the tracks were actually resized by.
+    Event<GridSplitter, GridSplitterDragDeltaArgs>& DragDelta() { return dragDelta_; }
+
+    // Fired when the drag ends (pointer release). This is where an app persists
+    // the new column/row widths — the tracks are Pixel definitions by now.
+    Event<GridSplitter, RoutedEventArgs>& DragCompleted() { return dragCompleted_; }
 
 protected:
     void OnPointerPressed(PointerEventArgs& e) override;
@@ -80,6 +100,10 @@ private:
     // which drifts (and, once a track hits its 1 DIP clamp, ratchets).
     std::optional<float> trackBeforeStart_;
     std::optional<float> trackAfterStart_;
+
+    Event<GridSplitter, RoutedEventArgs> dragStarted_;
+    Event<GridSplitter, GridSplitterDragDeltaArgs> dragDelta_;
+    Event<GridSplitter, RoutedEventArgs> dragCompleted_;
 };
 
 } // namespace fluent

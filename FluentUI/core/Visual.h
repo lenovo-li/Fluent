@@ -180,6 +180,13 @@ public:
         invalidateCtx_ = ctx;
     }
 
+    // True when this visual carries its own invalidate callback (i.e. it is a tree
+    // root the host has wired up). Exists so a test can assert that the host
+    // installed it: without it, InvalidateDirty walks to the root, finds nothing,
+    // and drops the frame request silently — a failure with no observable signal
+    // short of a live HWND. See NativeWindowHost::AddElement.
+    bool HasInvalidateCallback() const { return invalidateCb_ != nullptr; }
+
     // --- Dirty flags ------------------------------------------------------
     // Accumulated dirty flags for this visual (set by Invalidate* calls, read and
     // cleared by the host during a frame). Public so the window host can

@@ -2,8 +2,17 @@
 #pragma once
 
 #include "../core/Control.h"
+#include "../base/Event.h"
+#include "../input/RoutedEvent.h"
 
 namespace fluent {
+
+struct ScrollChangedArgs {
+    float offsetOld = 0.0f;    // 垂直：滚动前
+    float offsetNew = 0.0f;    // 垂直：滚动后
+    float offsetXOld = 0.0f;   // 水平：滚动前
+    float offsetXNew = 0.0f;   // 水平：滚动后
+};
 
 class ScrollViewer : public Control {
 public:
@@ -16,6 +25,7 @@ public:
     float Offset() const { return offset_; }
     float MaxOffset() const;
     RectDip ThumbRect() const;
+    RectDip TrackRect() const;
     bool HitThumb(float dipX, float dipY) const;
     void BeginDrag(float dipY);
     void DragTo(float dipY);
@@ -40,6 +50,16 @@ public:
     float MaxOffsetX() const;
     bool HorizontallyScrollable() const { return MaxOffsetX() > 0.0f; }
     RectDip HThumbRect() const;
+    // Length of the horizontal track. Shortened by the vertical rail's footprint when
+    // BOTH bars are live, so the two do not overlap in the corner. Public because
+    // controls that implement click-to-position need the track extent, not just the thumb.
+    float HTrackLength() const;
+    // Full horizontal track rect, in the SAME coordinate space as HThumbRect. Prefer this
+    // over HTrackLength when converting a click position into an offset: the track does not
+    // start at the owning control's left edge whenever the ScrollViewer was arranged into a
+    // sub-rect of it (DataGrid does exactly that to exclude frozen columns), and using the
+    // control's bounds instead skews the mapping by that inset.
+    RectDip HTrackRect() const;
     bool HitHThumb(float dipX, float dipY) const;
     bool HitHBarRegion(float dipX, float dipY) const;
     void SetHBarHover(bool over);
@@ -102,6 +122,16 @@ public:
     // controls where it is incidental (a settings panel).
     void SetIdleHideDelay(float seconds) { idleHideDelaySec_ = seconds; }
     void SetFadeSpeed(float tauSeconds) { fadeTau_ = tauSeconds; }
+    // Override the scrollbar color (default: theme's textPrimary). Use when the
+    // control's background differs from the theme default (e.g. black LogViewer
+    // in a light theme) and the automatic color would be invisible.
+    void SetScrollbarColor(D2D1::ColorF color) { scrollbarColor_ = color; hasCustomScrollbarColor_ = true; }
+
+    // Fired when the scroll offset changes (SetOffset, ScrollBy, DragTo, HDragTo,
+    // or animated scroll completes). Args carry the old and new offsets for both
+    // axes. Use for "scroll to bottom triggers load more", syncing two scrollers,
+    // or updating a virtualizing list's visible range.
+    Event<ScrollViewer, ScrollChangedArgs>& ScrollChanged() { return scrollChanged_; }
 
 protected:
     // Re-clamp BOTH axes: a resize changes each viewport extent, so an offset that
@@ -114,13 +144,7 @@ protected:
 
 private:
     float BarWidth() const;   // current width (DIP), lerped thin<->wide
-    RectDip TrackRect() const;
     float HBarThickness() const;  // horizontal rail thickness (DIP)
-    // Length of the horizontal track. Shortened by the vertical rail's footprint when
-    // BOTH bars are live, so the two do not overlap in the corner — the alternative
-    // (letting them cross) puts two translucent pills on top of each other, which
-    // reads as a bright square exactly where the eye lands when reaching for either.
-    float HTrackLength() const;
 
     float contentHeight_ = 0.0f;
     float offset_ = 0.0f;
@@ -154,6 +178,16 @@ private:
     bool keepVisibleWhenOverflow_ = false;  // never fully hide when content overflows
     float idleHideDelaySec_ = 1.2f;  // auto-hide after this idle time
     float fadeTau_ = 0.06f;          // fade/expand time constant (smaller = faster)
+
+    // Scrollbar ink. Defaults to the theme's textPrimary, which is correct whenever
+    // the scrolled surface follows the theme. A control that paints its own
+    // background regardless of theme (LogViewer's terminal black in a light theme)
+    // breaks that assumption — near-black ink at 35% alpha on black is invisible —
+    // and sets this instead.
+    D2D1_COLOR_F scrollbarColor_ = D2D1::ColorF(D2D1::ColorF::White);
+    bool hasCustomScrollbarColor_ = false;
+
+    Event<ScrollViewer, ScrollChangedArgs> scrollChanged_;
 };
 
 } // namespace fluent

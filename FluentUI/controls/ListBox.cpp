@@ -10,8 +10,18 @@
 
 namespace fluent {
 
-void ListBox::SetItemCount(size_t count)
-{
+namespace {
+constexpr float kMinItemHeight = 12.0f;  // guard for division in HitTestItem/MaxVisible/PageStep
+}  // namespace
+
+void ListBox::SetItemHeight(float dip) {
+    const float h = std::max(kMinItemHeight, dip);
+    if (itemHeight_ == h) return;
+    itemHeight_ = h;
+    UpdateScrollExtent();
+}
+
+void ListBox::SetItemCount(size_t count) {
     virtualItemCount_ = count;
     // Clear the items vector when switching to virtualized mode.
     items_.clear();
@@ -250,8 +260,8 @@ void ListBox::OnKeyDownRouted(KeyEventArgs& e)
 void ListBox::OnPointerWheelChanged(PointerEventArgs& e)
 {
     if (scroll_.MaxOffset() <= 0.0f) return;  // nothing to scroll
-    // One wheel notch scrolls 3 items (matching OS list default).
-    float lines = -static_cast<float>(e.wheelDelta) / WHEEL_DELTA * 3.0f;
+    // One wheel notch scrolls WheelScrollLines() items (system setting).
+    float lines = e.WheelScrollLines();
     scroll_.AnimateBy(lines * itemHeight_);
     Invalidate();
     e.handled = true;

@@ -26,12 +26,40 @@ std::unique_ptr<ScrollPanel> GalleryApp::CreateMenuBarPage() {
     auto* card = CreateExampleCard(content, L"Desktop menu navigation");
     auto* menu = card->Add(std::make_unique<MenuBar>());
     menu->SetWidth(520.0f);
-    menu->AddMenu(L"File", {{L"New"}, {L"Open"}, MenuItem::Sep(), {L"Exit"}});
-    menu->AddMenu(L"Edit", {{L"Undo"}, {L"Redo"}, MenuItem::Sep(), {L"Copy"}, {L"Paste"}});
-    menu->AddMenu(L"Help", {{L"About FluentUI"}});
-    CreateCodeExample(content, LR"(menu->AddMenu(L"File", {
-    {L"New"}, {L"Open"}, MenuItem::Sep(), {L"Exit"}
-});)");
+    {
+        std::vector<MenuItem> fileItems;
+        MenuItem m1; m1.text = L"New"; fileItems.push_back(std::move(m1));
+        MenuItem m2; m2.text = L"Open"; fileItems.push_back(std::move(m2));
+        fileItems.push_back(MenuItem::Sep());
+        MenuItem m3; m3.text = L"Exit"; fileItems.push_back(std::move(m3));
+        menu->AddMenu(L"File", std::move(fileItems));
+    }
+    {
+        std::vector<MenuItem> editItems;
+        MenuItem m1; m1.text = L"Undo"; editItems.push_back(std::move(m1));
+        MenuItem m2; m2.text = L"Redo"; editItems.push_back(std::move(m2));
+        editItems.push_back(MenuItem::Sep());
+        MenuItem m3; m3.text = L"Copy"; editItems.push_back(std::move(m3));
+        MenuItem m4; m4.text = L"Paste"; editItems.push_back(std::move(m4));
+        menu->AddMenu(L"Edit", std::move(editItems));
+    }
+    {
+        std::vector<MenuItem> helpItems;
+        MenuItem about; about.text = L"About FluentUI"; helpItems.push_back(std::move(about));
+        menu->AddMenu(L"Help", std::move(helpItems));
+    }
+    // MenuItem owns an Event<> and is therefore non-copyable: menus are built by
+    // move, not with an initializer_list (which always copies its elements).
+    CreateCodeExample(content, LR"(std::vector<MenuItem> items;
+
+MenuItem newFile;
+newFile.text = L"New";
+newFile.AddInvokeHandler([]{ OnNew(); });
+items.push_back(std::move(newFile));
+
+items.push_back(MenuItem::Sep());
+
+menu->AddMenu(L"File", std::move(items));)");
     return std::move(page);
 }
 
@@ -41,24 +69,40 @@ std::unique_ptr<ScrollPanel> GalleryApp::CreateMenuFlyoutPage() {
     auto* btn = card->Add(std::make_unique<Button>());
     btn->SetText(L"Show menu");
     auto flyout = std::make_shared<MenuFlyout>();
-    flyout->SetItems({
-        MenuItem{L"New file"},
-        MenuItem{L"Open..."},
-        MenuItem::Sep(),
-        MenuItem{L"Exit"}
-    });
+    {
+        std::vector<MenuItem> items;
+        MenuItem m1; m1.text = L"New file"; items.push_back(std::move(m1));
+        MenuItem m2; m2.text = L"Open..."; items.push_back(std::move(m2));
+        items.push_back(MenuItem::Sep());
+        MenuItem m3; m3.text = L"Exit"; items.push_back(std::move(m3));
+        flyout->SetItems(std::move(items));
+    }
     btn->SetFlyout(flyout.get());
     flyouts_.push_back(flyout);
     auto* hint = card->Add(std::make_unique<TextBlock>());
     hint->SetText(L"Click the button or right-click to show the context menu. MenuFlyout supports submenus and keyboard navigation.");
     hint->SetWrap(true); hint->SetFontSize(12.0f);
     CreateCodeExample(content, LR"(auto flyout = std::make_shared<MenuFlyout>();
-flyout->SetItems({
-    MenuItem{L"New", OnNew},
-    MenuItem{L"Open", OnOpen},
-    MenuItem::Sep(),
-    MenuItem{L"Exit", OnExit}
-});
+std::vector<MenuItem> items;
+
+MenuItem newItem;
+newItem.text = L"New";
+newItem.AddInvokeHandler([]{ OnNew(); });
+items.push_back(std::move(newItem));
+
+MenuItem openItem;
+openItem.text = L"Open";
+openItem.AddInvokeHandler([]{ OnOpen(); });
+items.push_back(std::move(openItem));
+
+items.push_back(MenuItem::Sep());
+
+MenuItem exitItem;
+exitItem.text = L"Exit";
+exitItem.AddInvokeHandler([]{ OnExit(); });
+items.push_back(std::move(exitItem));
+
+flyout->SetItems(std::move(items));
 button->SetFlyout(flyout.get());)");
     return std::move(page);
 }

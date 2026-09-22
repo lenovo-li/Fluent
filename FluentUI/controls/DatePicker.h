@@ -36,6 +36,13 @@ public:
     // Raised when the user selects a date (via the calendar or keyboard arrows).
     Event<DatePicker, RoutedEventArgs>& DateChanged() { return dateChanged_; }
 
+    // Raised after the calendar popup opens / after it closes, by any path (click,
+    // Space/Enter, a date pick, light dismiss, or a detach that closes it). Each
+    // fires once per transition — the open/close helpers return early when the popup
+    // is already in that state.
+    Event<DatePicker, RoutedEventArgs>& CalendarOpened() { return calendarOpened_; }
+    Event<DatePicker, RoutedEventArgs>& CalendarClosed() { return calendarClosed_; }
+
     void Measure(float availW, float availH) override;
     void Arrange(const RectDip& finalRect) override;
     void Render(const DrawingContext& dc) override;
@@ -63,6 +70,8 @@ private:
     WindowServices* window_ = nullptr;
 
     Event<DatePicker, RoutedEventArgs> dateChanged_;
+    Event<DatePicker, RoutedEventArgs> calendarOpened_;
+    Event<DatePicker, RoutedEventArgs> calendarClosed_;
 };
 
 } // namespace fluent

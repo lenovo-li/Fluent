@@ -119,13 +119,13 @@ std::unique_ptr<ScrollPanel> GalleryApp::CreateTreeViewPage() {
     // Add Root Node 按钮
     pageSubs_ += btnAddRoot->Click().Subscribe(&treeContext_, [](void* owner, Button&, RoutedEventArgs&) {
         auto* ctx = static_cast<GalleryApp::TreeContext*>(owner);
-        auto rows = ctx->tree->Items();
         int newId = ctx->nextId++;
-        rows.push_back(TreeViewRow{
-            newId, -1, L"Root Node " + std::to_wstring(newId), 0,
-            false, true, true, TreeViewIcon::Folder, nullptr
+        // parentId/depth 由 AddRoot 自动填 (-1 / 0)
+        ctx->tree->AddRoot({
+            .id = newId,
+            .text = L"Root Node " + std::to_wstring(newId),
+            .icon = TreeViewIcon::Folder,
         });
-        ctx->tree->SetRows(std::move(rows));
     });
 
     // Add Child to Selected 按钮
@@ -134,27 +134,17 @@ std::unique_ptr<ScrollPanel> GalleryApp::CreateTreeViewPage() {
         auto* selected = ctx->tree->SelectedRow();
         if (!selected) return;
 
-        auto rows = ctx->tree->Items();
         int newId = ctx->nextId++;
         int parentId = selected->id;
 
-        // 确保父节点有 hasChildren
-        for (auto& row : rows) {
-            if (row.id == parentId) {
-                row.hasChildren = true;
-                row.expanded = true;
-            }
-        }
-
-        // 插入子节点到父节点后
-        auto it = std::find_if(rows.begin(), rows.end(), [parentId](const TreeViewRow& r) { return r.id == parentId; });
-        if (it != rows.end()) {
-            rows.insert(it + 1, TreeViewRow{
-                newId, parentId, L"Child " + std::to_wstring(newId), selected->depth + 1,
-                false, false, false, TreeViewIcon::Device, nullptr
-            });
-        }
-        ctx->tree->SetRows(std::move(rows));
+        // parentId/depth/父节点 hasChildren 全部由 AddChild 处理
+        ctx->tree->AddChild(parentId, {
+            .id = newId,
+            .text = L"Child " + std::to_wstring(newId),
+            .icon = TreeViewIcon::Device,
+        });
+        // AddChild 不强制展开父节点（可能在填充折叠的子树），这里显式展开
+        ctx->tree->SetNodeExpanded(parentId, true);
     });
 
     // Remove Selected 按钮
@@ -162,45 +152,19 @@ std::unique_ptr<ScrollPanel> GalleryApp::CreateTreeViewPage() {
         auto* ctx = static_cast<GalleryApp::TreeContext*>(owner);
         auto* selected = ctx->tree->SelectedRow();
         if (!selected) return;
-
-        auto rows = ctx->tree->Items();
-        int selectedId = selected->id;
-
-        // 移除选中节点及其所有子孙
-        rows.erase(std::remove_if(rows.begin(), rows.end(), [&rows, selectedId](const TreeViewRow& r) {
-            if (r.id == selectedId) return true;
-            // 递归查找是否是 selectedId 的子孙
-            int pid = r.parentId;
-            while (pid != -1) {
-                if (pid == selectedId) return true;
-                auto parent = std::find_if(rows.begin(), rows.end(), [pid](const TreeViewRow& p) { return p.id == pid; });
-                if (parent == rows.end()) break;
-                pid = parent->parentId;
-            }
-            return false;
-        }), rows.end());
-
-        ctx->tree->SetRows(std::move(rows));
+        ctx->tree->RemoveNode(selected->id);  // 自动递归删除所有后代
     });
 
     // Expand All 按钮
     pageSubs_ += btnExpandAll->Click().Subscribe(&treeContext_, [](void* owner, Button&, RoutedEventArgs&) {
         auto* ctx = static_cast<GalleryApp::TreeContext*>(owner);
-        auto rows = ctx->tree->Items();
-        for (auto& row : rows) {
-            if (row.hasChildren) row.expanded = true;
-        }
-        ctx->tree->SetRows(std::move(rows));
+        ctx->tree->ExpandAll();
     });
 
     // Collapse All 按钮
     pageSubs_ += btnCollapseAll->Click().Subscribe(&treeContext_, [](void* owner, Button&, RoutedEventArgs&) {
         auto* ctx = static_cast<GalleryApp::TreeContext*>(owner);
-        auto rows = ctx->tree->Items();
-        for (auto& row : rows) {
-            if (row.hasChildren) row.expanded = false;
-        }
-        ctx->tree->SetRows(std::move(rows));
+        ctx->tree->CollapseAll();
     });
 
     CreateCodeExample(content, LR"(// TreeView 动态操作示例
@@ -212,23 +176,17 @@ std::vector<TreeViewRow> rows;
 rows.push_back(TreeViewRow{1, -1, L"Root", 0, false, true, true, TreeViewIcon::Folder, nullptr});
 tree->SetRows(std::move(rows));
 
-// 动态添加节点
-button->Clicked().Subscribe(tree, [](void* owner, Button&) {
-    auto* tree = static_cast<TreeView*>(owner);
-    auto rows = tree->Items();  // 读取当前数据
-    rows.push_back(TreeViewRow{newId, -1, L"New Root", 0, false, true, true, TreeViewIcon::Folder, nullptr});
-    tree->SetRows(std::move(rows));  // 写回
-});
+// 新 API：直接增删，无需读-改-写
+tree->AddRoot({.id=2, .text=L"New Root", .icon=TreeViewIcon::Folder});
+tree->AddChild(1, {.id=3, .text=L"Child"});  // parentId/depth 自动填充
+tree->RemoveNode(3);  // 递归删除子树
+tree->ExpandAll();
+tree->CollapseAll();
 
-// 展开/折叠所有节点
-expandAll->Clicked().Subscribe(tree, [](void* owner, Button&) {
-    auto* tree = static_cast<TreeView*>(owner);
-    auto rows = tree->Items();
-    for (auto& row : rows) {
-        if (row.hasChildren) row.expanded = true;
-    }
-    tree->SetRows(std::move(rows));
-});
+// 旧 API 仍然可用（SetRows）
+auto rows2 = tree->Items();
+rows2.push_back({.id=4, .parentId=-1, .text=L"Manual", .depth=0});
+tree->SetRows(std::move(rows2));
 )");
 
     return std::move(page);
@@ -271,10 +229,10 @@ std::unique_ptr<ScrollPanel> GalleryApp::CreateProgressBarPage() {
 
     pageSubs_ += startBtn->Click().Subscribe(state, [](void* owner, Button&, RoutedEventArgs&) {
         auto* s = static_cast<ProgressState*>(owner);
-        s->step = 0.0f;
-        s->bar->SetValue(0.0f);
-        // 真实应用应该监听后台任务进度更新，这里简化演示
-        // 实际场景中，任务完成一步 → 调用 bar->SetValue(progress)
+        if (s->step >= 1.0f)
+            s->step = 0.0f;
+        s->bar->SetValue(s->step);
+        s->step += 0.01f;
     });
 
     CreateCodeExample(content, LR"(progress->SetValue(0.65f);

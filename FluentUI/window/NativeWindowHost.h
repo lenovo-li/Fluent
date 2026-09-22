@@ -74,6 +74,7 @@ public:
     HINSTANCE Instance() const override { return hInst_; }
     float DpiScale() const override { return dpi_ / 96.0f; }
     UINT Dpi() const { return dpi_; }
+    UINT WheelScrollLines() const override { return wheelScrollLines_; }
 
     // Use an icon embedded in the application's module for the custom title bar,
     // taskbar and Alt+Tab. Call before Create/Show; 0 clears the icon.
@@ -344,6 +345,23 @@ public:
     // log was never enabled). The app writes this to disk on close.
     std::string BuildSessionReport() const { return diagnostics_.Log().Serialize(); }
 
+    // --- Hang watchdog (window/HangDetector.h) ----------------------------
+    // Start a background thread that reports when this window's UI thread stops
+    // painting for longer than thresholdMs. Independent of the rings above and of
+    // the session log: those are written ON the UI thread, so a stall produces no
+    // samples rather than a visible one, and nothing can report a hang WHILE it is
+    // happening. The callback runs on the detector thread — it must not touch UI
+    // state. Off by default; Stop is automatic on window destruction.
+    void EnableHangDetector(bool on, double thresholdMs = 5000.0,
+                            double pollIntervalMs = 500.0);
+    bool HangDetectorEnabled() const { return diagnostics_.Hang().IsRunning(); }
+    void SetOnHang(HangDetector::HangCallback cb) {
+        diagnostics_.Hang().SetOnHang(std::move(cb));
+    }
+    // How long the UI thread has been unresponsive right now, in ms. Safe from any
+    // thread; 0 before the first painted frame.
+    double HangStalledMs() const { return diagnostics_.Hang().StalledMs(); }
+
 protected:
     // Paint window content (background card etc.) before elements are drawn.
     // Coordinates are DIPs; multiply by DpiScale() for pixels — but the content
@@ -571,6 +589,7 @@ private:
     HINSTANCE hInst_ = nullptr;
     std::wstring title_;
     UINT dpi_ = 96;
+    UINT wheelScrollLines_ = 3;  // SPI_GETWHEELSCROLLLINES, updated on WM_SETTINGCHANGE
     UINT pixelW_ = 0, pixelH_ = 0;
     // Phase 1A (resize coalescing): the latest size seen in WM_SIZE, applied to the
     // content surface + layout once per frame by ApplyPendingResize(). resizePending_ is
@@ -662,11 +681,14 @@ private:
     // can never overshoot the panel.
     double modalGapMs_ = 0.0;
     int64_t modalLastOpportunityQpc_ = 0;
+    int64_t borderHitQpc_ = 0;        // Last WM_NCHITTEST that returned a resize border
+    int64_t lastSizeMsgQpc_ = 0;      // Last WM_SIZE arrival timestamp
     // Reset at WM_ENTERSIZEMOVE: the previous drag's estimate describes a mouse
     // rate and message mix that may no longer apply.
     void ResetModalGapEstimate() {
         modalGapMs_ = 0.0;
         modalLastOpportunityQpc_ = 0;
+        lastSizeMsgQpc_ = 0;  // First WM_SIZE will show gap from ENTERSIZEMOVE
     }
     // Fold this opportunity into the estimate and return the current gap estimate.
     double SampleModalGap();

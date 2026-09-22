@@ -31,6 +31,8 @@ float ScrollViewer::MaxOffset() const
 
 void ScrollViewer::SetOffset(float offsetDip)
 {
+    float oldOffset = offset_;
+    float oldOffsetX = offsetX_;
     float next = std::clamp(offsetDip, 0.0f, MaxOffset());
     // A direct set cancels any smooth scroll (drag, keyboard nav, EnsureVisible).
     target_ = next;
@@ -38,6 +40,15 @@ void ScrollViewer::SetOffset(float offsetDip)
     if (next == offset_) return;
     offset_ = next;
     Invalidate();
+    // Fire ScrollChanged only if we have subscribers (avoid constructing args).
+    if (scrollChanged_.HasSubscribers()) {
+        ScrollChangedArgs args;
+        args.offsetOld = oldOffset;
+        args.offsetNew = offset_;
+        args.offsetXOld = oldOffsetX;
+        args.offsetXNew = offsetX_;
+        scrollChanged_.Raise(*this, args);
+    }
 }
 
 void ScrollViewer::ScrollBy(float deltaDip)
@@ -62,10 +73,20 @@ float ScrollViewer::MaxOffsetX() const
 
 void ScrollViewer::SetOffsetX(float offsetDip)
 {
+    float oldOffset = offset_;
+    float oldOffsetX = offsetX_;
     float next = std::clamp(offsetDip, 0.0f, MaxOffsetX());
     if (next == offsetX_) return;
     offsetX_ = next;
     Invalidate();
+    if (scrollChanged_.HasSubscribers()) {
+        ScrollChangedArgs args;
+        args.offsetOld = oldOffset;
+        args.offsetNew = offset_;
+        args.offsetXOld = oldOffsetX;
+        args.offsetXNew = offsetX_;
+        scrollChanged_.Raise(*this, args);
+    }
 }
 
 void ScrollViewer::SetHBarHover(bool over)
@@ -118,6 +139,8 @@ bool ScrollViewer::NeedsTick() const
 bool ScrollViewer::Tick(float dtSec)
 {
     // Smooth-scroll offset.
+    bool wasAnimating = animating_;
+    float oldOffset = offset_;
     if (animating_) {
         target_ = std::clamp(target_, 0.0f, MaxOffset());
         float diff = target_ - offset_;
@@ -140,6 +163,16 @@ bool ScrollViewer::Tick(float dtSec)
     if (std::abs(visTarget_ - visibility_) <= 0.01f) visibility_ = visTarget_;
     if (std::abs(expandTarget_ - expand_) <= 0.01f) expand_ = expandTarget_;
     if (std::abs(expandXTarget_ - expandX_) <= 0.01f) expandX_ = expandXTarget_;
+
+    // Fire ScrollChanged only once when animation completes (not every frame).
+    if (wasAnimating && !animating_ && scrollChanged_.HasSubscribers()) {
+        ScrollChangedArgs args;
+        args.offsetOld = oldOffset;
+        args.offsetNew = offset_;
+        args.offsetXOld = offsetX_;
+        args.offsetXNew = offsetX_;
+        scrollChanged_.Raise(*this, args);
+    }
 
     Invalidate();
     return NeedsTick();
@@ -219,6 +252,13 @@ float ScrollViewer::HTrackLength() const
     return std::max(1.0f, bounds_.w - reserve);
 }
 
+RectDip ScrollViewer::HTrackRect() const
+{
+    const float trackLen = HTrackLength();
+    const float th = HBarThickness();
+    return {bounds_.x, bounds_.bottom() - th - kRightPad, trackLen, th};
+}
+
 RectDip ScrollViewer::HThumbRect() const
 {
     if (contentWidth_ <= bounds_.w || bounds_.w <= 0.0f) return {};
@@ -285,6 +325,14 @@ void ScrollViewer::Render(const DrawingContext& dc)
     const ThemeSnapshot& th = Theme();
     const ColorTokens& pal = th.colors;
 
+    // When no custom scrollbar color is set, use the theme's textPrimary (near-black
+    // in light themes, near-white in dark). When a custom color is set, use that
+    // instead — needed for controls that override their background to conflict with
+    // the theme (LogViewer's black surface in a light theme would make textPrimary
+    // ink invisible).
+    D2D1_COLOR_F ink = hasCustomScrollbarColor_ ? scrollbarColor_
+        : D2D1::ColorF(pal.textPrimary.r, pal.textPrimary.g, pal.textPrimary.b);
+
     const float trackBase = th.dark ? 0.12f : 0.08f;
     const float idleBase = th.dark ? 0.40f : 0.32f;
 
@@ -297,8 +345,7 @@ void ScrollViewer::Render(const DrawingContext& dc)
             float r = tr.w * 0.5f;
             dc.FillRoundedRect(
                 D2D1::RoundedRect(D2D1::RectF(tr.x, tr.y, tr.right(), tr.bottom()), r, r),
-                D2D1::ColorF(pal.textPrimary.r, pal.textPrimary.g, pal.textPrimary.b,
-                             trackAlpha));
+                D2D1::ColorF(ink.r, ink.g, ink.b, trackAlpha));
         }
 
         // Thumb: a pill (corner = half width), opacity driven by fade + drag/hover.
@@ -308,8 +355,7 @@ void ScrollViewer::Render(const DrawingContext& dc)
         dc.FillRoundedRect(
             D2D1::RoundedRect(D2D1::RectF(thumb.x, thumb.y, thumb.right(), thumb.bottom()),
                               rad, rad),
-            D2D1::ColorF(pal.textPrimary.r, pal.textPrimary.g, pal.textPrimary.b,
-                         base * vis));
+            D2D1::ColorF(ink.r, ink.g, ink.b, base * vis));
     }
 
     if (horizontal) {
@@ -320,8 +366,7 @@ void ScrollViewer::Render(const DrawingContext& dc)
             float r = tr.h * 0.5f;
             dc.FillRoundedRect(
                 D2D1::RoundedRect(D2D1::RectF(tr.x, tr.y, tr.right(), tr.bottom()), r, r),
-                D2D1::ColorF(pal.textPrimary.r, pal.textPrimary.g, pal.textPrimary.b,
-                             trackAlpha));
+                D2D1::ColorF(ink.r, ink.g, ink.b, trackAlpha));
         }
 
         RectDip thumb = HThumbRect();
@@ -330,8 +375,7 @@ void ScrollViewer::Render(const DrawingContext& dc)
         dc.FillRoundedRect(
             D2D1::RoundedRect(D2D1::RectF(thumb.x, thumb.y, thumb.right(), thumb.bottom()),
                               rad, rad),
-            D2D1::ColorF(pal.textPrimary.r, pal.textPrimary.g, pal.textPrimary.b,
-                         base * vis));
+            D2D1::ColorF(ink.r, ink.g, ink.b, base * vis));
     }
 }
 

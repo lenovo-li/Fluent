@@ -19,6 +19,12 @@ namespace fluent {
 
 class Panel : public FrameworkElement {
 public:
+    // Set the internal spacing between the panel's bounds and its content area.
+    // Unlike margin (which the parent honors), padding is applied by the panel
+    // itself when measuring and arranging children.
+    void SetPadding(const Thickness& p) { SetProperty(padding_, p, DirtyFlags::Measure); }
+    const Thickness& Padding() const { return padding_; }
+
     // Take ownership of a child and return a borrowed pointer for the caller to
     // configure. Children render/route in registration order. If this panel is
     // already attached to a live tree, the new child is attached immediately so
@@ -155,6 +161,13 @@ protected:
     // Layout strategy hooks. MeasureOverride returns the panel's desired size
     // given the available space; ArrangeOverride positions children within the
     // panel's content rect.
+    //
+    // BOTH RECEIVE PADDING-DEDUCTED VALUES. Panel::Measure subtracts the padding
+    // from the available size before calling MeasureOverride (and adds it back to
+    // the returned desired size), and Panel::Arrange insets the final rect before
+    // calling ArrangeOverride. So an implementation lays out children against the
+    // content box and never needs to know padding exists — which is what keeps all
+    // ten subclasses unchanged by its introduction.
     virtual SizeDip MeasureOverride(float availW, float availH) = 0;
     virtual void ArrangeOverride(const RectDip& content) = 0;
 
@@ -170,6 +183,7 @@ private:
 
 protected:
     std::vector<std::unique_ptr<FrameworkElement>> children_;
+    Thickness padding_;
 };
 
 } // namespace fluent

@@ -1,4 +1,4 @@
-﻿// GalleryMain.cpp — 核心框架逻辑（导航 + 页面切换）
+// GalleryMain.cpp — 核心框架逻辑（导航 + 页面切换）
 #include "GalleryMain.h"
 #include "../FluentUI/layout/DockPanel.h"
 #include "../FluentUI/layout/Grid.h"
@@ -89,7 +89,7 @@ void GalleryApp::BuildAllPages() {
         101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111,  // 基础控件
         201, 208, 202, 203, 204, 205, 206, 207,   // 输入控件
         301, 302,                            // 文本控件
-        401, 402, 403, 404, 405, 406, 407,  // 数据控件（含四个新控件）
+        401, 402, 403, 404, 405, 406, 407, 408, 409,  // 数据控件（LogViewer + RichTextBox）
         501, 502, 503, 504, 505, 506, 507, 508, 509, 510, 511, 512,   // 布局容器（512 新增）
         601, 602, 603, 604, 605, 606, 607, 608,  // 窗口 & 对话框
         701, 702, 703, 704, 705, 707,        // 性能演示 + 跨控件主题话题（707）
@@ -146,6 +146,8 @@ std::vector<TreeViewRow> GalleryApp::BuildNavigationTree() {
     rows.push_back({405, 400, L"Chart", 1, false, false, true, TreeViewIcon::None});
     rows.push_back({406, 400, L"InfoBar", 1, false, false, true, TreeViewIcon::None});
     rows.push_back({407, 400, L"Metric", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({408, 400, L"LogViewer", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({409, 400, L"RichTextBox", 1, false, false, true, TreeViewIcon::None});
 
     rows.push_back({500, -1, L"布局容器", 0, false, true, true, TreeViewIcon::Folder});
     rows.push_back({501, 500, L"Grid", 1, false, false, true, TreeViewIcon::None});
@@ -250,6 +252,8 @@ std::unique_ptr<ScrollPanel> GalleryApp::CreatePageForId(int id) {
         case 405: return CreateChartPage();
         case 406: return CreateInfoBarPage();
         case 407: return CreateMetricPage();
+        case 408: return CreateLogViewerPage();
+        case 409: return CreateRichTextBoxPage();
 
         case 501: return CreateGridPage();
         case 502: return CreateStackPanelPage();

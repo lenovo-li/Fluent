@@ -8,6 +8,7 @@
   <ItemGroup>
     <ClCompile Include="framework\TestMain.cpp"><Filter>framework</Filter></ClCompile>
     <ClCompile Include="unit\GeometryTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\HangDetectorTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\StackPanelTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\WrapPanelTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\GridTests.cpp"><Filter>unit</Filter></ClCompile>
@@ -28,9 +29,8 @@
     <ClCompile Include="unit\WindowServicesSubscriptionTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\CompositionBackendTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ProgressBarCompositionTests.cpp"><Filter>unit</Filter></ClCompile>
-    <ClCompile Include="unit\ScrollContentHostTests.cpp"><Filter>unit</Filter></ClCompile>
-    <ClCompile Include="unit\TreeViewCompositionTests.cpp"><Filter>unit</Filter></ClCompile>
-    <ClCompile Include="unit\TextAreaCompositionTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\RepeatButtonTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\TreeViewIncrementalApiTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\LineIndexTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\LineLayoutCacheTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\LogSinkTests.cpp"><Filter>unit</Filter></ClCompile>
@@ -108,6 +108,7 @@
     <ClCompile Include="unit\DeviceLostStatePreservationTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\PopupGeometryTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\RangeBaseTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\RangeBaseInvertedTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ResourceCacheTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ImageTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\UndoStackTests.cpp"><Filter>unit</Filter></ClCompile>
@@ -117,7 +118,17 @@
     <ClCompile Include="unit\ComboBoxTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ViewboxTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ListBoxTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\ListBoxItemHeightGuardTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ListBoxMultiSelectTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\LogViewerTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\RichTextDocumentTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\RichTextBoxTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\RichTextBoxEventsTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\ScrollViewerEventsTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\GridSplitterEventsTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\MenuFlyoutEventsTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\MenuItemEventsTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\SliderEventsTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\SelectorTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\SessionLogTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\TreeViewTypeAheadTests.cpp"><Filter>unit</Filter></ClCompile>
@@ -140,6 +151,7 @@
     <ClCompile Include="unit\ToolBarTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\StatusBarTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\UniformGridTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\UniformGridStretchTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\FrameworkElementMinMaxTests.cpp"><Filter>unit</Filter></ClCompile>
   </ItemGroup>
   <ItemGroup>

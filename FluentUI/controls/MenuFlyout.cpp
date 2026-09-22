@@ -358,6 +358,13 @@ MenuFlyout::~MenuFlyout() {
 void MenuFlyout::SetItems(std::vector<MenuItem> items) {
     Close();
     items_ = std::move(items);
+    borrowedItems_ = nullptr;  // we own, not borrowing
+}
+
+void MenuFlyout::SetItemsBorrow(const std::vector<MenuItem>* items) {
+    Close();
+    borrowedItems_ = items;
+    items_.clear();  // drop owned items when switching to borrow
 }
 
 bool MenuFlyout::IsOpen() const {
@@ -392,7 +399,8 @@ void MenuFlyout::MeasureLevel(Control* list, float& outW, float& outH) const {
 }
 
 void MenuFlyout::ShowAt(int screenX, int screenY) {
-    if (!window_ || items_.empty()) return;
+    const std::vector<MenuItem>* items = borrowedItems_ ? borrowedItems_ : &items_;
+    if (!window_ || !items || items->empty()) return;
     Close();
     // Zero-size anchor at the cursor: PopupHost places the card with its top-left
     // at the anchor's bottom-left, i.e. right at the cursor point.
@@ -401,7 +409,8 @@ void MenuFlyout::ShowAt(int screenX, int screenY) {
 }
 
 void MenuFlyout::ShowBelow(const RECT& anchorScreenRect) {
-    if (!window_ || items_.empty()) return;
+    const std::vector<MenuItem>* items = borrowedItems_ ? borrowedItems_ : &items_;
+    if (!window_ || !items || items->empty()) return;
     Close();
     OpenRoot(anchorScreenRect);
 }
@@ -412,10 +421,15 @@ void MenuFlyout::OpenRoot(const RECT& anchor) {
     // own message handler, so no retired PopupHost's WndProc is on the stack.
     ReapRetired();
 
+    // Resolve owned-vs-borrowed once; both the level's item pointer and its list view
+    // must name the same vector, or InvokeItem would index into a different one than
+    // the row the user clicked.
+    const std::vector<MenuItem>* rootItems = borrowedItems_ ? borrowedItems_ : &items_;
+
     Level level;
-    level.items = &items_;
+    level.items = rootItems;
     level.parentIndex = -1;
-    level.list = MakeListView(&items_, 0);
+    level.list = MakeListView(rootItems, 0);
 
     float wDip = 0.0f, hDip = 0.0f;
     MeasureLevel(level.list.get(), wDip, hDip);
@@ -592,16 +606,37 @@ void MenuFlyout::InvokeItem(int levelIndex, int itemIndex) {
     if (levelIndex < 0 || levelIndex >= static_cast<int>(levels_.size())) return;
     const std::vector<MenuItem>* items = levels_[levelIndex].items;
     if (!items || itemIndex < 0 || itemIndex >= static_cast<int>(items->size())) return;
-    // Copy the callback before closing (closing destroys the levels + list views).
-    std::function<void()> action = (*items)[itemIndex].onInvoke;
+
+    // Resolve the item to a stable pointer BEFORE closing. `items` points at the
+    // caller's own vector (items_ here, or a submenu vector inside it) — Close()
+    // destroys the levels and their list views, not the items, so the pointer stays
+    // valid across it. What does NOT survive is `levels_[levelIndex]`, which is why
+    // the index lookup has to happen first.
+    //
+    // The item is not copied: MenuItem owns its event and is deliberately
+    // non-copyable. Raising through a pointer also means a handler that inspects the
+    // sender sees the real menu item, not a temporary.
+    MenuItem* item = const_cast<MenuItem*>(&(*items)[itemIndex]);
+
+    // Close first, then raise — an action that opens a dialog must not do so with
+    // the menu still on screen, and this ordering is what the old code did too.
     Close();
-    if (action) action();
+    item->RaiseInvoked();
 }
 
 void MenuFlyout::Close() {
     if (levels_.empty()) return;
     CloseFrom(0);
     ClearWindowHooks();
+
+    // Raise the event first, then invoke the deprecated callback. Subscribers
+    // expecting the standard event pattern get it, and legacy code that set a
+    // callback still runs.
+    RoutedEventArgs args;
+    args.source = nullptr;  // MenuFlyout is not a UIElement
+    args.originalSource = nullptr;
+    closed_.Raise(*this, args);
+
     if (onClosed_) onClosed_();
     TraceMsg(kTag, "Close: menu chain closed");
 }

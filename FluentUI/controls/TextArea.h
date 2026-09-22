@@ -17,8 +17,6 @@
 
 #include "TextEditBase.h"
 #include "../layout/ScrollViewer.h"
-#include "../composition/ScrollContentHost.h"
-#include "../composition/OverlaySignature.h"
 #include "../text/LineIndex.h"
 #include "../text/LineLayoutCache.h"
 #include "../text/VisibleLines.h"
@@ -67,10 +65,8 @@ public:
     void OnPointerWheelChanged(PointerEventArgs& e) override;
     bool WantsAnimationTick() const override;
     void OnAnimationTick(float dtSec) override;
-    // Composition mode runs the blink as a compositor opacity animation, so the
-    // window's 530 ms blink timer (which repaints the WHOLE window each tick) is not
-    // needed. The UI-thread fallback keeps using it.
-    bool WantsBlink() const override { return !CompositionActive(); }
+    // The caret blink is driven by the window's 530 ms blink timer.
+    bool WantsBlink() const override { return true; }
     void OnBlink() override;
 
 protected:
@@ -97,26 +93,13 @@ protected:
     // Element input.
     void OnBoundsChanged() override;
     void OnPointerLeft() override;
-    void UpdateContextModalResize(bool inModalResize) override;
 
-    // Compositor lifecycle (mirrors TreeView): build the host on attach, tear it down
-    // on detach, and keep the surfaces current across focus / theme / DPI / device loss.
+    // Lifecycle: keep state current across attach / detach / focus / theme / DPI.
     void OnAttachedToTree() override;
     void OnDetachedFromTree() override;
     void OnFocusChanged() override;
     void OnThemeChanged() override;
     void OnDpiChanged(float dpiScale) override;
-    void OnDeviceLost() override;
-    void OnDeviceRestored() override;
-    // Composited mode draws nothing in Render(), so opacity is pushed onto the
-    // composition sub-tree rather than folded into the host's DrawingContext.
-    void OnOpacityChanged(float opacity) override;
-
-    // Same reason as OnOpacityChanged, for the collapsed state: skipping Render
-    // cannot hide a DComp visual, so hiding has to reach the compositor. Without
-    // this, a collapsed TextArea keeps its text on screen over whatever replaced it.
-    void OnVisibilityChanged(bool visible) override;
-    void OnAncestorVisibilityChanged() override;
 
 public:
     // Routed pointer input: scrollbar drag + click-to-place + drag-select (both
@@ -293,11 +276,22 @@ public:
     // (the library cannot tell an explicit-click from an initialization call).
     void JumpToTail();
 
+    // Clear all content. The log-view companion to SetText: beyond discarding text,
+    // it also restores tail-follow state to follow IF the feature is armed (clearing
+    // after scrolling up would otherwise leave followingTail_ detached, causing new
+    // appends not to auto-scroll). Also resets horizontal offset (NoWrap mode), since
+    // an empty document has nothing to scroll sideways to.
+    //
+    // Use this rather than SetText(L"") when the intent is "clear the log and start
+    // fresh" — the latter leaves navigation state untouched, which is correct for
+    // "replace document" but wrong for log reset.
+    void Clear();
+
     // Is `offset` close enough to `maxOffset` to count as "at the bottom"?
     //
     // A pure function, and public, for the reason the repo extracts PlanRedraw: the
-    // decision is a state-machine transition that must be checkable without a window, a
-    // compositor or a scroll animation in flight. The tolerance is half a line height —
+    // decision is a state-machine transition that must be checkable without a window or
+    // a scroll animation in flight. The tolerance is half a line height —
     // float error in the offset arithmetic and a few pixels of overshoot must not make
     // the follow state chatter on and off while data streams in, which would show up as
     // the view intermittently refusing to follow.
@@ -311,8 +305,7 @@ public:
     // The horizontal scroll position currently shown (DIPs). Zero under Wrap, where
     // there is nothing to scroll to by construction.
     float CurrentOffsetX() const;
-    // The vertical scroll position currently shown (DIPs) — the compositor's
-    // interpolated value in composited mode, scroll_'s in the fallback. Public because
+    // The vertical scroll position currently shown (DIPs). Public because
     // the tail-follow state machine is only observable through it: "an append scrolled
     // to the new bottom" is a statement about this number.
     float CurrentOffsetDip() const { return CurrentOffset(); }
@@ -358,7 +351,7 @@ public:
 
     // The lines the NoWrap draw loop would visit for a band of content space. THIS IS
     // THE ACTUAL BOUND the loop uses, exposed so the "cost is O(visible lines)" claim
-    // is checkable: headless, DrawTextToSurface returns at its null-DC guard, so a
+    // is checkable: headless rendering returns at its null-DC guard, so a
     // test that drives a draw never reaches the loop. Empty span in Wrap mode, where
     // the question has no answer without laying the document out.
     LineSpan VisibleLineSpanForBand(float bandTopDip, float bandHeightDip) const;
@@ -472,38 +465,16 @@ private:
     void UpdateTailFollow();
 
     // Move the horizontal offset by a delta and re-rasterize. Separate from the
-    // vertical helpers because the horizontal offset is BAKED INTO THE PIXELS (see
-    // DrawLinesToSurface): there is no compositor OffsetX to slide, so a horizontal
-    // move always costs one content redraw. That is the same order as one keystroke,
-    // and it is why the design carries no horizontal overscan.
+    // vertical helpers because the horizontal offset is BAKED INTO THE PIXELS: a
+    // horizontal move always costs one content redraw. That is the same order as one
+    // keystroke, and it is why the design carries no horizontal overscan.
     void ScrollHorizontallyBy(float deltaDip);
 
-    // --- Compositor scrolling (Phase 4) ----------------------------------------
-    // Active only when the window offers a composition backend; otherwise content_ is
-    // null and every path below falls back to the UI-thread scroll_.
-    bool CompositionActive() const { return content_ && content_->Valid(); }
-    // The scroll offset currently SHOWN (DIPs) — mid-tween this is the compositor's
-    // interpolated value, so hit-test / caret / IME agree with what is on screen.
+    // The scroll offset currently SHOWN (DIPs).
     float CurrentOffset() const;
-    // Reconcile the compositor surfaces with the current state and commit. Safe only
-    // OUTSIDE the window content frame (attach / bounds / theme / dpi / input / tick).
-    //   redrawText: re-rasterize the text surface (text / selection / IME / theme
-    //     changed its pixels). false = only refill when scrolling near a buffer edge.
-    //   overlayForce: re-rasterize the scrollbar + frame overlay unconditionally.
-    //     false = redraw only if its OverlaySignature changed, which is what stops the
-    //     scrollbar's idle-hide countdown from re-rasterizing a static bar every frame.
-    void RefreshComposition(bool redrawText, bool overlayForce);
-    void UpdateCompositionVisibility();
-    OverlaySignature CurrentOverlaySig() const;
-    // The padded text region as a host inset (text scrolls inside it; the scrollbar
-    // and frame paint over the full bounds).
-    ScrollContentHost::Inset TextInset() const;
-    // Draw the text / selection / IME underline spanning [surfaceOriginDip, +height)
-    // into the content surface. Caret is NOT drawn here — it is its own visual.
-    void DrawTextToSurface(ID2D1DeviceContext* dc, float surfaceOriginDip,
-                           float surfaceHeightDip);
+
     // --- NoWrap virtualized drawing ------------------------------------------
-    // The NoWrap counterpart of DrawTextToSurface: draws only the lines that
+    // The NoWrap counterpart: draws only the lines that
     // intersect [surfaceOriginDip, +surfaceHeightDip), which is what makes the cost
     // O(visible lines) rather than O(document). Structurally identical to
     // TreeView::DrawRowsToSurface, and for the same reason — a constant line height
@@ -538,11 +509,6 @@ private:
     void NoWrapCaretMetrics(UINT32 index, float& x, float& y, float& height) const;
     UINT32 NoWrapHitIndex(float localX, float localY) const;
 
-    // Draw the box frame + scrollbar into the overlay surface (full bounds).
-    void DrawOverlayToSurface(ID2D1DeviceContext* dc, float viewportWDip,
-                              float viewportHDip);
-    // Push the caret's rect (content space) + blink state to the compositor.
-    void SyncCaretVisual();
     // Scroll while drag-selecting past the top/bottom edge of the text region.
     void AutoScrollForDragSelect(float dipY);
 
@@ -568,7 +534,9 @@ private:
     // Per-line layouts under NoWrap. Keyed by line number, which survives an append
     // untouched — see LineLayoutCache's header for why that property matters. Cleared
     // from OnTextLayoutDirty, because any edit changes what the cached lines contain.
-    mutable LineLayoutCache lineLayouts_;
+    mutable LineLayoutCache lineLayouts_{2048};  // 2048 vs default 512; large TextAreas
+                                                 // (~50k lines) can show 800+ rows in a
+                                                 // 2× viewport overscan refill — 512 thrashed
     // Scratch for the caret line while an IME composition is active. That one line is
     // rebuilt every keystroke and deliberately NOT cached (its content changes each
     // time), so it needs somewhere to live that is not a per-call temporary — one line
@@ -615,8 +583,6 @@ private:
     mutable float wrapExtentWidth_ = 0.0f;
 
     ScrollViewer scroll_;
-    std::unique_ptr<ScrollContentHost> content_;  // null => UI-thread fallback
-    OverlaySignature lastOverlaySig_;             // last-rasterized overlay state
     mutable bool layoutDirty_ = true;
     // LineHeight() builds a probe layout, and the tick path calls it often; memoize
     // per (fontSize, dpiScale).

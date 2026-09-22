@@ -71,6 +71,18 @@ public:
     void PreviousMonth();
     void NextMonth();
 
+    // Raised when the DISPLAYED month changes — the nav arrows, SetViewedMonth, or a
+    // selection that paged the view to another month. Distinct from SelectionChanged:
+    // paging the view does not pick a date, and picking a date within the visible
+    // month does not change the view. What an external "2026 年 9 月" label listens to.
+    //
+    // Not raised when the call lands on the month already shown, so a handler cannot
+    // be driven in a loop by re-asserting the current view.
+    struct DisplayMonthChangedArgs { int year; int month; };
+    Event<Calendar, DisplayMonthChangedArgs>& DisplayMonthChanged() {
+        return displayMonthChanged_;
+    }
+
     // The date of cell index `i` (0-41, row-major, Sunday-first). Public for tests.
     void CellDate(int i, int& y, int& m, int& d) const;
 
@@ -120,6 +132,9 @@ protected:
     void OnThemeChanged() override { Invalidate(); }
 
 private:
+    // Raise DisplayMonthChanged when the view has moved off (oldYear, oldMonth).
+    void NotifyViewChanged(int oldYear, int oldMonth);
+
     // Layout geometry (computed in Measure, used in Render/HitTest).
     float cellW_ = 36.0f;
     float cellH_ = 32.0f;
@@ -142,6 +157,7 @@ private:
     AnimatedValue hoverFade_{0.0f};
 
     Event<Calendar, RoutedEventArgs> selectionChanged_;
+    Event<Calendar, DisplayMonthChangedArgs> displayMonthChanged_;
 };
 
 } // namespace fluent

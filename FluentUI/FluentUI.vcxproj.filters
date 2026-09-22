@@ -19,6 +19,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="fl_common.h" />
+    <ClInclude Include="pch.h" />
     <ClInclude Include="Api.h" />
     <ClInclude Include="Application.h" />
     <ClInclude Include="FluentUI.h" />
@@ -65,6 +66,7 @@
     <ClInclude Include="controls\ToolBar.h"><Filter>controls</Filter></ClInclude>
     <ClInclude Include="controls\StatusBar.h"><Filter>controls</Filter></ClInclude>
     <ClInclude Include="controls\Rating.h"><Filter>controls</Filter></ClInclude>
+    <ClInclude Include="controls\RepeatButton.h"><Filter>controls</Filter></ClInclude>
     <ClInclude Include="controls\NumericUpDown.h"><Filter>controls</Filter></ClInclude>
     <ClInclude Include="dialogs\FileDialog.h"><Filter>dialogs</Filter></ClInclude>
     <ClInclude Include="layout\Panel.h"><Filter>layout</Filter></ClInclude>
@@ -100,6 +102,9 @@
     <ClInclude Include="controls\InfoBar.h"><Filter>controls</Filter></ClInclude>
     <ClInclude Include="controls\Metric.h"><Filter>controls</Filter></ClInclude>
     <ClInclude Include="controls\DataGrid.h"><Filter>controls</Filter></ClInclude>
+    <ClInclude Include="controls\LogViewer.h"><Filter>controls</Filter></ClInclude>
+    <ClInclude Include="controls\RichTextBox.h"><Filter>controls</Filter></ClInclude>
+    <ClInclude Include="controls\RichTextDocument.h"><Filter>controls</Filter></ClInclude>
     <ClInclude Include="controls\Chart.h"><Filter>controls</Filter></ClInclude>
     <ClInclude Include="controls\Separator.h"><Filter>controls</Filter></ClInclude>
     <ClInclude Include="controls\ProgressBar.h"><Filter>controls</Filter></ClInclude>
@@ -113,7 +118,6 @@
     <ClInclude Include="graphics\DCompHost.h"><Filter>graphics</Filter></ClInclude>
     <ClInclude Include="composition\ICompositionBackend.h"><Filter>composition</Filter></ClInclude>
     <ClInclude Include="composition\DCompCompositionBackend.h"><Filter>composition</Filter></ClInclude>
-    <ClInclude Include="composition\ScrollContentHost.h"><Filter>composition</Filter></ClInclude>
     <ClInclude Include="composition\OverlaySignature.h"><Filter>composition</Filter></ClInclude>
     <ClInclude Include="graphics\ResourceCache.h"><Filter>graphics</Filter></ClInclude>
     <ClInclude Include="graphics\DeviceLostController.h"><Filter>graphics</Filter></ClInclude>
@@ -146,6 +150,7 @@
     <ClInclude Include="diagnostics\SessionLog.h"><Filter>diagnostics</Filter></ClInclude>
   </ItemGroup>
   <ItemGroup>
+        <ClCompile Include="pch.cpp" />
     <ClCompile Include="Application.cpp" />
     <ClCompile Include="styling\ThemeManager.cpp"><Filter>styling</Filter></ClCompile>
     <ClCompile Include="animation\Animation.cpp"><Filter>animation</Filter></ClCompile>
@@ -169,10 +174,8 @@
     <ClCompile Include="controls\ToolBar.cpp"><Filter>controls</Filter></ClCompile>
     <ClCompile Include="controls\StatusBar.cpp"><Filter>controls</Filter></ClCompile>
     <ClCompile Include="controls\Rating.cpp"><Filter>controls</Filter></ClCompile>
+    <ClCompile Include="controls\RepeatButton.cpp"><Filter>controls</Filter></ClCompile>
     <ClCompile Include="controls\NumericUpDown.cpp"><Filter>controls</Filter></ClCompile>
-    <ClCompile Include="controls\ToolTip.cpp"><Filter>controls</Filter></ClCompile>
-    <ClCompile Include="controls\ToggleButton.cpp"><Filter>controls</Filter></ClCompile>
-    <ClCompile Include="controls\SplitButton.cpp"><Filter>controls</Filter></ClCompile>
     <ClCompile Include="dialogs\FileDialog.cpp"><Filter>dialogs</Filter></ClCompile>
     <ClCompile Include="layout\Panel.cpp"><Filter>layout</Filter></ClCompile>
     <ClCompile Include="layout\StackPanel.cpp"><Filter>layout</Filter></ClCompile>
@@ -205,6 +208,9 @@
     <ClCompile Include="controls\InfoBar.cpp"><Filter>controls</Filter></ClCompile>
     <ClCompile Include="controls\Metric.cpp"><Filter>controls</Filter></ClCompile>
     <ClCompile Include="controls\DataGrid.cpp"><Filter>controls</Filter></ClCompile>
+    <ClCompile Include="controls\LogViewer.cpp"><Filter>controls</Filter></ClCompile>
+    <ClCompile Include="controls\RichTextBox.cpp"><Filter>controls</Filter></ClCompile>
+    <ClCompile Include="controls\RichTextDocument.cpp"><Filter>controls</Filter></ClCompile>
     <ClCompile Include="controls\Chart.cpp"><Filter>controls</Filter></ClCompile>
     <ClCompile Include="controls\Separator.cpp"><Filter>controls</Filter></ClCompile>
     <ClCompile Include="controls\ProgressBar.cpp"><Filter>controls</Filter></ClCompile>
@@ -217,7 +223,6 @@
     <ClCompile Include="graphics\DWriteContext.cpp"><Filter>graphics</Filter></ClCompile>
     <ClCompile Include="graphics\DCompHost.cpp"><Filter>graphics</Filter></ClCompile>
     <ClCompile Include="composition\DCompCompositionBackend.cpp"><Filter>composition</Filter></ClCompile>
-    <ClCompile Include="composition\ScrollContentHost.cpp"><Filter>composition</Filter></ClCompile>
     <ClCompile Include="graphics\ResourceCache.cpp"><Filter>graphics</Filter></ClCompile>
     <ClCompile Include="graphics\DeviceLostController.cpp"><Filter>graphics</Filter></ClCompile>
     <ClCompile Include="window\NativeWindowHost.cpp"><Filter>window</Filter></ClCompile>

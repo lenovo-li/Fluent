@@ -7,8 +7,9 @@
 API 刻意对齐 WPF/WinUI 的心智模型（Measure/Arrange、DirtyFlags、路由事件、
 token 化主题），有 XAML 经验即可平移。
 
-![FluentUI Gallery Demo](docs/screenshot-gallery.png)
-*FluentUI Gallery 演示 —— Button 控件的各种状态、尺寸与样式定制*
+## 截图
+
+演示应用展示了各种控件的状态、样式与交互效果。
 
 ## 特性
 

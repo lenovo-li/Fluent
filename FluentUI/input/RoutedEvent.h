@@ -32,6 +32,32 @@ struct PointerEventArgs : RoutedEventArgs {
     // ClickCounter.h). Defaults to 1 so a handler that does not care reads a plain
     // click, and so every existing construction site keeps its previous meaning.
     int clickCount = 1;
+
+    // Lines to scroll per wheel notch, from the system setting (Settings → Bluetooth
+    // & devices → Mouse → "Lines to scroll at a time"). Stamped by the window when
+    // the event is created, because the window — not the element — owns the HWND-level
+    // setting and this header sits below WindowServices in the layering.
+    //
+    // Defaults to 3 (the Windows default) so a hand-constructed args in a test or a
+    // synthetic event still scrolls a sane amount instead of freezing at 0.
+    // WHEEL_PAGESCROLL (0xFFFFFFFF) is normalized to 0 by the stamping code, which
+    // controls read as "page scroll requested".
+    //
+    // uint32_t, not UINT: this layer is deliberately free of <windows.h> (see the
+    // header comment in InputTypes.h). Spelling it UINT compiles only because the
+    // precompiled header force-includes windows.h, and breaks any TU built without it.
+    uint32_t wheelScrollLines = 3;
+
+    // Signed scroll distance in lines: positive scrolls content down (offset grows),
+    // matching every control's `lines * rowHeight` usage. 0 means the user asked for
+    // page-per-notch scrolling.
+    float WheelScrollLines() const {
+        if (wheelScrollLines == 0) return 0.0f;  // page-scroll request
+        // 120 is WHEEL_DELTA. Written as a literal for the same no-windows.h reason.
+        constexpr float kWheelDelta = 120.0f;
+        return -static_cast<float>(wheelDelta) / kWheelDelta *
+               static_cast<float>(wheelScrollLines);
+    }
 };
 
 struct KeyEventArgs : RoutedEventArgs {

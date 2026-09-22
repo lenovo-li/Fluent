@@ -1,11 +1,10 @@
-// TreeView.cpp
+﻿// TreeView.cpp
 
 #include "TreeView.h"
 #include "../styling/ThemeTokens.h"
 #include "../core/ScrollMath.h"
 #include "../input/InputManager.h"
 #include "../window/WindowServices.h"
-#include "../composition/ICompositionBackend.h"
 #include <algorithm>
 #include <cmath>
 
@@ -87,6 +86,155 @@ void TreeView::SetRows(std::vector<TreeViewRow> rows)
     SetItems(std::move(rows));
 }
 
+// --- Incremental mutation API ------------------------------------------------
+// Each mutator captures the selected id, edits items_ in place, then routes
+// through OnItemsChanged (which rebuilds idToIndex_/parentIndex_/visibleRows_ and
+// restores selection by id). The mutators do NOT call SetItems: items_ is already
+// the store, so a move-assign of itself would be wasteful. They call
+// OnItemsChanged directly, which is the same hook SetItems fires.
+
+void TreeView::CaptureSelectedId()
+{
+    pendingSelectedId_ = (selectedIndex_ >= 0 && selectedIndex_ < ItemCount())
+                             ? items_[selectedIndex_].id
+                             : -1;
+}
+
+TreeViewRow* TreeView::FindNode(int nodeId)
+{
+    int idx = RowIndexById(nodeId);
+    return idx < 0 ? nullptr : &items_[idx];
+}
+
+const TreeViewRow* TreeView::FindNode(int nodeId) const
+{
+    int idx = RowIndexById(nodeId);
+    return idx < 0 ? nullptr : &items_[idx];
+}
+
+void TreeView::AddRoot(TreeViewRow row)
+{
+    row.parentId = -1;
+    row.depth = 0;
+    CaptureSelectedId();
+    items_.push_back(std::move(row));
+    OnItemsChanged();
+}
+
+void TreeView::AddChild(int parentId, TreeViewRow row)
+{
+    const int parentIdx = RowIndexById(parentId);
+    if (parentIdx < 0) return;  // unknown parent: no-op rather than silent root add
+
+    row.parentId = parentId;
+    row.depth = items_[parentIdx].depth + 1;
+
+    // The parent now has at least one child, so it needs the expander glyph. Do NOT
+    // force expanded=true here: a caller populating a collapsed subtree would be
+    // fighting the control. Only hasChildren is a derived fact.
+    items_[parentIdx].hasChildren = true;
+
+    // Insert AFTER the parent's whole existing subtree, not immediately after the
+    // parent row. Inserting at parentIdx+1 would place the new node BEFORE its
+    // older siblings' descendants, so RebuildVisible (which walks items_ in order)
+    // would render it in the wrong place — a child appearing above its own nephews.
+    int insertAt = parentIdx + 1;
+    while (insertAt < ItemCount() && IsDescendantOf(insertAt, parentIdx))
+        ++insertAt;
+
+    CaptureSelectedId();
+    items_.insert(items_.begin() + insertAt, std::move(row));
+    OnItemsChanged();
+}
+
+void TreeView::RemoveNode(int nodeId)
+{
+    const int idx = RowIndexById(nodeId);
+    if (idx < 0) return;
+
+    // Collect the node plus every descendant. parentIndex_ is still valid here (it
+    // is rebuilt only by OnItemsChanged), so ancestry is a pointer chase per row
+    // rather than an id lookup per level.
+    std::vector<bool> doomed(items_.size(), false);
+    doomed[idx] = true;
+    for (int i = idx + 1; i < ItemCount(); ++i)
+        if (IsDescendantOf(i, idx)) doomed[i] = true;
+
+    CaptureSelectedId();
+    // If the selection is inside the doomed subtree it cannot be restored by id;
+    // drop it so OnItemsChanged falls back to the first visible row instead of
+    // resurrecting a stale index.
+    if (selectedIndex_ >= 0 && selectedIndex_ < static_cast<int>(doomed.size()) &&
+        doomed[selectedIndex_])
+        pendingSelectedId_ = -1;
+
+    int write = 0;
+    for (int read = 0; read < ItemCount(); ++read)
+        if (!doomed[read]) items_[write++] = std::move(items_[read]);
+    items_.resize(write);
+
+    // The parent may have just lost its last child.
+    RefreshHasChildren();
+    OnItemsChanged();
+}
+
+void TreeView::SetNodeExpanded(int nodeId, bool expanded)
+{
+    TreeViewRow* row = FindNode(nodeId);
+    if (!row || !row->hasChildren) return;
+    if (row->expanded == expanded) return;
+    row->expanded = expanded;
+    CaptureSelectedId();
+    OnItemsChanged();
+}
+
+void TreeView::ExpandAll() { SetAllExpanded(true); }
+void TreeView::CollapseAll() { SetAllExpanded(false); }
+
+void TreeView::SetAllExpanded(bool expanded)
+{
+    bool changed = false;
+    for (auto& row : items_) {
+        if (row.hasChildren && row.expanded != expanded) {
+            row.expanded = expanded;
+            changed = true;
+        }
+    }
+    if (!changed) return;
+    CaptureSelectedId();
+    OnItemsChanged();
+}
+
+bool TreeView::IsDescendantOf(int rowIndex, int ancestorIndex) const
+{
+    if (rowIndex < 0 || rowIndex >= static_cast<int>(parentIndex_.size())) return false;
+    int p = parentIndex_[rowIndex];
+    while (p >= 0) {
+        if (p == ancestorIndex) return true;
+        if (p >= static_cast<int>(parentIndex_.size())) break;
+        p = parentIndex_[p];
+    }
+    return false;
+}
+
+void TreeView::RefreshHasChildren()
+{
+    // items_ was just mutated, so idToIndex_ is stale — derive the child counts from
+    // the parentId fields directly instead of going through the index.
+    std::unordered_set<int> parentsWithChildren;
+    parentsWithChildren.reserve(items_.size());
+    for (const auto& row : items_)
+        if (row.parentId >= 0) parentsWithChildren.insert(row.parentId);
+
+    for (auto& row : items_) {
+        const bool has = parentsWithChildren.count(row.id) > 0;
+        row.hasChildren = has;
+        // A leaf must not keep a stale collapsed flag: if it ever gains a child
+        // again, AddChild sets hasChildren and the caller decides expansion.
+        if (!has) row.expanded = true;
+    }
+}
+
 void TreeView::OnItemsChanged()
 {
     RebuildIndex();
@@ -107,7 +255,6 @@ void TreeView::OnItemsChanged()
     // re-seeds rather than only clearing.
     ReseedSelectionSet();
     scroll_.SetContentHeight(rowHeight_ * visibleRows_.size());
-    if (CompositionActive()) RefreshComposition(true, true);  // extent + rows changed
     Invalidate();
 }
 
@@ -130,7 +277,6 @@ void TreeView::OnSelectionChanged(int /*oldIndex*/, int newIndex)
     // Selector::SetSelectedIndex, before this hook runs — it is the one place
     // every such change funnels through, so no subclass has to remember it.
     EnsureSelectedVisible();
-    if (CompositionActive()) RefreshComposition(true, true);  // selection highlight moved
     if (newIndex >= 0 && newIndex < ItemCount()) {
         TreeSelection sel{VisibleIndexByRow(newIndex), &items_[newIndex]};
         selectionChanged_.Raise(*this, sel);
@@ -144,7 +290,6 @@ void TreeView::OnSelectionChanged(int /*oldIndex*/, int newIndex)
 // event carries a vector the tree's subscribers already expect.
 void TreeView::OnSelectionSetChanged()
 {
-    if (CompositionActive()) RefreshComposition(true, true);
     // Event::Raise takes Args& (non-const), so the vector must be an lvalue.
     std::vector<int> sel = SelectedIndices();
     selectionSetChanged_.Raise(*this, sel);
@@ -155,33 +300,6 @@ void TreeView::OnBoundsChanged()
     LayoutCostProbe::Scope probe(LayoutCostKey::TreeViewBoundsChanged);
     scroll_.SetBounds(bounds_);
     scroll_.SetContentHeight(rowHeight_ * visibleRows_.size());
-    // After quantization, SetViewport only clears contentDrawn_ when the quantized
-    // surface actually resized — not on every bounds change. The old comment (deleted
-    // redrawContent=true is NOT known to be necessary here, and measurement says it is
-    // most of the resize cost (TreeView's single surface was 3.37ms in one snapshot,
-    // versus 0.4ms for surface allocation). A conditional second pass was tried and
-    // deleted: by the time the first RefreshComposition returns, Rebase has already
-    // rasterized and set contentDrawn_, so any "did the pixels survive" test after it
-    // is always false — dead code that reads as a working optimization. Skipping the
-    // redraw for real needs the geometry and the pixels to be separable (push
-    // viewport/clip/extent now, rasterize on WM_EXITSIZEMOVE), which is a change to
-    // ScrollContentHost, not a flag here. Rows are fixed-height and their content does
-    // not depend on width, so re-rasterizing them because the viewport moved during
-    // Rebase resize is pure waste — but the flag can't avoid it.
-    if (CompositionActive()) {
-        RefreshComposition(/*redrawContent*/ false, /*overlayForce*/ true);
-    }
-}
-
-void TreeView::UpdateContextModalResize(bool inModalResize)
-{
-    UIElement::UpdateContextModalResize(inModalResize);
-    // On the falling edge (modal resize ends), force a composition refresh even if
-    // bounds didn't change: the DComp surface was scaled/clipped during the drag,
-    // and now needs to be rasterized at the final resolution.
-    if (!inModalResize && CompositionActive()) {
-        RefreshComposition(/*redrawContent*/ true, /*overlayForce*/ true);
-    }
 }
 
 int TreeView::VisibleCapacity() const
@@ -258,7 +376,6 @@ void TreeView::ToggleRow(int rowIndex)
     if (selectedIndex_ >= 0 && VisibleIndexByRow(selectedIndex_) < 0)
         selectedIndex_ = rowIndex;
     scroll_.SetContentHeight(rowHeight_ * visibleRows_.size());
-    if (CompositionActive()) RefreshComposition(true, true);  // expand/collapse changed rows
     Invalidate();
 }
 
@@ -269,15 +386,6 @@ void TreeView::OnPointerMoved(PointerEventArgs& e)
     // its SetOffset can't repaint us — drive the repaint from here.
     if (scroll_.IsDragging()) {
         scroll_.DragTo(dipY);
-        if (CompositionActive()) {
-            // Thumb drag is immediate (no glide, §11.8): push the dragged offset to
-            // the content host and refresh the overlay thumb.
-            content_->SetOffsetImmediate(scroll_.Offset(),
-                [this](ID2D1DeviceContext* dc, float o, float h) { DrawRowsToSurface(dc, o, h); });
-            // The thumb moved; content position changed but the rows are unchanged
-            // (a covered refill, not a redraw). Overlay must redraw to track the thumb.
-            RefreshComposition(false, true);
-        }
         Invalidate(); e.handled = true; return;
     }
     // Any move over the control keeps the thin rail visible; nearing the right
@@ -286,7 +394,6 @@ void TreeView::OnPointerMoved(PointerEventArgs& e)
     scroll_.SetBarHover(scroll_.HitBarRegion(dipX, dipY));
     // Hover/wake only affects the overlay (rail visibility/expand). The sig gate in
     // RefreshComposition still no-ops it if nothing actually moved.
-    if (CompositionActive()) RefreshComposition(false, false);  // fade/hover changed the overlay
 }
 
 void TreeView::OnPointerPressed(PointerEventArgs& e)
@@ -306,17 +413,11 @@ void TreeView::OnPointerPressed(PointerEventArgs& e)
             const float trackRange = std::max(1.0f, bounds_.h - thumb.h);
             const float wantTop = (dipY - thumb.h * 0.5f) - bounds_.y;
             scroll_.SetOffset(wantTop / trackRange * scroll_.MaxOffset());
-            if (CompositionActive()) {
-                content_->SetOffsetImmediate(scroll_.Offset(),
-                    [this](ID2D1DeviceContext* dc, float o, float h) { DrawRowsToSurface(dc, o, h); });
-                RefreshComposition(false, true);
-            }
             Invalidate();
         }
         scroll_.BeginDrag(dipY);
         if (Context().input) Context().input->CapturePointer(this);
-        if (CompositionActive()) RefreshComposition(false, true);  // thumb widened on drag start
-        Invalidate();
+            Invalidate();
         e.handled = true;
         return;
     }
@@ -371,6 +472,41 @@ void TreeView::OnPointerReleased(PointerEventArgs& e)
 
     int visibleIndex = VisibleIndexByRow(rowIndex);
     if (visibleIndex >= 0) SetSelectedIndex(visibleIndex);
+    
+    // Double-click detection (Phase 2): check if this click is within the double-click
+    // window and on the same row as the last click.
+    DWORD now = GetTickCount();
+    DWORD doubleClickTime = GetDoubleClickTime();  // System setting (usually 500ms)
+    bool isDoubleClick = (now - lastClickTime_ <= doubleClickTime) &&
+                         (lastClickRow_ == rowIndex);
+    
+    if (isDoubleClick) {
+        // Raise ItemDoubleClick event
+        TreeViewItemDoubleClickArgs args;
+        args.visibleIndex = visibleIndex;
+        args.row = (rowIndex >= 0 && rowIndex < static_cast<int>(items_.size()))
+                       ? &items_[rowIndex]
+                       : nullptr;
+        args.handled = false;
+        
+        if (itemDoubleClick_.HasSubscribers()) {
+            itemDoubleClick_.Raise(*this, args);
+        }
+        
+        // Default behavior: toggle expansion if row has children, not handled by subscriber,
+        // and doubleClickTogglesExpansion_ is true
+        if (!args.handled && doubleClickTogglesExpansion_ && items_[rowIndex].hasChildren) {
+            ToggleRow(rowIndex);
+        }
+        
+        // Reset double-click state to prevent triple-click from being detected as double-click
+        lastClickTime_ = 0;
+        lastClickRow_ = -1;
+    } else {
+        // Record this click for double-click detection
+        lastClickTime_ = now;
+        lastClickRow_ = rowIndex;
+    }
 }
 
 void TreeView::OnPointerLeft()
@@ -385,14 +521,7 @@ void TreeView::EnsureSelectedVisible()
     if (visibleIndex < 0) return;
     float target = EnsureVisibleOffset(visibleIndex * rowHeight_, rowHeight_,
                                        CurrentOffset(), bounds_.h);
-    if (CompositionActive()) {
-        // Keyboard nav / selection: jump immediately (no long glide, §11.7).
-        if (std::fabs(target - content_->EffectiveOffset()) > 0.5f) {
-            content_->SetOffsetImmediate(target,
-                [this](ID2D1DeviceContext* dc, float o, float h) { DrawRowsToSurface(dc, o, h); });
-            RefreshComposition(false, true);  // offset jumped; thumb moved, rows unchanged
-        }
-    } else if (target != scroll_.Offset()) {
+    if (target != scroll_.Offset()) {
         scroll_.SetOffset(target);
     }
 }
@@ -400,22 +529,13 @@ void TreeView::EnsureSelectedVisible()
 void TreeView::OnPointerWheelChanged(PointerEventArgs& e)
 {
     if (scroll_.MaxOffset() <= 0.0f) return;  // nothing to scroll (bubbles up)
-    // One wheel notch (WHEEL_DELTA = 120) scrolls 3 rows, matching the OS list
-    // default. Wheel-up (positive delta) scrolls content up (offset decreases).
+    // One wheel notch (WHEEL_DELTA = 120) scrolls WheelScrollLines() rows, read from
+    // the system setting (Settings → Bluetooth & devices → Mouse → scroll lines).
+    // Wheel-up (positive delta) scrolls content up (offset decreases).
     // AnimateBy accumulates so spinning the wheel builds momentum; the window's
     // animation timer drives scroll_.Tick() until it settles.
-    float lines = -static_cast<float>(e.wheelDelta) / WHEEL_DELTA * 3.0f;
-    if (CompositionActive()) {
-        // Compositor smooth scroll: retarget from the current visual offset so
-        // spinning the wheel accumulates without a jump (roadmap §11.6). The tween
-        // runs on the compositor thread; keep the scrollbar awake for the fade.
-        content_->AnimateBy(lines * rowHeight_,
-            [this](ID2D1DeviceContext* dc, float o, float h) { DrawRowsToSurface(dc, o, h); });
-        scroll_.Wake();
-        RefreshComposition(false, true);  // update thumb + overlay to the new target
-    } else {
-        scroll_.AnimateBy(lines * rowHeight_);
-    }
+    float lines = e.WheelScrollLines();
+    scroll_.AnimateBy(lines * rowHeight_);
     Invalidate();
     e.handled = true;
 }
@@ -542,290 +662,44 @@ void TreeView::OnTextInput(wchar_t ch)
     }
 }
 
-// ---------------------------------------------------------------------------
-// Compositor overscan scrolling (Phase 3). All of this is a no-op when
-// CompositionActive() is false — the control then uses the UI-thread scroll_ path.
-// ---------------------------------------------------------------------------
-
-float TreeView::CurrentOffset() const
-{
-    return CompositionActive() ? content_->EffectiveOffset() : scroll_.Offset();
-}
-
 bool TreeView::WantsAnimationTick() const
 {
     if (!IsEffectivelyVisible()) return false;
-    // Composition mode: the CONTENT tween runs on the compositor thread (no UI tick
-    // needed for it), but we still tick to advance the scrollbar fade/expand and to
-    // track the thumb + refill while a scroll settles. scroll_.NeedsTick() covers
-    // the fade; content_->IsAnimating() keeps ticking the thumb during a fling.
-    if (CompositionActive())
-        return content_->IsAnimating() || scroll_.NeedsTick();
     return scroll_.NeedsTick();
 }
 
 void TreeView::OnAnimationTick(float dtSec)
 {
     if (!IsEffectivelyVisible()) return;
-    // Runs in PumpAnimations, OUTSIDE the window content frame — safe to refill
-    // surfaces here. Advance the scrollbar fade (scroll_ owns only the visual state
-    // in composition mode; its own smooth-scroll offset animation is unused there),
-    // then reconcile the surfaces with the current effective offset.
     scroll_.Tick(dtSec);
-    // Ticks never change the ROWS, so never force a content redraw here (that was the
-    // per-frame re-rasterize that shimmered the frame). The overlay is redrawn only if
-    // its sig actually moved this tick — i.e. while the bar is fading/expanding or the
-    // thumb is tracking a settling fling; a stable idle-visible bar redraws nothing.
-    if (CompositionActive()) RefreshComposition(false, false);
-    else Invalidate();  // fallback path: scroll_ is a member whose Invalidate() cannot
-                        // reach the tree, so fade/expand steps need this to repaint
-}
-
-void TreeView::DrawRowsToSurface(ID2D1DeviceContext* dc, float surfaceOriginDip,
-                                 float surfaceHeightDip)
-{
-    if (!dc || !Dwrite()) return;
-    IDWriteTextFormat* fmt = Dwrite()->Format(
-        12.0f, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_TEXT_ALIGNMENT_LEADING,
-        DWRITE_PARAGRAPH_ALIGNMENT_CENTER, DWRITE_WORD_WRAPPING_NO_WRAP);
-    if (!fmt) return;
-
-    // The dc arrives with a Scale(dpi) transform (ScrollContentHost), so we draw in
-    // DIPs with (0,0) at the surface's logical top (content-space surfaceOriginDip).
-    ComPtr<ID2D1SolidColorBrush> brush;
-    if (FAILED(dc->CreateSolidColorBrush(D2D1::ColorF(0, 0, 0), brush.GetAddressOf())))
-        return;
-    DrawingContext rc{dc, brush.Get(), Context().dpiScale};
-
-    const float viewW = bounds_.w;  // surface spans the viewport width
-    int first = std::max(0, static_cast<int>(surfaceOriginDip / rowHeight_));
-    const float surfaceBottom = surfaceOriginDip + surfaceHeightDip;
-    for (int i = first; i < static_cast<int>(visibleRows_.size()); ++i) {
-        const float rowTopContent = i * rowHeight_;
-        if (rowTopContent >= surfaceBottom) break;      // past the drawn surface
-        const float localY = rowTopContent - surfaceOriginDip;  // 0 at surface top
-        DrawRow(rc, fmt, visibleRows_[i], localY, 0.0f, viewW);
-    }
-}
-
-void TreeView::DrawOverlayToSurface(ID2D1DeviceContext* dc, float /*viewportWDip*/,
-                                    float /*viewportHDip*/)
-{
-    if (!dc) return;
-    const ColorTokens& pal = Theme().colors;
-    const float s = Context().dpiScale;
-    ComPtr<ID2D1SolidColorBrush> brush;
-    if (FAILED(dc->CreateSolidColorBrush(D2D1::ColorF(0, 0, 0), brush.GetAddressOf())))
-        return;
-    // scroll_.Render + the focus ring draw in WINDOW DIPs (bounds_-relative). Map
-    // window DIP → viewport-local pixels: (dip - bounds.origin) * dpi. In D2D row-
-    // vector order that is Translation(-bounds) then Scale(dpi).
-    //
-    // PREMULTIPLY onto the incoming transform — it carries the composition surface's
-    // atlas tile origin, which changes between draws. Replacing it puts this drawing
-    // outside our tile (clipped away / into a neighbour), which is what made the
-    // scrollbar frame flicker whenever the overlay re-rasterized (resize, wheel tween).
-    D2D1_MATRIX_3X2_F base;
-    dc->GetTransform(&base);
-    dc->SetTransform(
-        SurfaceTransformFromWindowDip(base, bounds_.x, bounds_.y, s));
-    DrawingContext rc{dc, brush.Get(), s};
-    scroll_.Render(rc);
-    if (IsFocused()) {
-        // Inset by 0.5 DIP, matching the non-composited path. The 1px stroke is centered
-        // on this rect, so half extends inward and half outward — the outward half
-        // (0.5 DIP) stays within the viewport clip. Previously 1.5 DIP, which was too
-        // conservative and left content visibly extending past the ring at the bottom.
-        rc.DrawRoundedRect(
-            D2D1::RoundedRect(D2D1::RectF(bounds_.x + 0.5f, bounds_.y + 0.5f,
-                                          bounds_.right() - 0.5f, bounds_.bottom() - 0.5f),
-                              4.0f, 4.0f),
-            D2D1::ColorF(pal.accent.r, pal.accent.g, pal.accent.b, 0.7f), 1.0f);
-    }
-}
-
-OverlaySignature TreeView::CurrentOverlaySig() const
-{
-    // Everything the overlay surface's pixels depend on. Sampled AFTER the scroll
-    // model's offset/geometry is updated (thumbY tracks the current offset), so
-    // callers must sync scroll_ before comparing. When none of these move, the
-    // overlay is pixel-identical and must NOT be re-rasterized (see RefreshComposition).
-    OverlaySignature s;
-    s.visibility = scroll_.Visibility();
-    s.expand     = scroll_.ExpandFactor();
-    s.thumbY     = scroll_.ThumbRect().y;
-    s.focused    = IsFocused();
-    s.dragging   = scroll_.IsDragging();
-    return s;
-}
-
-void TreeView::RefreshComposition(bool redrawContent, bool overlayForce)
-{
-    if (!CompositionActive()) return;
-    if (!IsEffectivelyVisible()) {
-        content_->SetTreeVisible(false);
-        return;
-    }
-    content_->SetTreeVisible(true);
-    const float extent = rowHeight_ * visibleRows_.size();
-    // In composited mode Render() returns early, so an opacity folded into the
-    // host's DrawingContext never reaches these pixels — push it onto the
-    // composition sub-tree instead. EffectiveOpacity() (not Opacity()) because an
-    // ancestor panel's opacity is likewise invisible to this path.
-    // Visibility is handled by root membership above; opacity remains an independent
-    // appearance property and is only pushed while the tree is visible.
-    content_->SetOpacity(EffectiveOpacity());
-    // Full bounds as the viewport, ancestor clip supplied SEPARATELY — same contract
-    // as TextArea: a D2D container clip cannot reach a DComp visual, and the host
-    // needs the clip as its own operand to place it relative to the true position.
-    RectDip ancestorClip;
-    if (AncestorViewportClip(ancestorClip)) content_->SetAncestorClip(ancestorClip);
-    else content_->ClearAncestorClip();
-    // Defer surface rasterization while a resize border is held — same BeginDraw
-    // reasoning as TextArea. Rows are fixed-height and width-independent, so the
-    // deferred pixels stay valid for the whole drag.
-    content_->SetModalResize(Context().inModalResize);
-    content_->SetViewport(bounds_);
-    content_->SetContentHeight(extent);
-    // Keep the scrollbar model's geometry + extent in sync so ThumbRect / hit-test
-    // stay correct, and point its thumb at the CURRENT effective offset.
-    scroll_.SetBounds(bounds_);
-    scroll_.SetContentHeight(extent);
-    scroll_.SetOffset(content_->EffectiveOffset());
-
-    auto drawRows = [this](ID2D1DeviceContext* dc, float o, float h) {
-        DrawRowsToSurface(dc, o, h);
-    };
-    // Content surface: re-rasterize only when the ROWS themselves changed (selection,
-    // items, expand/collapse, theme, bounds) — passed as redrawContent. When false,
-    // EnsureContent still refills if a fling drifted near a buffer edge, but it does
-    // NOT redraw a covered, unchanged surface. This is what stops the per-tick redraw
-    // that shimmered the frame while the scrollbar was idle-visible.
-    content_->EnsureContent(drawRows, /*forceRedraw=*/redrawContent);
-
-    // Overlay surface (scrollbar + focus ring): re-rasterize only when its visual
-    // determinants actually moved. A static idle-visible bar has an unchanged sig, so
-    // the fade-countdown ticks no longer re-rasterize it every frame (the reported
-    // edge flicker). overlayForce covers changes not captured by the sig timing
-    // (focus toggles, theme, a fresh surface after resize/DPI/device-restore).
-    const OverlaySignature sig = CurrentOverlaySig();
-    if (overlayForce || sig.Differs(lastOverlaySig_)) {
-        content_->RedrawOverlay([this](ID2D1DeviceContext* dc, float w, float h) {
-            DrawOverlayToSurface(dc, w, h);
-        });
-        lastOverlaySig_ = sig;
-    }
-    if (WindowServices* win = Window())
-        if (ICompositionBackend* comp = win->Composition()) comp->RequestCommit();
+    Invalidate();
 }
 
 void TreeView::OnAttachedToTree()
 {
-    // scroll_ is an embedded model, not a tree node, so nothing else would ever give
-    // it a UIContext — and UIElement::Theme() falls back to a LIGHT default snapshot
-    // when context_.theme is null. The rail was therefore drawn with light-theme ink
-    // (textPrimary = near-black) regardless of the real theme, which is invisible on
-    // a dark background. Forwarding the context is what puts it on the actual theme,
-    // and it keeps working across a theme switch because the host overwrites its
-    // snapshot in place. Same fix as ScrollPanel.
+    // Forward the UI context to scroll_ so Theme() reads the correct palette
     scroll_.AttachToContext(Context());
-    // Match ScrollPanel: a rail that never fully disappears while the content
-    // overflows, so "there is more to see" stays discoverable instead of fading out.
     scroll_.SetKeepVisibleWhenOverflow(true);
-
-    // Create the compositor scroll host if the window offers a backend; otherwise
-    // fall back to the UI-thread scroll_ path (content_ stays null).
-    if (WindowServices* win = Window()) {
-        if (ICompositionBackend* comp = win->Composition()) {
-            content_ = std::make_unique<ScrollContentHost>();
-            content_->SetTreeVisible(IsEffectivelyVisible());
-            if (SUCCEEDED(content_->Create(comp, Context().dpiScale))) {
-                RefreshComposition(true, true);
-            } else {
-                content_.reset();  // creation failed → fallback
-            }
-        }
-    }
     Invalidate();
 }
 
 void TreeView::OnDetachedFromTree()
 {
-    // Tear the compositor host down while the backend is still valid.
-    if (content_) { content_->Destroy(); content_.reset(); }
-    // Clear the scroll model's context — it is no longer valid.
     scroll_.DetachFromContext();
 }
 
 void TreeView::OnFocusChanged()
 {
-    if (CompositionActive()) RefreshComposition(false, true);  // focus ring lives on the overlay
     Invalidate();
-}
-
-void TreeView::OnOpacityChanged(float)
-{
-    // Composition path only: the visual's own opacity property is pushed straight
-    // through (no surface redraw). In fallback mode the base class's Render-dirty
-    // flag is enough — the host repaints through a faded DrawingContext.
-    if (CompositionActive()) {
-        // Hidden hosts cache this value without committing and apply it on reveal.
-        content_->SetOpacity(EffectiveOpacity());
-    }
-}
-
-void TreeView::OnVisibilityChanged(bool visible)
-{
-    UNREFERENCED_PARAMETER(visible);
-    UpdateCompositionVisibility();
-}
-
-void TreeView::OnAncestorVisibilityChanged()
-{
-    UpdateCompositionVisibility();
-}
-
-void TreeView::UpdateCompositionVisibility()
-{
-    if (!CompositionActive()) return;
-    if (!IsEffectivelyVisible()) {
-        content_->SetTreeVisible(false);
-        return;
-    }
-    content_->SetTreeVisible(true);
-    RefreshComposition(true, true);
 }
 
 void TreeView::OnThemeChanged()
 {
-    if (CompositionActive()) RefreshComposition(true, true);  // redraw surfaces with new colors
     Invalidate();
 }
 
-void TreeView::OnDpiChanged(float dpiScale)
+void TreeView::OnDpiChanged(float /*dpiScale*/)
 {
-    if (CompositionActive()) {
-        content_->SetDpiScale(dpiScale);
-        RefreshComposition(true, true);
-    }
-    Invalidate();
-}
-
-void TreeView::OnDeviceLost()
-{
-    if (content_) content_->OnDeviceLost();  // drop visuals, keep scroll position
-}
-
-void TreeView::OnDeviceRestored()
-{
-    if (content_) {
-        if (WindowServices* win = Window()) {
-            if (ICompositionBackend* comp = win->Composition()) {
-                content_->OnDeviceRestored(comp, Context().dpiScale);
-                RefreshComposition(true, true);
-            }
-        }
-    }
     Invalidate();
 }
 
@@ -874,7 +748,23 @@ void TreeView::DrawRow(const DrawingContext& dc, IDWriteTextFormat* fmt,
         dc.DrawLine(p3, p1, chevron, 1.2f);
     }
 
-    DrawIcon(dc, row.icon, leftX + indent + 16.0f, y + 7.0f, pal);
+    // Draw custom bitmap icon if present, otherwise fall back to geometric icon.
+    // The bitmap is loaded at physical-pixel size for the current DPI, so drawing
+    // it into a 16-DIP rect gives a 1:1 pixel mapping (crisp) rather than an
+    // upscale from a fixed 16px source (blurry). High-quality cubic sampling keeps
+    // it clean if the DPI changed since the bitmap was cached.
+    if (row.customIcon) {
+        const float iconSize = 16.0f;
+        D2D1_RECT_F iconRect = D2D1::RectF(leftX + indent + 16.0f, y + 4.0f,
+                                           leftX + indent + 16.0f + iconSize, y + 4.0f + iconSize);
+        if (auto* dc2 = dc.Dc()) {
+            dc2->DrawBitmap(row.customIcon, iconRect, 1.0f,
+                            D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC,
+                            nullptr, nullptr);
+        }
+    } else {
+        DrawIcon(dc, row.icon, leftX + indent + 16.0f, y + 7.0f, pal);
+    }
 
     // Row text is the neutral text color, not the icon's accent. Selected rows use
     // the text color for clear contrast on the selection fill.
@@ -891,19 +781,6 @@ void TreeView::Render(const DrawingContext& dc)
     if (!Dwrite()) return;
 
     const ColorTokens& pal = Theme().colors;
-
-    // Composition mode: the rows live on the overscan surface and the scrollbar /
-    // focus ring on the overlay surface, both composited above the window content
-    // by the compositor. Render must NOT draw a surface here (we are inside the
-    // window content frame — a nested BeginDraw would fail), so it only keeps the
-    // surfaces current for a stalled UI catching up on its next paint. The actual
-    // refill happens outside the content frame; here we just request it lazily.
-    if (CompositionActive()) {
-        // A repaint reached us (selection/hover/theme) — refresh the surfaces from
-        // outside-the-frame safe state on the next tick/refresh. We can, however,
-        // safely re-run the offset application + overlay redraw scheduling.
-        return;
-    }
 
     IDWriteTextFormat* fmt = Dwrite()->Format(
         12.0f, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_TEXT_ALIGNMENT_LEADING,

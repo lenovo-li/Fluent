@@ -15,8 +15,7 @@ CLAUDE.md 末尾规定了 `.claude/TASK_STATE.md` 的维护规程。Hermes 同�
 - 断点恢复顺序：读 TASK_STATE.md → `git status --short` → 看相关 diff →
   从「Exact Next Actions」第一条继续。不要重做已完成步骤，不要在没有新
   证据时重复已记录的失败方案。
-- 设计文档在 `docs/design/`、项目知识在 `docs/memory/`，被 TASK_STATE.md
-  和 CLAUDE.md 引用，进版本库可见。
+- 设计文档在 `docs/design/`，被 TASK_STATE.md 和 CLAUDE.md 引用，进版本库可见。
 
 ## Hermes 特有的环境事实
 

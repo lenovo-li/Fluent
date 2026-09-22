@@ -55,27 +55,27 @@ std::vector<MenuItem> TextEditBase::BuildEditMenuItems() {
     cut.text = L"剪切";
     cut.accelerator = L"Ctrl+X";
     cut.enabled = hasSel && !readOnly_;
-    cut.onInvoke = [this] {
+    cut.AddInvokeHandler([this] {
         if (CopySelection(ClipboardOwner())) {
             DeleteSelection();
             OnTextLayoutDirty();
             Changed();
         }
-    };
+    });
     items.push_back(std::move(cut));
 
     MenuItem copy;
     copy.text = L"复制";
     copy.accelerator = L"Ctrl+C";
     copy.enabled = hasSel;
-    copy.onInvoke = [this] { CopySelection(ClipboardOwner()); };
+    copy.AddInvokeHandler([this] { CopySelection(ClipboardOwner()); });
     items.push_back(std::move(copy));
 
     MenuItem paste;
     paste.text = L"粘贴";
     paste.accelerator = L"Ctrl+V";
     paste.enabled = canPaste;
-    paste.onInvoke = [this] { Paste(ClipboardOwner()); };
+    paste.AddInvokeHandler([this] { Paste(ClipboardOwner()); });
     items.push_back(std::move(paste));
 
     items.push_back(MenuItem::Sep());
@@ -84,13 +84,13 @@ std::vector<MenuItem> TextEditBase::BuildEditMenuItems() {
     selectAll.text = L"全选";
     selectAll.accelerator = L"Ctrl+A";
     selectAll.enabled = !text_.empty();
-    selectAll.onInvoke = [this] {
+    selectAll.AddInvokeHandler([this] {
         selAnchor_ = 0;
         caret_ = static_cast<UINT32>(text_.size());
         // Not Invalidate(): a composited subclass paints the highlight into its own
         // surface. Same reason as the Ctrl+A key path.
         OnSelectionChanged();
-    };
+    });
     items.push_back(std::move(selectAll));
 
     return items;

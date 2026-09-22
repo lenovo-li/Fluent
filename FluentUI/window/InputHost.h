@@ -17,7 +17,7 @@
 namespace fluent {
 
 class UIElement;
-class UIContext;
+struct UIContext;
 
 // InputHost aggregates input-related state and provides setup/teardown helpers.
 // The host itself is passive — the NativeWindow's WndProc calls the public

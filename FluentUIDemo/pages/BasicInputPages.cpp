@@ -87,12 +87,30 @@ std::unique_ptr<ScrollPanel> GalleryApp::CreateButtonPage() {
     btnFlyout->SetTooltip(L"点击显示上下文菜单");
 
     auto flyout = std::make_shared<MenuFlyout>();
-    flyout->SetItems({
-        MenuItem{L"复制", L"Ctrl+C", false, true, false, {}, []() {}},
-        MenuItem{L"粘贴", L"Ctrl+V", false, true, false, {}, []() {}},
-        MenuItem::Sep(),
-        MenuItem{L"删除", L"Del", false, true, false, {}, []() {}},
-    });
+    {
+        // MenuItem is non-copyable (it owns an Event<>), so the list is built by move
+        // rather than with an initializer_list — initializer_list always copies.
+        std::vector<MenuItem> items;
+
+        MenuItem copy;
+        copy.text = L"复制";
+        copy.accelerator = L"Ctrl+C";
+        items.push_back(std::move(copy));
+
+        MenuItem paste;
+        paste.text = L"粘贴";
+        paste.accelerator = L"Ctrl+V";
+        items.push_back(std::move(paste));
+
+        items.push_back(MenuItem::Sep());
+
+        MenuItem del;
+        del.text = L"删除";
+        del.accelerator = L"Del";
+        items.push_back(std::move(del));
+
+        flyout->SetItems(std::move(items));
+    }
     btnFlyout->SetFlyout(flyout.get());
     flyouts_.push_back(flyout);
 

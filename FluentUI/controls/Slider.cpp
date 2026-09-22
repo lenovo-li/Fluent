@@ -112,6 +112,7 @@ void Slider::OnKeyDownRouted(KeyEventArgs& e) {
 void Slider::OnPointerPressed(PointerEventArgs& e) {
     if (e.button != PointerButton::Left) return;
     dragging_ = true;
+    dragChangedValue_ = false;
     pointerDown_ = true;
     if (Context().input) Context().input->CapturePointer(this);
     UpdateState();
@@ -140,6 +141,12 @@ void Slider::OnPointerReleased(PointerEventArgs& e) {
     if (Context().input && Context().input->Captured() == this)
         Context().input->ReleaseCapture(this);
     UpdateState();
+    // The drag previewed the value with ValueChanging; now commit it with
+    // ValueChanged. Only if the drag actually moved the value — a click-release that
+    // landed on the current thumb position has nothing to commit.
+    if (dragChangedValue_) {
+        valueChanged_.Raise(*this, value_);
+    }
     e.handled = true;
 }
 

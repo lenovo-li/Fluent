@@ -54,7 +54,43 @@ constexpr UINT kTooltipDelayMs = 500;  // hover dwell before a tooltip appears
 
 NativeWindowHost::~NativeWindowHost() {
     if (controlBgBrush_) DeleteObject(controlBgBrush_);
-    if (hwnd_) DestroyWindow(hwnd_);
+    // A live HWND here means the owner never closed the window before destroying the
+    // object (typical of a tray app that keeps the window hidden until process exit,
+    // or any Window held in a unique_ptr past the message loop).
+    //
+    // DestroyWindow() dispatches WM_DESTROY SYNCHRONOUSLY, and we are in the BASE
+    // dtor phase: the derived Window (and its root_ element tree) is already gone,
+    // so the handler's OnDestroying()/OnDestroyed() virtual calls and its walk over
+    // elements_ would touch freed memory. The WM_DESTROY handler therefore bails out
+    // when destroying_ is set, and we set it here so the nested dispatch is inert.
+    //
+    // The teardown that the handler would have done (detach roots, release
+    // subscriptions, drop animations, DetachWindow) is done here directly, without
+    // any virtual dispatch, and BEFORE the window is destroyed while hwnd_ is valid.
+    // Closing the window first (Window::Close()) remains the supported path and
+    // makes all of this a no-op; this is the safety net, not the happy path.
+    if (hwnd_) {
+        if (!destroying_) {
+            destroying_ = true;
+            KillTimer(hwnd_, kSelfFrameTimerId);
+            if (dragDropRegistered_) {
+                RevokeDragDrop(hwnd_);
+                dragDropRegistered_ = false;
+                OleUninitialize();
+            }
+            dragOverElement_ = nullptr;
+            modalHeartbeat_.Stop();
+            // elements_ entries are owned by the derived class, which has already
+            // been destroyed -- they are dangling now, so they must NOT be
+            // dereferenced. Just drop them; each element cleared its own context in
+            // ~UIElement (or is gone with the tree).
+            elements_.clear();
+            if (application_) application_->DetachWindow(*this);
+        }
+        HWND doomed = hwnd_;
+        hwnd_ = nullptr;   // so the nested WM_DESTROY sees no window to tear down
+        DestroyWindow(doomed);
+    }
 }
 
 void NativeWindowHost::Close() {
@@ -110,6 +146,16 @@ HRESULT NativeWindowHost::Create(HINSTANCE hInst, const wchar_t* title,
         GetDpiForMonitor(mon, MDT_EFFECTIVE_DPI, &dx, &dy);
     }
     dpi_ = dx ? dx : 96;
+
+    // Read the user's wheel scroll-lines preference (Settings → Bluetooth & devices →
+    // Mouse → "Lines to scroll at a time"). Every wheel handler multiplies notches by
+    // this; hardcoding 3 ignored the setting entirely. WHEEL_PAGESCROLL (0xFFFFFFFF)
+    // means "scroll one page per notch" — controls treat that as a page request.
+    {
+        UINT lines = 3;
+        if (SystemParametersInfoW(SPI_GETWHEELSCROLLLINES, 0, &lines, 0))
+            wheelScrollLines_ = lines;
+    }
 
     int w = static_cast<int>(clientWDip * dpi_ / 96.0f + 0.5f);
     int h = static_cast<int>(clientHDip * dpi_ / 96.0f + 0.5f);
@@ -411,6 +457,20 @@ void NativeWindowHost::AddElement(UIElement* e) {
     // Guarded on graphicsReady_ so a stray pre-InitGraphics call is a no-op;
     // AddElement is normally called from OnCreated, after the context is built.
     if (graphicsReady_) e->AttachToContext(context_);
+    
+    // Install the invalidate callback on tree roots (elements with no parent). Without
+    // this, InvalidateDirty walks up to the root, finds no callback, and silently drops
+    // the frame request — so DataGrid::RefreshCells, property setters, etc. never repaint
+    // until an unrelated event (mouse move, resize) triggers a frame. The symptom is a
+    // UI that updates only when you move the mouse over it.
+    if (!e->Parent()) {
+        e->SetInvalidateCallback(
+            [](void* ctx) {
+                auto* self = static_cast<NativeWindowHost*>(ctx);
+                self->RequestFrame(FrameReason::Paint);
+            },
+            this);
+    }
 }
 
 void NativeWindowHost::SetFocusElement(UIElement* e) {
@@ -764,6 +824,15 @@ void NativeWindowHost::RenderNow(FrameReason reason) {
         diagnostics_.Intervals().Push(static_cast<float>(intervalMs));
     }
     lastFrameQpc_ = frameEndQpc;
+
+    // Watchdog heartbeat. One relaxed store; the detector thread (if started) reads
+    // it to answer "is the UI thread responding RIGHT NOW", which neither ring above
+    // can answer — they are written on this thread, so a stall silently produces no
+    // samples at all rather than a large one. Unconditional: the beat is nanoseconds
+    // and gating it on sessionLogEnabled_ would leave the watchdog blind in exactly
+    // the default configuration a user hits a hang in.
+    diagnostics_.Hang().Beat();
+
     // PACING REFERENCE: the START of this frame, deliberately NOT frameEndQpc.
     //
     // The deadline for the next frame is "one refresh after this one began". Pacing
@@ -858,6 +927,11 @@ int NativeWindowHost::RefreshHz() {
     dm.dmSize = sizeof(dm);
     if (EnumDisplaySettingsW(nullptr, ENUM_CURRENT_SETTINGS, &dm))
         refreshHz_ = static_cast<int>(dm.dmDisplayFrequency);
+    // Cap at 144Hz: 240Hz is too aggressive for complex UI layout (5-6ms frames
+    // exceed the 4.17ms budget), and Windows DWM stops delivering WM_SIZE when it
+    // sees continuous overruns, producing 80-400ms pauses instead of smooth motion.
+    // 144Hz (6.94ms budget) tolerates the real frame cost and keeps DWM flowing.
+    if (refreshHz_ > 144) refreshHz_ = 144;
     return refreshHz_;
 }
 
@@ -898,6 +972,15 @@ void NativeWindowHost::EnableSessionLog(bool on) {
                           static_cast<int>(pixelW_), static_cast<int>(pixelH_),
                           ClientWidthDip(), ClientHeightDip(), refreshHz);
         diagnostics_.Log().RecordEvent("session", "launch", SessionClockSec());
+    }
+}
+
+void NativeWindowHost::EnableHangDetector(bool on, double thresholdMs,
+                                          double pollIntervalMs) {
+    if (on) {
+        diagnostics_.Hang().Start(thresholdMs, pollIntervalMs);
+    } else {
+        diagnostics_.Hang().Stop();
     }
 }
 
@@ -1051,7 +1134,13 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
 
         case WM_NCHITTEST: {
             POINT pt = {GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
-            return HitTestNca(pt);
+            const LRESULT ht = HitTestNca(pt);
+            // Timestamp the moment the cursor was last reported over a resize
+            // border. The gap from here to WM_ENTERSIZEMOVE is time spent inside
+            // the SYSTEM (deciding drag vs click, DWM scheduling) and is invisible
+            // to every frame-pacing knob we own.
+            if (ht >= HTSIZEFIRST && ht <= HTSIZELAST) borderHitQpc_ = QpcNow();
+            return ht;
         }
 
         case WM_GETMINMAXINFO: {
@@ -1071,6 +1160,18 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
 
         case WM_SIZE:
             if (wp != SIZE_MINIMIZED) {
+                // Wall-clock gap since the previous WM_SIZE we were handed. A large
+                // value here means the STALL WAS BEFORE US: the system did not
+                // deliver a size for that long, so no amount of frame pacing on our
+                // side could have painted anything in between.
+                if (inModalLoop_) {
+                    const int64_t now = QpcNow();
+                    const double sinceLast =
+                        lastSizeMsgQpc_ ? QpcToMs(now - lastSizeMsgQpc_) : -1.0;
+                    lastSizeMsgQpc_ = now;
+                    FL_TRACEF("Modal", "WM_SIZE %dx%d  (+%.1fms since previous WM_SIZE)",
+                              LOWORD(lp), HIWORD(lp), sinceLast);
+                }
                 OnSize(LOWORD(lp), HIWORD(lp));
                 // Phase 1A: WM_SIZE arrives densely inside the system modal resize
                 // loop where our main loop (and the low-priority WM_TIMER heartbeat)
@@ -1109,6 +1210,10 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
             // longer paints synchronously, so the heartbeat is now what applies the
             // coalesced resize and repaints the window during the drag. It also
             // keeps any active animation ticking. Disarmed on WM_EXITSIZEMOVE.
+            {
+                const double gapMs = borderHitQpc_ ? QpcToMs(QpcNow() - borderHitQpc_) : -1.0;
+                FL_TRACEF("Modal", "ENTERSIZEMOVE (+%.1fms since last border hit)", gapMs);
+            }
             inModalLoop_ = true;
             context_.inModalResize = true;
             // UIContext is stored BY VALUE on every element (UIElement::context_), so
@@ -1128,13 +1233,21 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
             // border no longer drops to ~30fps: WM_TIMER could not deliver better
             // than ~28.6ms here (low priority + rounded to the system timer
             // resolution), while this paces at the actual refresh interval.
-            modalHeartbeat_.Start(hwnd_, RefreshIntervalMs(RefreshHz()));
-            // Keep the OS timer armed as a FALLBACK only when the heartbeat could
-            // not start (no waitable timer on this OS). Arming both would double the
-            // tick rate for no benefit — ServiceModalFrame would just skip the
-            // extra, but it is wasted wakeups.
-            if (!modalHeartbeat_.IsRunning())
-                SetTimer(hwnd_, kAnimTimerId, kAnimIntervalMs, nullptr);
+            {
+                const double period = RefreshIntervalMs(RefreshHz());
+                modalHeartbeat_.Start(hwnd_, period);
+                // Keep the OS timer armed as a FALLBACK only when the heartbeat could
+                // not start (no waitable timer on this OS). Arming both would double the
+                // tick rate for no benefit — ServiceModalFrame would just skip the
+                // extra, but it is wasted wakeups.
+                const bool heartbeatOk = modalHeartbeat_.IsRunning();
+                FL_TRACEF("Modal", "heartbeat %s (%.2fms), fallback timer %s",
+                          heartbeatOk ? "started" : "FAILED",
+                          period,
+                          heartbeatOk ? "off" : "armed");
+                if (!heartbeatOk)
+                    SetTimer(hwnd_, kAnimTimerId, kAnimIntervalMs, nullptr);
+            }
             if (sessionLogEnabled_)
                 diagnostics_.Log().RecordEvent("modal", "enter size/move loop",
                                         SessionClockSec());
@@ -1215,6 +1328,17 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
             UINT newDpi = HIWORD(wp);
             OnDpiChanged(newDpi, reinterpret_cast<const RECT*>(lp));
             return 0;
+        }
+
+        case WM_SETTINGCHANGE: {
+            // The user changed a system-wide setting. Re-read the wheel scroll-lines
+            // preference: it is broadcast under SPI_SETWHEELSCROLLLINES, but the wparam
+            // is unreliable across shells, so just re-query unconditionally. Cheap
+            // (a registry-backed cached read) and only fires on real setting changes.
+            UINT lines = 3;
+            if (SystemParametersInfoW(SPI_GETWHEELSCROLLLINES, 0, &lines, 0))
+                wheelScrollLines_ = lines;
+            break;  // fall through to DefWindowProc — other subsystems may care too
         }
 
         case WM_MOUSEMOVE: {
@@ -1361,8 +1485,12 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
             HideTooltip();  // scrolling dismisses a visible tooltip
             POINT pt = {GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
             ScreenToClient(hwnd_, &pt);
+            // Normalize WHEEL_PAGESCROLL (0xFFFFFFFF) to 0 before passing down — the
+            // element tree reads 0 as "page per notch" without multiply-by-height confusion.
+            UINT lines = wheelScrollLines_;
+            if (lines == WHEEL_PAGESCROLL) lines = 0;
             input_.Input().PointerWheel(ToDip(pt.x, pt.y), GET_WHEEL_DELTA_WPARAM(wp),
-                                CurrentModifiers());
+                                        CurrentModifiers(), lines);
             OnMouseWheel(pt.x * (96.0f / dpi_), pt.y * (96.0f / dpi_),
                          GET_WHEEL_DELTA_WPARAM(wp));
             UpdateAnimationTimer();  // a wheel may have kicked off a smooth scroll
@@ -1556,7 +1684,16 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         }
 
-        case WM_DESTROY:
+        case WM_DESTROY: {
+            // Guard against reentrancy: ~NativeWindowHost() calls DestroyWindow(hwnd_)
+            // from the base-class dtor phase when the derived class (Window, elements_)
+            // is already destroyed. That second WM_DESTROY would call OnDestroying/
+            // OnDestroyed (pure virtual dispatch -> UB) and detach already-freed elements.
+            // Bail immediately on the second pass; the first pass already did the work.
+            if (destroying_) {
+                hwnd_ = nullptr;  // Mark as destroyed so dtor sees hwnd_==nullptr
+                return 0;
+            }
             // Mark teardown so an input message that synchronously triggered this
             // (e.g. a Close button's handler) skips its trailing member access
             // after unwinding back out of the nested WM_DESTROY.
@@ -1601,6 +1738,7 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
             if (application_) application_->DetachWindow(*this);
             else if (ShouldPostQuitOnDestroy()) PostQuitMessage(0);
             return 0;
+        }
     }
     return DefWindowProcW(hwnd_, msg, wp, lp);
 }
@@ -1807,7 +1945,12 @@ void NativeWindowHost::ServiceModalFrame(bool pace) {
     // do not paint faster than the panel), a 125Hz mouse a loose one (so jitter never
     // costs a whole frame). Passing gap == 0 degrades to "always paint", which is
     // exactly the unpaced heartbeat behaviour, so the pace==false path is unchanged.
-    if (pace &&
+    //
+    // Exception: the FIRST opportunity of a drag (gapMs == 0, no estimate yet) must
+    // never be skipped — doing so defers the first visible resize by a whole mouse
+    // period, producing a jarring stall before the window starts following the cursor.
+    // Once the estimate is seeded (second opportunity onward), pacing kicks in.
+    if (pace && gapMs > 0.0 &&
         !FrameIsNearestOpportunity(FrameWaitRemaining(), gapMs))
         return;
 
