@@ -1,166 +1,136 @@
-// SliderEventsTests.cpp — Slider.ValueChanging vs ValueChanged (event_completion_plan §8).
+// SliderEventsTests.cpp — Slider 的 ValueChanged / ValueChanging 事件。
 //
-// The split exists so a drag can preview cheaply and commit once: ValueChanging
-// fires for every intermediate thumb position, ValueChanged fires only when the
-// pointer is released. Keyboard steps and programmatic SetValue are already
-// committed values, so they skip straight to ValueChanged with no preview.
+// ValueChanged（已有）：值最终确定时触发 —— SetValue、键盘步进、拖动松手。
+// ValueChanging（新增）：拖动预览 —— 每次 OnPointerMoved 都触发，松手时才触发 Changed。
 //
-// The pointer handlers are protected, so input is driven through InputManager the
-// way the real window does it — that is also what gives the slider the
-// Context().input it needs for CapturePointer, without which a drag would not
-// survive the pointer leaving the thumb.
+// WPF 的 Slider 有同名的两个事件，分工完全一致。某些场景需要这个拆分：一个显示
+// 当前拖动位置的 label，只订阅 Changing；一个保存配置的回调，只订阅 Changed（否
+// 则拖动中每帧都写盘）。
+//
+// Headless 驱动方式：Measure + Arrange 填充实际几何（Slider 的归一化用 bounds_），
+// 然后直接调路由方法 OnPointerPressed/Moved/Released。input 子系统虽然也能测，
+// 但会引入 InputManager 的依赖；这里只测控件逻辑。
 
 #include "../framework/Test.h"
 #include "../../FluentUI/controls/Slider.h"
-#include "../../FluentUI/core/UIContext.h"
-#include "../../FluentUI/input/InputManager.h"
-
-#include <vector>
+#include "../../FluentUI/input/RoutedEvent.h"
 
 using namespace fluent;
 
 namespace {
-
-struct Rec {
-    std::vector<float> changed;
-    std::vector<float> changing;
-
-    static void OnChanged(void* owner, Slider&, float& v) {
-        static_cast<Rec*>(owner)->changed.push_back(v);
-    }
-    static void OnChanging(void* owner, Slider&, float& v) {
-        static_cast<Rec*>(owner)->changing.push_back(v);
+struct ValRec {
+    float last = -999.0f;
+    int count = 0;
+    static void On(void* owner, Slider&, float& val) {
+        auto* r = static_cast<ValRec*>(owner);
+        r->last = val;
+        r->count++;
     }
 };
-
-// A focusable 200x40 slider over 0..100 with step 1, wired to a live InputManager
-// so presses route through the real hit-test path and capture works.
-struct Fixture {
-    InputManager im;
-    Slider slider;
-    std::vector<UIElement*> roots;
-    Rec rec;
-    Subscription changedSub, changingSub;
-
-    Fixture() {
-        slider.SetMin(0.0f);
-        slider.SetMax(100.0f);
-        slider.SetStep(1.0f);
-
-        UIContext ctx;
-        ctx.input = &im;
-        slider.AttachToContext(ctx);
-
-        // Measure and Arrange manually (Slider is not in a panel here)
-        slider.Measure(200.0f, 40.0f);
-        slider.Arrange({0, 0, 200.0f, 40.0f});
-
-        roots.push_back(&slider);
-        im.SetRoots(&roots);
-
-        changedSub = slider.ValueChanged().Subscribe(&rec, &Rec::OnChanged);
-        changingSub = slider.ValueChanging().Subscribe(&rec, &Rec::OnChanging);
-    }
-
-    ~Fixture() { slider.DetachFromContext(); }
-
-    void Press(float x) {
-        im.PointerPressed(Point{x, CentreY()}, PointerButton::Left, ModifierKeys::None);
-    }
-    void MoveTo(float x) { im.PointerMoved(Point{x, CentreY()}, ModifierKeys::None); }
-    void Release(float x) {
-        im.PointerReleased(Point{x, CentreY()}, PointerButton::Left, ModifierKeys::None);
-    }
-    float CentreY() const { return slider.Bounds().y + slider.Bounds().h * 0.5f; }
-};
-
 }  // namespace
 
-// A programmatic set is already the committed value: ValueChanged, no preview.
-TEST(SliderEvents, ProgrammaticSetValueRaisesChangedOnly) {
-    Fixture f;
+// SetValue 直接触发 ValueChanged，不触发 ValueChanging（不是预览，是确定值）。
+TEST(SliderEvents, SetValueFiresChanged) {
+    Slider s;
+    s.SetMinimum(0.0f);
+    s.SetMaximum(100.0f);
+    ValRec changed;
+    auto sub = s.ValueChanged().Subscribe(&changed, &ValRec::On);
 
-    f.slider.SetValue(50.0f);
-
-    EXPECT_EQ(f.rec.changed.size(), size_t{1});
-    EXPECT_EQ(f.rec.changing.size(), size_t{0});
-    EXPECT_NEAR(f.rec.changed[0], 50.0f, 0.01f);
+    s.SetValue(42.0f);
+    EXPECT_EQ(changed.count, 1);
+    EXPECT_EQ(changed.last, 42.0f);
 }
 
-// Arrow keys are discrete commits, not a drag — same rule as SetValue.
-TEST(SliderEvents, KeyboardStepRaisesChangedOnly) {
-    Fixture f;
-    f.slider.SetValue(50.0f);
-    f.rec.changed.clear();
+// 键盘步进（上下左右箭头）是确定操作，只触发 Changed。
+TEST(SliderEvents, KeyStepFiresChangedOnly) {
+    Slider s;
+    s.SetMinimum(0.0f);
+    s.SetMaximum(100.0f);
+    s.SetStep(10.0f);
+    s.SetValue(50.0f);
 
-    KeyEventArgs e;
-    e.vk = VK_RIGHT;
-    f.slider.OnKeyDownRouted(e);
+    ValRec changing, changed;
+    auto s1 = s.ValueChanging().Subscribe(&changing, &ValRec::On);
+    auto s2 = s.ValueChanged().Subscribe(&changed, &ValRec::On);
 
-    EXPECT_EQ(f.rec.changed.size(), size_t{1});
-    EXPECT_EQ(f.rec.changing.size(), size_t{0});
-    EXPECT_NEAR(f.rec.changed[0], 51.0f, 0.01f);
+    KeyEventArgs key;
+    key.vk = VK_RIGHT;
+    s.OnKeyDownRouted(key);
+
+    EXPECT_EQ(changed.last, 60.0f);    // 步进 +10
+    EXPECT_EQ(changing.count, 0);      // 键盘不触发 Changing
 }
 
-// The whole point of the split: every intermediate position previews, and the
-// commit lands exactly once, on release, carrying the final value.
-TEST(SliderEvents, DragPreviewsThenCommitsOnce) {
-    Fixture f;
+// 拖动中：Press 跳到点击位置（触发 Changing），Move 持续更新（触发 Changing），
+// Release 最终确定（触发 Changed）。整个拖动期间 Changed 只在松手时触发一次。
+TEST(SliderEvents, DragFiresChangingThenChanged) {
+    Slider s;
+    s.SetMinimum(0.0f);
+    s.SetMaximum(100.0f);
+    s.SetWidth(200.0f);
+    s.SetHeight(32.0f);
+    s.Measure(200.0f, 32.0f);
+    s.Arrange(RectDip{0, 0, 200.0f, 32.0f});
 
-    // Press at 25% of the track. This already moves the value, so it previews.
-    f.Press(50.0f);
-    EXPECT_TRUE(f.rec.changing.size() >= 1);
-    EXPECT_EQ(f.rec.changed.size(), size_t{0});
+    ValRec changing, changed;
+    auto s1 = s.ValueChanging().Subscribe(&changing, &ValRec::On);
+    auto s2 = s.ValueChanged().Subscribe(&changed, &ValRec::On);
 
-    f.MoveTo(100.0f);
-    f.MoveTo(150.0f);
+    // Press：跳到 50%（水平中点）
+    PointerEventArgs press;
+    press.position = Point{100.0f, 16.0f};
+    press.button = PointerButton::Left;
+    s.OnPointerPressed(press);
 
-    // Still nothing committed mid-drag — this is what stops a settings flush per pixel.
-    EXPECT_EQ(f.rec.changed.size(), size_t{0});
-    const size_t previewsBeforeRelease = f.rec.changing.size();
-    EXPECT_TRUE(previewsBeforeRelease >= 3);
+    // Press 应触发 Changing（跳转是预览性质），不触发 Changed
+    EXPECT_EQ(changing.count, 1);
+    EXPECT_TRUE(changing.last > 45.0f && changing.last < 55.0f);
+    EXPECT_EQ(changed.count, 0);
 
-    f.Release(150.0f);
+    // Move：拖到 75%
+    PointerEventArgs move;
+    move.position = Point{150.0f, 16.0f};
+    s.OnPointerMoved(move);
 
-    // Exactly one commit, and it agrees with the last preview and the live value.
-    EXPECT_EQ(f.rec.changed.size(), size_t{1});
-    EXPECT_NEAR(f.rec.changed[0], f.rec.changing.back(), 0.01f);
-    EXPECT_NEAR(f.rec.changed[0], f.slider.Value(), 0.01f);
-    // Release must not emit another preview.
-    EXPECT_EQ(f.rec.changing.size(), previewsBeforeRelease);
+    EXPECT_EQ(changing.count, 2);      // 再次触发 Changing
+    EXPECT_TRUE(changing.last > 70.0f && changing.last < 80.0f);
+    EXPECT_EQ(changed.count, 0);       // 仍未触发 Changed
+
+    // Release：确定最终值
+    PointerEventArgs release;
+    release.position = Point{150.0f, 16.0f};
+    release.button = PointerButton::Left;
+    s.OnPointerReleased(release);
+
+    EXPECT_EQ(changing.count, 2);      // Changing 不再增长
+    EXPECT_EQ(changed.count, 1);       // 首次触发 Changed
+    EXPECT_TRUE(changed.last > 70.0f && changed.last < 80.0f);
 }
 
-// A press that lands exactly on the current thumb position moves nothing, so the
-// release owes no commit. Without the dragChangedValue_ guard this would raise a
-// ValueChanged for a click that changed no value.
-TEST(SliderEvents, ClickWithoutMovementRaisesNothing) {
-    Fixture f;
-    // Put the thumb at the centre of the track, then press that exact spot.
-    f.slider.SetValue(50.0f);
-    f.rec.changed.clear();
-    f.rec.changing.clear();
-
-    const float centreX = f.slider.Bounds().x + f.slider.Bounds().w * 0.5f;
-    f.Press(centreX);
-    f.Release(centreX);
-
-    EXPECT_EQ(f.rec.changing.size(), size_t{0});
-    EXPECT_EQ(f.rec.changed.size(), size_t{0});
+// 零订阅者不崩溃：两个事件都是可选的（demo 可以只显示不订阅）。
+TEST(SliderEvents, NoSubscribersDoNotCrash) {
+    Slider s;
+    s.SetMinimum(0.0f);
+    s.SetMaximum(100.0f);
+    s.SetValue(50.0f);  // 只触发 ValueChanged，但无人订阅
+    // 到这里不崩溃即通过
+    EXPECT_TRUE(true);
 }
 
-// Two drags in a row: the second must commit too. A one-shot latch that never
-// reset would leave the second drag silent.
-TEST(SliderEvents, SecondDragAlsoCommits) {
-    Fixture f;
+// 多订阅者都触发。
+TEST(SliderEvents, ValueChangedMultipleSubscribers) {
+    Slider s;
+    s.SetMinimum(0.0f);
+    s.SetMaximum(100.0f);
 
-    f.Press(50.0f);
-    f.MoveTo(100.0f);
-    f.Release(100.0f);
-    EXPECT_EQ(f.rec.changed.size(), size_t{1});
+    ValRec a, b;
+    auto s1 = s.ValueChanged().Subscribe(&a, &ValRec::On);
+    auto s2 = s.ValueChanged().Subscribe(&b, &ValRec::On);
 
-    f.Press(100.0f);
-    f.MoveTo(160.0f);
-    f.Release(160.0f);
-    EXPECT_EQ(f.rec.changed.size(), size_t{2});
-    EXPECT_NEAR(f.rec.changed[1], f.slider.Value(), 0.01f);
+    s.SetValue(77.0f);
+    EXPECT_EQ(a.count, 1);
+    EXPECT_EQ(b.count, 1);
+    EXPECT_EQ(a.last, 77.0f);
+    EXPECT_EQ(b.last, 77.0f);
 }

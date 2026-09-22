@@ -179,6 +179,7 @@
     <ClInclude Include="window\DialogWindow.h" />
     <ClInclude Include="window\DialogHost.h" />
     <ClInclude Include="window\FrameScheduler.h" />
+    <ClInclude Include="window\TrayIcon.h" />
     <ClInclude Include="services\PopupHost.h" />
     <ClInclude Include="services\PopupGeometry.h" />
     <ClInclude Include="window\DirtyRegion.h" />
@@ -285,6 +286,7 @@
     <ClCompile Include="window\DialogWindow.cpp" />
     <ClCompile Include="window\DialogHost.cpp" />
     <ClCompile Include="window\FrameScheduler.cpp" />
+    <ClCompile Include="window\TrayIcon.cpp" />
 
     <ClCompile Include="services\PopupHost.cpp" />
     <ClCompile Include="services\TooltipService.cpp" />

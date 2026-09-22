@@ -1,5 +1,6 @@
 #include "Window.h"
 #include "../diagnostics/LayoutCostProbe.h"
+#include <shellapi.h>  // Shell_NotifyIconW, NOTIFYICONDATAW
 
 namespace fluent {
 namespace {
@@ -202,7 +203,6 @@ void Window::OnDestroyed() {
 
 bool Window::OnAppMessage(UINT msg, WPARAM wp, LPARAM lp, LRESULT& result) {
     UNREFERENCED_PARAMETER(wp);
-    UNREFERENCED_PARAMETER(lp);
     if (msg == WM_CLOSE) {
         // Route the system close button through the cancelable path rather than
         // letting DefWindowProc destroy the window behind the app's back.
@@ -210,7 +210,123 @@ bool Window::OnAppMessage(UINT msg, WPARAM wp, LPARAM lp, LRESULT& result) {
         result = 0;
         return true;
     }
+
+    if (msg == WM_FLUENT_TRAY_CALLBACK) {
+        // GetCursorPos rather than decoding lParam: under the classic notify-icon
+        // contract lParam carries only the mouse message, with no coordinates. The
+        // cursor has not moved between the shell posting this and us handling it —
+        // the tray is not a path where a frame of lag can accumulate.
+        POINT pt{};
+        GetCursorPos(&pt);
+        TrayIconEventArgs args;
+        args.screenX = pt.x;
+        args.screenY = pt.y;
+        args.rawMessage = static_cast<UINT>(lp);
+        args.action = DecodeTrayAction(lp);
+        RaiseTrayAction(args.action, args);
+        result = 0;
+        return true;
+    }
+
+    // Explorer restarted and dropped every tray icon. Compared only when this
+    // window actually registered one (taskbarCreatedMsg_ stays 0 otherwise), so a
+    // window with no tray icon pays one integer compare against a value no real
+    // message can equal — RegisterWindowMessageW never returns 0.
+    if (taskbarCreatedMsg_ != 0 && msg == taskbarCreatedMsg_) {
+        if (trayIcon_) trayIcon_->HandleTaskbarCreated();
+        // Deliberately NOT consumed: TaskbarCreated is a broadcast and other
+        // subsystems (or a subclass) may legitimately want to see it too. Returning
+        // false lets it continue to the host's own switch and DefWindowProc.
+        return false;
+    }
+
     return false;
+}
+
+// --- Tray icon ----------------------------------------------------------------
+
+HRESULT Window::SetTrayIcon(HICON icon, const std::wstring& tooltip) {
+    // An HWND is required, and this is the one failure mode worth being loud
+    // about: SetTrayIcon in OnInitialize is the natural mistake, since that is
+    // where every other piece of window setup goes.
+    if (!IsOpen()) {
+        TraceMsg("Window", "SetTrayIcon before the window exists — call it from "
+                           "OnContentCreated/OnLoaded, not OnInitialize");
+        return HRESULT_FROM_WIN32(ERROR_INVALID_WINDOW_HANDLE);
+    }
+    if (!trayIcon_) {
+        trayIcon_ = std::make_unique<TrayIcon>(Hwnd());
+        // Interned process-wide by the shell; resolving it here rather than at
+        // startup keeps the cost on windows that actually want a tray icon.
+        taskbarCreatedMsg_ = RegisterWindowMessageW(L"TaskbarCreated");
+    }
+    return trayIcon_->Set(icon, tooltip);
+}
+
+void Window::RemoveTrayIcon() {
+    if (trayIcon_) trayIcon_->Remove();
+}
+
+bool Window::HasTrayIcon() const {
+    return trayIcon_ && trayIcon_->IsAdded();
+}
+
+HRESULT Window::SetTrayTooltip(const std::wstring& tooltip) {
+    if (!trayIcon_) return E_FAIL;
+    return trayIcon_->SetTooltip(tooltip);
+}
+
+HRESULT Window::ShowTrayBalloon(const std::wstring& title, const std::wstring& text,
+                                DWORD iconFlags) {
+    if (!trayIcon_) return E_FAIL;
+    return trayIcon_->ShowBalloon(title, text, iconFlags);
+}
+
+void Window::HideToTray() {
+    if (!IsOpen()) return;
+    ShowWindow(Hwnd(), SW_HIDE);
+}
+
+void Window::RestoreFromTray() {
+    if (!IsOpen()) return;
+    const HWND hwnd = Hwnd();
+    // SW_SHOW alone is not enough for a window hidden while minimized: it becomes
+    // visible but stays minimized, so the user sees a taskbar button instead of a
+    // window and has to click again. SW_RESTORE covers both cases (it shows AND
+    // un-minimizes), and the IsIconic check keeps a normal show from animating a
+    // restore it does not need.
+    ShowWindow(hwnd, IsIconic(hwnd) ? SW_RESTORE : SW_SHOW);
+    SetForegroundWindow(hwnd);
+}
+
+void Window::RaiseTrayAction(TrayAction action, const TrayIconEventArgs& args) {
+    // Events take a mutable ref (a handler may annotate the args), but the decoded
+    // input is ours — copy per dispatch so one handler cannot alter what the next
+    // hook sees.
+    TrayIconEventArgs local = args;
+    switch (action) {
+        case TrayAction::Click:
+            OnTrayIconClick(local);
+            trayClick_.Raise(*this, local);
+            break;
+        case TrayAction::DoubleClick:
+            OnTrayIconDoubleClick(local);
+            trayDoubleClick_.Raise(*this, local);
+            break;
+        case TrayAction::RightClick:
+            OnTrayIconRightClick(local);
+            trayRightClick_.Raise(*this, local);
+            break;
+        case TrayAction::MiddleClick:
+            OnTrayIconMiddleClick(local);
+            trayMiddleClick_.Raise(*this, local);
+            break;
+        case TrayAction::None:
+            // Mouse-move over the icon, balloon shown/dismissed, and similar
+            // callbacks land here. Surfacing them would mean an event that fires
+            // continuously while the cursor crosses the tray.
+            break;
+    }
 }
 
 } // namespace fluent

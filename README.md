@@ -13,36 +13,46 @@ token 化主题），有 XAML 经验即可平移。
 
 ## 特性
 
+- **WPF 式事件模型**：`Event<Sender, Args>` 多订阅者 + `Subscription` RAII 退订，
+  零堆分配（函数指针槽位，非 `std::function`）。UIElement 暴露 13 个基础事件
+  （指针/键盘/焦点/尺寸/右键菜单），控件另有语义事件（Click、TextChanged、
+  ScrollChanged、ValueChanging…）
 - **retained-mode 元素树**：Visual → UIElement → FrameworkElement → Control/Panel
   四层，每层只加一个关注点
 - **WPF 式两趟布局**：Measure/Arrange，带 Measure 缓存短路
 - **DirectComposition 渲染**：窗口内容绘制在 DComp virtual surface 上，
-  滚动与属性动画跑在合成器线程，UI 线程繁忙也不卡
+  属性动画跑在合成器线程（ProgressBar 不定态扫光），UI 线程繁忙也不卡
 - **文本虚拟化**：TextArea 的 NoWrap 模式精确虚拟化（28 MB / 20 万行秒开），
   Wrap 模式按段估算虚拟化；高吞吐 log 追加（AppendText O(1)，SetMaxLines 环形上限）
+- **托盘图标集成**：单窗口设计（无需隐藏消息窗口），RAII 生命周期管理，
+  支持气泡通知和右键菜单；`demos/TrayAppDemo` 演示最小化到托盘
 - **主题 token 化**：亮/暗双主题，控件零硬编码颜色
 - **每窗口 DPI**：PerMonitorV2，跨屏拖动实时切换
 - **idle 零 CPU**：无轮询定时器，消息循环无事时 INFINITE 阻塞
 
 ## 控件
 
-基础：Button / CheckBox / RadioButton / ToggleSwitch / Slider / ProgressBar /
-TextBlock / TextBox / Hyperlink / Image
+基础：Button / RepeatButton / CheckBox / RadioButton / ToggleSwitch / Slider / ProgressBar /
+TextBlock / TextBox / PasswordBox / Hyperlink / Image / Separator / Tooltip
 
-选择与导航：ComboBox（可编辑）/ ListBox（可选虚拟化，O(visible) 绘制）/
-TreeView（固定行高虚拟化 + DComp 合成器滚动）/ TabControl / MenuBar / MenuFlyout /
-ToolBar（CommandBar 风格，溢出进 flyout）/ StatusBar
+选择与导航：ComboBox（可编辑）/ ListBox（虚拟化，O(visible) 绘制）/
+TreeView（虚拟化，双击展开/折叠）/ DataGrid（虚拟化，列定义、排序、单元格编辑）/
+TabControl / MenuBar / MenuFlyout（上下文菜单、下拉、子菜单）/
+ToolBar（命令条，溢出进 flyout）/ StatusBar
 
-文本与日期：TextArea（NoWrap/Wrap 两模式均虚拟化 + DComp 合成器滚动）/
-DatePicker / Calendar
+文本与日期：TextArea（NoWrap/Wrap 两模式虚拟化，28 MB 秒开）/ RichTextBox（段落缩进）/
+LogViewer（高吞吐 log 追加）/ DatePicker / Calendar
 
 对话框：ContentDialog / MessageDialog
 
+分组：GroupBox / Expander
+
+窗口与系统集成：Window（含托盘图标支持，见 `window/TrayIcon.h` 和 `demos/TrayAppDemo`）
+
 布局：StackPanel / Grid / DockPanel / Canvas / WrapPanel / Border / ScrollPanel（通用可滚动容器，不虚拟化）/ GridSplitter（可拖动分隔条）
 
-另有两个内部零件：`layout/ScrollViewer.h` 是滚动条引擎（滚动状态、thumb 几何、
-平滑滚动动画、自动淡出/悬停展开），被 ListBox/TreeView/TextArea/ScrollPanel
-内嵌复用；`composition/ScrollContentHost.h` 是合成器滚动宿主，被 TextArea/TreeView
+另有一个内部零件：`layout/ScrollViewer.h` 是滚动条引擎（滚动状态、thumb 几何、
+平滑滚动动画、自动淡出/悬停展开），被 ListBox/TreeView/TextArea/ScrollPanel/ComboBox
 内嵌复用。
 
 ## 构建

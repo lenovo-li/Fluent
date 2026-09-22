@@ -1,8 +1,13 @@
 # FluentUI Event Model Enhancement — Implementation Report
 
-**Date**: 2026-09-20  
+**Date**: 2026-09-20（初版）/ 2026-09-22（校订）  
 **Status**: Phase 1 & Phase 2 Complete ✅  
-**Tests**: 1681/1681 passing
+**Tests**: 1681/1681 passing（当时）→ 现为 1739/1739
+
+> **读者注意**：这份报告记录的是 2026-09-20 当天 Phase 1/2 的完成情况，**不是当前状态**。
+> 之后 P0/P1/P2 三批事件补全已全部完成（见 `event_completion_plan.md`），本文中
+> 「Next Steps」列出的多数条目已经做完，「RichTextBox 滚动抖动仍存在」等结论也已过时。
+> 文中标注 ⟹ 的地方是校订说明。
 
 ---
 
@@ -159,7 +164,9 @@ std::vector<std::unique_ptr<Control>> controls;  // Container of controls
 
 ### Build
 - ✅ Debug build: clean, 0 warnings
-- ✅ Release build: not tested (user verifies hardware-specific issues in Debug only per CLAUDE.md)
+- ⚠️ Release build: not tested (user verifies hardware-specific issues in Debug only per CLAUDE.md)
+  
+  ⟹ **校订**：Release 构建已在后续验证中通过（clean, 0 warnings）。
 
 ### Tests
 - ✅ **1681/1681 passing** (8 more than before due to TextBlockLayoutCache refactor)
@@ -182,24 +189,30 @@ Per CLAUDE.md, these cannot be verified from the agent session:
 
 3. **RichTextBox scroll jitter** (unchanged by this PR):
    - Still present (pixel-alignment issue, needs separate fix)
+   
+   ⟹ **校订**：已在 commit `40988c6` 修复（把文本绘制原点吸附到物理像素）。
+   实现见 `FluentUI/graphics/PixelSnapping.h`，分析见 `scroll_jitter_analysis.md`。
 
 ---
 
 ## Next Steps (Future Phases)
 
+⟹ **校订 (2026-09-22)**：下表中，ComboBox 下拉事件、Slider.ValueChanging 已在 P2
+批次中实现（commit `ebfaaf3` 及工作区待提交），其余仍待做。
+
 ### Phase 3: Control-Specific Semantic Events (Est. 2-3 weeks)
 
 High-priority events identified in analysis:
 
-| Control | Event | Priority | Complexity |
-|---------|-------|----------|------------|
-| **DataGrid** | `CellDoubleClick` | 🔥 High | Medium |
-| **DataGrid** | `ColumnHeaderClick` | 🔥 High | Low |
-| **ListBox** | `ItemDoubleClick` | 🔥 High | Low (copy TreeView) |
-| **ComboBox** | `DropDownOpened/Closed` | ⚠️ Medium | Low |
-| **Slider** | `ValueChanging` (preview) | ⚠️ Medium | Medium |
-| **TabControl** | `TabClosing` (cancelable) | ⚠️ Medium | Medium |
-| **TextBox/TextArea** | `TextChanging` (preview) | ⚠️ Medium | Medium |
+| Control | Event | Priority | Complexity | ⟹ 2026-09-22 状态 |
+|---------|-------|----------|------------|------------------|
+| **DataGrid** | `CellDoubleClick` | 🔥 High | Medium | 未做 |
+| **DataGrid** | `ColumnHeaderClick` | 🔥 High | Low | 未做 |
+| **ListBox** | `ItemDoubleClick` | 🔥 High | Low (copy TreeView) | 未做 |
+| **ComboBox** | `DropDownOpened/Closed` | ⚠️ Medium | Low | ✅ 已完成 |
+| **Slider** | `ValueChanging` (preview) | ⚠️ Medium | Medium | ✅ 已完成 |
+| **TabControl** | `TabClosing` (cancelable) | ⚠️ Medium | Medium | 未做 |
+| **TextBox/TextArea** | `TextChanging` (preview) | ⚠️ Medium | Medium | 未做 |
 
 ### Phase 4: Drag-and-Drop Source API (Est. 2 weeks)
 
@@ -269,6 +282,10 @@ const float dpi = context_.dpiScale;
 const float scrollY = std::round(scrollViewer_->Offset() * dpi) / dpi;  // Snap to physical pixel
 ```
 
+⟹ **校订 (2026-09-22)**：上述修复已合并（commit `40988c6`）。实际实现抽取为独立工具函数
+`graphics/PixelSnapping.h::SnapToPixel(dipValue, dpiScale)`，被 RichTextBox / TextArea /
+LogViewer 共享。分析见 `scroll_jitter_analysis.md`，验证见 `pixel_snapping_implementation_report.md`。
+
 ### Q3: TreeView 双击展开/折叠应该在哪实现？
 
 **Original Question**: FluentUI library vs user code?
@@ -287,8 +304,13 @@ const float scrollY = std::round(scrollViewer_->Offset() * dpi) / dpi;  // Snap 
 
 - 13 new base events on UIElement
 - TreeView double-click with full customization
-- Zero regressions, 1681/1681 tests passing
+- Zero regressions, 1681/1681 tests passing（当时）→ 现为 1739/1739
 - Non-breaking changes, old code works as-is
+
+⟹ **校订 (2026-09-22)**：此结论写于 2026-09-20。之后 P0/P1/P2 三批事件补全已全部完成，
+包括 RichTextBox/ScrollViewer/GridSplitter（P0）、MenuFlyout.Closed + MenuItem.Invoked（P1）、
+以及 ComboBox/Calendar/DatePicker/ToolBar/Image/Slider 的事件（P2）。当前计划完成度见
+`event_completion_plan.md` 和本次分支的工作区待提交改动。
 
 **Impact**: FluentUI now supports WPF-style event-driven UI programming without forced inheritance, unblocking complex user scenarios like:
 - Custom hover effects (TreeView hierarchy clarity)

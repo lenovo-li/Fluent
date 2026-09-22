@@ -49,12 +49,12 @@
 | **TextBox** | ✅ 继承 | ✅ 继承 | ❌ | ❌ | ❌ | ❌ |
 | **PasswordBox** | ✅ 继承 | ➖ | ❌ | ❌ | ❌ | ➖ |
 | **TextArea** | ✅ 继承 | ✅ 继承 | ⚠️ 内部实现 | ⚠️ 内部实现 | ❌ | ❌ |
-| **RichTextBox** | ❌ | ❌ | ⚠️ 内部实现 | ⚠️ 内部实现 | ❌ | ❌ |
+| **RichTextBox** | ✅ | ✅ | ⚠️ 内部实现 | ⚠️ 内部实现 | ❌ | ❌ |
 | **NumericUpDown** | ➖ | ➖ | ❌ | ❌ | ➖ | ➖ |
 
 **备注**:
 - TextBox/TextArea/PasswordBox 继承自 `TextEditBase`，后者有 `TextChanged()` 和 `SelectionChanged()`
-- RichTextBox **未继承** TextEditBase，**没有暴露任何事件**
+- RichTextBox **未继承** TextEditBase，但已暴露 `TextChanged()`, `SelectionChanged()`, `Formatted()` 事件
 - 双击词选择、右键菜单内部实现，用户无法定制
 - 复制/粘贴/撤销/重做内部实现，无事件通知
 
@@ -65,14 +65,14 @@
 | 控件 | SelectionChanged | ItemDoubleClick | ItemRightClick | MultiSelect | DragReorder |
 |------|:----------------:|:---------------:|:--------------:|:-----------:|:-----------:|
 | **ListBox** | ✅ + `SelectionSetChanged()` | ❌ | ❌ | ✅ 已支持 | ❌ |
-| **ComboBox** | ✅ + `TextChanged()` | ❌ | ❌ | ➖ | ➖ |
+| **ComboBox** | ✅ + `TextChanged()` + `DropDownOpened/Closed()` | ❌ | ❌ | ➖ | ➖ |
 | **TreeView** | ✅ + `SelectionSetChanged()` | ❌ | ❌ | ✅ 已支持 | ❌ |
 | **TabControl** | ✅ + `TabCloseRequested()` | ❌ | ❌ | ➖ | ❌ |
 
 **缺失场景**:
 - **ListBox**: 双击项执行操作（打开、编辑）
 - **TreeView**: 双击展开/折叠、右键菜单前选中节点
-- **ComboBox**: 下拉框打开/关闭事件
+- **ComboBox**: ✅ 下拉框打开/关闭事件已实现 (DropDownOpened/DropDownClosed)
 - **TabControl**: 标签页拖拽重排
 
 ---
@@ -99,16 +99,20 @@
 
 ### 5. 数值输入控件
 
-| 控件 | ValueChanged | Min/Max | Increment | Keyboard | Mouse |
-|------|:------------:|:-------:|:---------:|:--------:|:-----:|
-| **Slider** | ✅ | ➖ | ➖ | ⚠️ 内部 | ⚠️ 内部 |
-| **NumericUpDown** | ✅ | ➖ | ➖ | ⚠️ 内部 | ⚠️ 内部 |
-| **Rating** | ✅ | ➖ | ➖ | ⚠️ 内部 | ⚠️ 内部 |
-| **ProgressBar** | ➖ | ➖ | ➖ | ➖ | ➖ |
+| 控件 | ValueChanged | Min/Max | Increment | Keyboard | Mouse | ValueChanging |
+|------|:------------:|:-------:|:---------:|:--------:|:-----:|:-------------:|
+| **Slider** | ✅ | ➖ | ➖ | ⚠️ 内部 | ⚠️ 内部 | ✅ |
+| **NumericUpDown** | ✅ | ➖ | ➖ | ⚠️ 内部 | ⚠️ 内部 | ❌ |
+| **Rating** | ✅ | ➖ | ➖ | ⚠️ 内部 | ⚠️ 内部 | ❌ |
+| **ProgressBar** | ➖ | ➖ | ➖ | ➖ | ➖ | ➖ |
+
+**已实现事件**:
+- **Slider**: ✅ `ValueChanging` (拖动预览) + `ValueChanged` (最终确定)
+- **NumericUpDown**: `ValueChanged`（上下箭头、输入确认）
 
 **缺失事件**:
-- **ValueChanging** (值变化中，可取消)
-- **DragStarted / DragCompleted** (Slider 拖拽开始/结束)
+- **NumericUpDown**: ValueChanging (输入中实时验证)
+- **Slider**: DragStarted / DragCompleted (拖拽生命周期，如果需要区分拖动开始/结束)
 
 ---
 
@@ -118,9 +122,9 @@
 |------|:--------:|:----------:|------|
 | **SelectionChanged** | ✅ | ➖ | Calendar 日期选中 |
 | **DateChanged** | ➖ | ✅ | DatePicker 值变化 |
-| **DropDownOpened** | ➖ | ❌ | 下拉日历打开 |
-| **DropDownClosed** | ➖ | ❌ | 下拉日历关闭 |
-| **MonthChanged** | ❌ | ❌ | 切换月份 |
+| **CalendarOpened** | ➖ | ✅ | 下拉日历打开 |
+| **CalendarClosed** | ➖ | ✅ | 下拉日历关闭 |
+| **DisplayMonthChanged** | ✅ | ❌ | 切换月份 |
 | **YearChanged** | ❌ | ❌ | 切换年份 |
 
 ---
@@ -130,7 +134,7 @@
 | 控件 | 事件 | 备注 |
 |------|------|------|
 | **Expander** | ✅ `ExpandedChanged()` | 展开/折叠 |
-| **ScrollViewer** | ❌ | 缺 `ScrollChanged` 事件 |
+| **ScrollViewer** | ✅ `ScrollChanged()` | 滚动位置变化 |
 | **Panel** | ➖ | 纯布局容器 |
 | **DockPanel** | ➖ | 纯布局容器 |
 | **Grid** | ➖ | 纯布局容器 |
@@ -139,16 +143,14 @@
 | **WrapPanel** | ➖ | 纯布局容器 |
 | **UniformGrid** | ➖ | 纯布局容器 |
 
-**缺失**: ScrollViewer 的 `ScrollChanged` 事件（滚动位置变化）
-
 ---
 
 ### 8. 内容/媒体控件
 
 | 控件 | 事件 | 备注 |
 |------|------|------|
+| **Image** | ✅ `ImageOpened()` | 加载成功 |
 | **Image** | ✅ `ImageFailed()` | 加载失败 |
-| **Image** | ❌ `ImageOpened()` | 加载成功 |
 | **Image** | ❌ `DoubleClick` | 双击全屏查看 |
 | **TextBlock** | ❌ | 只读文本，无交互 |
 | **Chart** | ❌ | 缺少所有交互事件（悬停、点击数据点） |
@@ -166,8 +168,8 @@
 | **InfoBar** | ✅ `Closed()` | 关闭通知 |
 | **InfoBar** | ❌ `ActionButtonClick` | 操作按钮点击 |
 | **MenuBar** | ❌ | 缺 `MenuOpened`, `MenuClosed` |
-| **MenuFlyout** | ❌ | 缺 `Opened`, `Closed` |
-| **ToolBar** | ⚠️ `overflowOpened_` | 私有成员，未暴露 |
+| **MenuFlyout** | ✅ `Closed()` | 菜单关闭事件 |
+| **ToolBar** | ⚠️ `overflowOpened_` | 私有成员，未暴露（使用 Button::Click 代替 ButtonClick） |
 
 ---
 
@@ -175,7 +177,7 @@
 
 | 控件 | 事件 | 备注 |
 |------|------|------|
-| **GridSplitter** | ❌ | 缺 `DragStarted`, `DragDelta`, `DragCompleted` |
+| **GridSplitter** | ✅ `DragStarted()`, `DragDelta()`, `DragCompleted()` | 拖拽调整大小 |
 | **Separator** | ➖ | 纯装饰控件 |
 | **StatusBar** | ➖ | 纯容器 |
 
@@ -206,13 +208,25 @@
 ## 总结统计
 
 ### 事件暴露统计
-- **已暴露 Event<>**: 29 个事件（分布在 19 个控件）
+- **已暴露 Event<>**: 40+ 个事件（分布在 25+ 个控件）
 - **仅虚函数未暴露**: 至少 12 个基础交互事件
-- **完全缺失**: 至少 40+ 个用户场景事件
+- **完全缺失**: 至少 30+ 个用户场景事件
 
 ### 控件覆盖率
-- **有事件的控件**: 19 / 45 (42%)
-- **无任何事件的控件**: 26 / 45 (58%)
+- **有事件的控件**: 25 / 45 (55%)
+- **无任何事件的控件**: 20 / 45 (45%)
+
+### 近期完成（P0/P1/P2）
+- ✅ RichTextBox: TextChanged, SelectionChanged, Formatted
+- ✅ ScrollViewer: ScrollChanged
+- ✅ GridSplitter: DragStarted, DragDelta, DragCompleted
+- ✅ MenuItem: Invoked (从 std::function 迁移到 Event<>)
+- ✅ MenuFlyout: Closed
+- ✅ Slider: ValueChanging (拖动预览)
+- ✅ Image: ImageOpened
+- ✅ ComboBox: DropDownOpened, DropDownClosed
+- ✅ Calendar: DisplayMonthChanged
+- ✅ DatePicker: CalendarOpened, CalendarClosed
 
 ### 优先级分类
 

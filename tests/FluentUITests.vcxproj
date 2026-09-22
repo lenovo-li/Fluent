@@ -129,6 +129,10 @@
     <ClCompile Include="unit\ExpanderTransitionTests.cpp" />
     <ClCompile Include="unit\GroupBoxTests.cpp" />
     <ClCompile Include="unit\HyperlinkTests.cpp" />
+    <ClCompile Include="unit\ImageEventsTests.cpp" />
+    <ClCompile Include="unit\ComboBoxEventsTests.cpp" />
+    <ClCompile Include="unit\CalendarEventsTests.cpp" />
+    <ClCompile Include="unit\DatePickerEventsTests.cpp" />
     <ClCompile Include="unit\CalendarConstraintsTests.cpp" />
     <ClCompile Include="unit\CalendarTests.cpp" />
     <ClCompile Include="unit\DatePickerTests.cpp" />
@@ -146,6 +150,7 @@
     <ClCompile Include="unit\TextEditSelectionTests.cpp" />
     <ClCompile Include="unit\TextEditInputPolicyTests.cpp" />
     <ClCompile Include="unit\FramePacingTests.cpp" />
+    <ClCompile Include="unit\TrayIconTests.cpp" />
     <ClCompile Include="unit\SelectorTests.cpp" />
     <ClCompile Include="unit\ListBoxTests.cpp" />
     <ClCompile Include="unit\ListBoxItemHeightGuardTests.cpp" />

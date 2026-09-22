@@ -1,7 +1,13 @@
-// TrayAppDemo.cpp - 托盘应用最小化演示
-// 演示：点击关闭按钮时最小化到托盘，而不是退出程序
-
-// 先包含 FluentUI 头文件（它们会正确处理 Windows.h）
+// TrayAppDemo.cpp — 关闭时最小化到托盘。
+//
+// 这个 demo 的历史值得一提：它原先创建**两个**窗口——一个 HWND_MESSAGE 隐藏窗口
+// 专门接收托盘回调，加上 FluentUI 主窗口——并手写 WndProc、全局变量和托盘数据。
+// 托盘支持进入框架后（FluentUI/window/TrayIcon.h），那些都不再需要：托盘图标绑定
+// 在主窗口自己的 HWND 上，回调消息由 Window::OnAppMessage 拦截。
+//
+// 隐藏窗口不只是多余，它还是错的：shell 在 Explorer 重启后广播 "TaskbarCreated"，
+// 所有托盘图标必须重新添加，而广播消息**到不了** HWND_MESSAGE 窗口。旧设计里
+// Explorer 一崩，图标就永久消失了。
 #include "../../FluentUI/Api.h"
 #include "../../FluentUI/Application.h"
 #include "../../FluentUI/window/Window.h"
@@ -9,216 +15,123 @@
 #include "../../FluentUI/controls/TextBlock.h"
 #include "../../FluentUI/controls/Button.h"
 
-// 然后包含 Shell API（用于托盘图标）
-#include <shellapi.h>
-
 #include <memory>
-#include <string>
 
 using namespace fluent;
 
-// 托盘图标消息 ID
-#define WM_TRAYICON (WM_USER + 1)
-#define IDM_SHOW    1001
-#define IDM_EXIT    1002
+namespace {
+constexpr UINT IDM_SHOW = 1001;
+constexpr UINT IDM_EXIT = 1002;
+}  // namespace
 
-// 全局变量
-static NOTIFYICONDATAW g_nid = {};
-static HWND g_hiddenWindow = nullptr;
-static Window* g_mainWindow = nullptr;
-static Application* g_app = nullptr;
-
-// 托盘图标辅助函数
-void CreateTrayIcon(HWND hwnd, HICON icon) {
-    g_nid.cbSize = sizeof(g_nid);
-    g_nid.hWnd = hwnd;
-    g_nid.uID = 1;
-    g_nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
-    g_nid.uCallbackMessage = WM_TRAYICON;
-    g_nid.hIcon = icon;
-    wcscpy_s(g_nid.szTip, L"FluentUI 托盘演示 - 右键打开菜单");
-    
-    Shell_NotifyIconW(NIM_ADD, &g_nid);
-}
-
-void RemoveTrayIcon() {
-    Shell_NotifyIconW(NIM_DELETE, &g_nid);
-}
-
-void ShowTrayMenu(HWND hwnd) {
-    HMENU hMenu = CreatePopupMenu();
-    AppendMenuW(hMenu, MF_STRING, IDM_SHOW, L"显示窗口(&S)");
-    AppendMenuW(hMenu, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(hMenu, MF_STRING, IDM_EXIT, L"退出(&X)");
-    
-    POINT pt;
-    GetCursorPos(&pt);
-    
-    // 托盘菜单需要 SetForegroundWindow 才能正确关闭
-    SetForegroundWindow(hwnd);
-    
-    UINT cmd = TrackPopupMenu(hMenu, TPM_RETURNCMD | TPM_NONOTIFY,
-                              pt.x, pt.y, 0, hwnd, nullptr);
-    
-    if (cmd == IDM_SHOW) {
-        if (g_mainWindow && g_mainWindow->IsOpen()) {
-            ShowWindow(g_mainWindow->Hwnd(), SW_SHOW);
-            SetForegroundWindow(g_mainWindow->Hwnd());
-        }
-    } else if (cmd == IDM_EXIT) {
-        if (g_app) {
-            g_app->Shutdown(0);
-        }
-    }
-    
-    DestroyMenu(hMenu);
-}
-
-// 隐藏的消息窗口（接收托盘消息）
-LRESULT CALLBACK HiddenWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
-    if (msg == WM_TRAYICON) {
-        if (lp == WM_RBUTTONUP) {
-            ShowTrayMenu(hwnd);
-        } else if (lp == WM_LBUTTONDBLCLK) {
-            // 双击托盘图标 = 显示窗口
-            if (g_mainWindow && g_mainWindow->IsOpen()) {
-                ShowWindow(g_mainWindow->Hwnd(), SW_SHOW);
-                SetForegroundWindow(g_mainWindow->Hwnd());
-            }
-        }
-        return 0;
-    }
-    return DefWindowProcW(hwnd, msg, wp, lp);
-}
-
-// 主窗口类
 class TrayDemoWindow : public Window {
 public:
     void OnInitialize() override {
         auto* root = new StackPanel();
         root->SetPadding(Thickness{20.0f});
         root->SetSpacing(16.0f);
-        
-        // 标题
+
         auto* title = root->Emplace<TextBlock>();
         title->SetText(L"FluentUI 托盘应用演示");
         title->SetFontSize(24.0f);
         title->SetWeight(static_cast<DWRITE_FONT_WEIGHT>(600));
-        
-        // 说明文字
+
         auto* info = root->Emplace<TextBlock>();
         info->SetText(
             L"这是一个托盘应用演示。\n\n"
             L"• 点击窗口的关闭按钮，窗口会最小化到托盘区（右下角）\n"
             L"• 双击托盘图标或右键选择\"显示窗口\"可以恢复窗口\n"
             L"• 右键托盘图标选择\"退出\"才真正关闭程序\n\n"
-            L"试试看：点击右上角的 ✕ 按钮！"
-        );
+            L"试试看：点击右上角的 ✕ 按钮！");
         info->SetWrap(true);
         info->SetLineSpacing(1.6f);
-        
-        // 按钮：隐藏到托盘
+
         auto* hideBtn = root->Emplace<Button>();
         hideBtn->SetText(L"手动隐藏到托盘");
-        subs_.push_back(hideBtn->Click().Subscribe(this, 
-            [](void* owner, Button&, RoutedEventArgs&) {
-                auto* self = static_cast<TrayDemoWindow*>(owner);
-                ShowWindow(self->Hwnd(), SW_HIDE);
-            }
-        ));
-        
-        // 按钮：真正退出
+        subs_ += hideBtn->Click().Subscribe<&TrayDemoWindow::OnHideClicked>(this);
+
         auto* exitBtn = root->Emplace<Button>();
         exitBtn->SetText(L"退出程序（不隐藏）");
-        subs_.push_back(exitBtn->Click().Subscribe(this,
-            [](void* owner, Button&, RoutedEventArgs&) {
-                auto* self = static_cast<TrayDemoWindow*>(owner);
-                if (g_app) {
-                    g_app->Shutdown(0);
-                }
-            }
-        ));
-        
+        subs_ += exitBtn->Click().Subscribe<&TrayDemoWindow::OnExitClicked>(this);
+
         SetRoot(std::unique_ptr<UIElement>(root));
     }
-    
-    void OnClosing(WindowClosingArgs& args) override {
-        // 关键：拦截关闭事件，隐藏而非销毁
-        args.cancel = true;
-        ShowWindow(Hwnd(), SW_HIDE);
-        
-        // 可以弹个气泡提示（可选）
-        g_nid.uFlags = NIF_INFO;
-        wcscpy_s(g_nid.szInfo, L"程序已最小化到托盘");
-        wcscpy_s(g_nid.szInfoTitle, L"FluentUI Demo");
-        g_nid.dwInfoFlags = NIIF_INFO;
-        Shell_NotifyIconW(NIM_MODIFY, &g_nid);
+
+    // 托盘图标必须在 HWND 存在之后才能创建，所以放在 OnContentCreated 而不是
+    // OnInitialize——后者跑在原生窗口创建之前，SetTrayIcon 会返回
+    // ERROR_INVALID_WINDOW_HANDLE。
+    void OnContentCreated() override {
+        // 用 LoadIconW 拿到的系统图标：shell 和框架都不接管它的所有权，所以它必须
+        // 比托盘图标活得久。系统图标或模块资源图标满足这一点，临时创建再销毁的不行。
+        SetTrayIcon(LoadIconW(nullptr, IDI_APPLICATION),
+                    L"FluentUI 托盘演示 - 右键打开菜单");
     }
-    
+
+protected:
+    // 双击恢复窗口。框架已经处理了"隐藏时还被最小化"这种情况。
+    void OnTrayIconDoubleClick(TrayIconEventArgs&) override { RestoreFromTray(); }
+
+    void OnTrayIconRightClick(TrayIconEventArgs& args) override {
+        HMENU menu = CreatePopupMenu();
+        AppendMenuW(menu, MF_STRING, IDM_SHOW, L"显示窗口(&S)");
+        AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+        AppendMenuW(menu, MF_STRING, IDM_EXIT, L"退出(&X)");
+
+        // 托盘菜单必须先 SetForegroundWindow，否则点击菜单外部时它不会关闭——
+        // 这是 Windows 对 owner 窗口的要求，不是可选的礼貌。
+        SetForegroundWindow(Hwnd());
+        const UINT cmd = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_NONOTIFY,
+                                        args.screenX, args.screenY, 0, Hwnd(), nullptr);
+        DestroyMenu(menu);
+
+        if (cmd == IDM_SHOW) RestoreFromTray();
+        else if (cmd == IDM_EXIT) RequestExit();
+    }
+
+    void OnClosing(WindowClosingArgs& args) override {
+        // 真正退出走 RequestExit，它先撤掉托盘图标再关窗口，所以这里不会再拦。
+        if (exiting_) return;
+
+        // 关键：取消销毁，只隐藏。HWND 继续存活，因此托盘回调仍然送达——
+        // 一个 NativeWindowHost 的 HWND 一旦销毁就无法再 Show。
+        args.cancel = true;
+        HideToTray();
+        ShowTrayBalloon(L"FluentUI Demo", L"程序已最小化到托盘");
+    }
+
 private:
-    std::vector<Subscription> subs_;
+    void OnHideClicked(Button&, RoutedEventArgs&) { HideToTray(); }
+    void OnExitClicked(Button&, RoutedEventArgs&) { RequestExit(); }
+
+    void RequestExit() {
+        exiting_ = true;
+        // 先撤图标。shell 不会可靠地回收已死窗口的图标——没有 NIM_DELETE 就退出，
+        // 图标会留在托盘里当幽灵，直到用户把鼠标移过去。
+        RemoveTrayIcon();
+        if (auto* app = OwningApplication()) app->Shutdown(0);
+    }
+
+    SubscriptionBag subs_;
+    bool exiting_ = false;
 };
 
-int APIENTRY wWinMain(
-    _In_ HINSTANCE hInstance,
-    _In_opt_ HINSTANCE hPrevInstance,
-    _In_ LPWSTR lpCmdLine,
-    _In_ int nCmdShow)
-{
+int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance,
+                      _In_ LPWSTR lpCmdLine, _In_ int nCmdShow) {
     UNREFERENCED_PARAMETER(hPrevInstance);
     UNREFERENCED_PARAMETER(lpCmdLine);
     UNREFERENCED_PARAMETER(nCmdShow);
-    
-    // 1. 创建隐藏的消息窗口（用于接收托盘消息）
-    WNDCLASSEXW wcex = {};
-    wcex.cbSize = sizeof(wcex);
-    wcex.lpfnWndProc = HiddenWndProc;
-    wcex.hInstance = hInstance;
-    wcex.lpszClassName = L"TrayDemoHiddenWindow";
-    RegisterClassExW(&wcex);
-    
-    g_hiddenWindow = CreateWindowExW(
-        0, L"TrayDemoHiddenWindow", L"",
-        0, 0, 0, 0, 0,
-        HWND_MESSAGE, nullptr, hInstance, nullptr
-    );
-    
-    if (!g_hiddenWindow) {
-        return 1;
-    }
-    
-    // 2. 创建托盘图标（使用应用程序图标）
-    HICON hIcon = LoadIconW(nullptr, IDI_APPLICATION);
-    CreateTrayIcon(g_hiddenWindow, hIcon);
-    
-    // 3. 创建 FluentUI Application
+
     Application app(hInstance);
-    g_app = &app;
-    
-    // 关键：设置为显式退出模式（窗口关闭不退出程序）
+    // 托盘应用必须用这个模式：默认的 OnMainWindowClose 会在窗口隐藏后仍然把进程
+    // 结束掉，因为窗口计数是按"关闭"算的。只有显式 Shutdown 才退出。
     app.SetShutdownMode(ShutdownMode::OnExplicitShutdown);
-    
-    // 4. 创建并显示主窗口
-    TrayDemoWindow mainWindow;
-    g_mainWindow = &mainWindow;
-    
-    mainWindow.SetTitle(L"FluentUI 托盘应用演示");
-    mainWindow.SetClientSize(500, 320);
-    mainWindow.SetTitleBarHeight(24);
-    HRESULT hr = mainWindow.Show(app);
-    if (FAILED(hr)) {
-        RemoveTrayIcon();
-        return 1;
-    }
-    
-    // 5. 运行消息循环（只有显式 Shutdown 才退出）
-    if (!app.TryRun()) {
-        RemoveTrayIcon();
-        return app.ExitCode();
-    }
-    
-    // 6. 清理托盘图标
-    RemoveTrayIcon();
-    
+
+    TrayDemoWindow window;
+    window.SetTitle(L"FluentUI 托盘应用演示");
+    window.SetClientSize(500, 320);
+    window.SetTitleBarHeight(24);
+    if (FAILED(window.Show(app))) return 1;
+
+    app.TryRun();
     return app.ExitCode();
 }

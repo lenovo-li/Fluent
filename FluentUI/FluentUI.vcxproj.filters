@@ -131,6 +131,7 @@
     <ClInclude Include="window\DialogWindow.h"><Filter>window</Filter></ClInclude>
     <ClInclude Include="window\DialogHost.h"><Filter>window</Filter></ClInclude>
     <ClInclude Include="window\FrameScheduler.h"><Filter>window</Filter></ClInclude>
+    <ClInclude Include="window\TrayIcon.h"><Filter>window</Filter></ClInclude>
     <ClInclude Include="services\PopupHost.h"><Filter>services</Filter></ClInclude>
     <ClInclude Include="services\PopupGeometry.h"><Filter>services</Filter></ClInclude>
     <ClInclude Include="window\DirtyRegion.h"><Filter>window</Filter></ClInclude>
@@ -235,6 +236,7 @@
     <ClCompile Include="window\DialogWindow.cpp"><Filter>window</Filter></ClCompile>
     <ClCompile Include="window\DialogHost.cpp"><Filter>window</Filter></ClCompile>
     <ClCompile Include="window\FrameScheduler.cpp"><Filter>window</Filter></ClCompile>
+    <ClCompile Include="window\TrayIcon.cpp"><Filter>window</Filter></ClCompile>
     <ClCompile Include="services\PopupHost.cpp"><Filter>services</Filter></ClCompile>
     <ClCompile Include="window\WindowAppearance.cpp"><Filter>window</Filter></ClCompile>
     <ClCompile Include="services\TooltipService.cpp"><Filter>services</Filter></ClCompile>

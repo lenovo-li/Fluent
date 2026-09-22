@@ -48,6 +48,7 @@
 #pragma once
 
 #include "NativeWindowHost.h"
+#include "TrayIcon.h"
 #include "../Application.h"
 #include <memory>
 #include <string>
@@ -91,6 +92,53 @@ public:
     Event<Window, WindowEventArgs>& Unloaded() { return unloaded_; }
     Event<Window, WindowEventArgs>& Closed() { return closed_; }
 
+    // --- Notification-area (tray) icon -------------------------------------
+    //
+    // The icon binds to THIS window's HWND; there is no second hidden window. See
+    // window/TrayIcon.h for why sharing the HWND is not merely adequate but
+    // actually required to survive an Explorer restart.
+    //
+    // **Call these once the HWND exists** — OnContentCreated(), OnLoaded(), or any
+    // time after Show(). OnInitialize() runs BEFORE native creation, so a
+    // SetTrayIcon there has no window to bind to and fails with
+    // ERROR_INVALID_WINDOW_HANDLE. That is deliberate: silently queueing a pending
+    // icon would mean a Set that reports success and an icon that never appears.
+    //
+    // A tray app also wants ShutdownMode::OnExplicitShutdown and an OnClosing that
+    // sets cancel and calls HideToTray(), or closing the window ends the process
+    // with the icon still on screen.
+    //
+    // `icon` is BORROWED. Neither the shell nor this window takes ownership, so it
+    // must outlive the icon — a module resource icon (LoadIconW) is the intended
+    // source. Destroying it while the icon is live leaves the tray drawing garbage.
+    HRESULT SetTrayIcon(HICON icon, const std::wstring& tooltip = L"");
+    void RemoveTrayIcon();
+    bool HasTrayIcon() const;
+    HRESULT SetTrayTooltip(const std::wstring& tooltip);
+    HRESULT ShowTrayBalloon(const std::wstring& title, const std::wstring& text,
+                            DWORD iconFlags = NIIF_INFO);
+
+    // Hide the window without destroying it, and show it again. These are the two
+    // halves of "minimize to tray", named because ShowWindow(SW_HIDE) on a raw HWND
+    // is the step every tray app gets subtly wrong: the window must be HIDDEN, not
+    // closed, because a NativeWindowHost cannot be re-Shown after its HWND dies.
+    //
+    // RestoreFromTray also un-minimizes and takes foreground — a window hidden while
+    // minimized would otherwise reappear as a taskbar button the user has to click.
+    void HideToTray();
+    void RestoreFromTray();
+
+    // Tray input. Args carry SCREEN PHYSICAL PIXELS (not DIPs) because the only
+    // consumer is menu placement — see TrayIconEventArgs.
+    //
+    // RightClick fires for a keyboard-summoned menu (WM_CONTEXTMENU) as well as an
+    // actual right-click, so a handler that opens a menu is automatically keyboard
+    // accessible.
+    Event<Window, TrayIconEventArgs>& TrayIconClick() { return trayClick_; }
+    Event<Window, TrayIconEventArgs>& TrayIconDoubleClick() { return trayDoubleClick_; }
+    Event<Window, TrayIconEventArgs>& TrayIconRightClick() { return trayRightClick_; }
+    Event<Window, TrayIconEventArgs>& TrayIconMiddleClick() { return trayMiddleClick_; }
+
 protected:
     // Called once, immediately before native creation — the counterpart to
     // InitializeComponent. Build the control tree here and hand the root to
@@ -107,6 +155,14 @@ protected:
     virtual void OnClosing(WindowClosingArgs&) {}
     virtual void OnUnloaded(WindowEventArgs&) {}
     virtual void OnClosed(WindowEventArgs&) {}
+
+    // Virtual counterparts to the tray events, for a subclass that would rather
+    // override than subscribe. Both fire: the hook first, then the event — the same
+    // contract as OnClosing/Closing.
+    virtual void OnTrayIconClick(TrayIconEventArgs&) {}
+    virtual void OnTrayIconDoubleClick(TrayIconEventArgs&) {}
+    virtual void OnTrayIconRightClick(TrayIconEventArgs&) {}
+    virtual void OnTrayIconMiddleClick(TrayIconEventArgs&) {}
 
     void SetRoot(std::unique_ptr<UIElement> root) { root_ = std::move(root); }
     UIElement* Root() const { return root_.get(); }
@@ -167,6 +223,22 @@ private:
     Event<Window, WindowClosingArgs> closingEvent_;
     Event<Window, WindowEventArgs> unloaded_;
     Event<Window, WindowEventArgs> closed_;
+
+    // Dispatch one decoded tray callback to the hook + event pair.
+    void RaiseTrayAction(TrayAction action, const TrayIconEventArgs& args);
+
+    // Created on the first SetTrayIcon, so a window that never asks for a tray icon
+    // holds no NOTIFYICONDATAW and makes no shell calls.
+    std::unique_ptr<TrayIcon> trayIcon_;
+    // The shell's "Explorer restarted, re-add your icons" broadcast. Resolved lazily
+    // on the first SetTrayIcon rather than at startup: RegisterWindowMessageW is a
+    // process-wide interned atom, and a window with no tray icon has no reason to
+    // compare every incoming message against it.
+    UINT taskbarCreatedMsg_ = 0;
+    Event<Window, TrayIconEventArgs> trayClick_;
+    Event<Window, TrayIconEventArgs> trayDoubleClick_;
+    Event<Window, TrayIconEventArgs> trayRightClick_;
+    Event<Window, TrayIconEventArgs> trayMiddleClick_;
 };
 
 } // namespace fluent

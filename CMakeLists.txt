@@ -103,6 +103,7 @@ set(FLUENTUI_SOURCES
     FluentUI/window/DialogHost.cpp
     FluentUI/window/DialogWindow.cpp
     FluentUI/window/FrameScheduler.cpp
+    FluentUI/window/TrayIcon.cpp
     FluentUI/window/Window.cpp
     FluentUI/window/WindowAppearance.cpp
 )
@@ -120,7 +121,7 @@ target_compile_definitions(FluentUI PUBLIC UNICODE _UNICODE WIN32_LEAN_AND_MEAN 
 # once per translation unit. Keep FluentUI/pch.h in sync between both paths.
 target_precompile_headers(FluentUI PRIVATE FluentUI/pch.h)
 target_link_libraries(FluentUI PUBLIC
-    d3d11 d2d1 dxgi dcomp dwrite dwmapi user32 shcore imm32 psapi)
+    d3d11 d2d1 dxgi dcomp dwrite dwmapi user32 shcore imm32 psapi shell32)
 
 if(MSVC)
     target_compile_options(FluentUI PRIVATE /W3 /permissive- /MP)

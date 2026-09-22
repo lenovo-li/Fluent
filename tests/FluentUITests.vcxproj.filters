@@ -46,6 +46,7 @@
     <ClCompile Include="unit\TextEditSelectionTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\TextEditInputPolicyTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\FramePacingTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\TrayIconTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\FrameSchedulerTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\AnimationRegistryTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\MeasureCacheTests.cpp"><Filter>unit</Filter></ClCompile>
@@ -68,6 +69,7 @@
     <ClCompile Include="unit\ElementOpacityTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\OpacityTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\MenuBarLayoutTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\MenuFlyoutEventsTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ResizeGripOuterTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\MinTrackSizeTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ControlPropertyTests.cpp"><Filter>unit</Filter></ClCompile>
@@ -126,7 +128,6 @@
     <ClCompile Include="unit\RichTextBoxEventsTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ScrollViewerEventsTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\GridSplitterEventsTests.cpp"><Filter>unit</Filter></ClCompile>
-    <ClCompile Include="unit\MenuFlyoutEventsTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\MenuItemEventsTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\SliderEventsTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\SelectorTests.cpp"><Filter>unit</Filter></ClCompile>
@@ -143,6 +144,10 @@
     <ClCompile Include="unit\ExpanderTransitionTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\GroupBoxTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\HyperlinkTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\ImageEventsTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\ComboBoxEventsTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\CalendarEventsTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\DatePickerEventsTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\CalendarConstraintsTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\CalendarTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\DatePickerTests.cpp"><Filter>unit</Filter></ClCompile>
