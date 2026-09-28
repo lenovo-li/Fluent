@@ -11,11 +11,9 @@ void ContentDialog::OnInitialize() {
     root->SetOrientation(StackPanel::Orientation::Vertical);
     root->SetSpacing(12.0f);
 
-    auto title = std::make_unique<TextBlock>();
-    title->SetText(Title());
-    title->SetTypographyRole(TypographyRole::Subtitle);
-    title->SetHeight(30.0f);
-    root->Add(std::move(title));
+    // Title is now drawn into the window caption by SetStandardTitleBar(true),
+    // so the TextBlock that used to duplicate it as content is removed.
+    // SetTitle() in the derived class or the caller already supplies the text.
 
     if (content_)
         root->Add(std::move(content_));

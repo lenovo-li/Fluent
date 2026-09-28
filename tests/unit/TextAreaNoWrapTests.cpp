@@ -44,6 +44,8 @@ public:
         std::function<bool(PopupDismissReason, HWND, int, int)>) override { return {}; }
     Subscription RegisterActivePopupKeyHandler(
         std::function<bool(UINT)>) override { return {}; }
+    Subscription RegisterActivePopupWheelHandler(
+        std::function<bool(int, int, int)>) override { return {}; }
     bool Ready() const { return dwrite_.Valid(); }
 private:
     D2DContext d2d_;

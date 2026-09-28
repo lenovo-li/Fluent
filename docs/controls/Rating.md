@@ -140,9 +140,11 @@ rating->SetIconSize(32.0f);           // 夹到 [12, 48]；不是 SetFontSize
 | Token | 用途 |
 | --- | --- |
 | `accent` | 已点亮的星(未设 AccentColor 时) |
+| `accentHover` | 悬停预览时的星星（`.cpp:76`） |
 | `controlStrokeDefault` | 未点亮的星(空心) |
 | `focusStroke` | 焦点环 |
-| `spacing` 系列 | 字形间隙 |
+| `textSecondary` | 禁用态星星（`.cpp:78`） |
+| `spacing.spacingXSmall` | 字形间隙（`.cpp:51`） |
 
 ### 演示页
 

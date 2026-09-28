@@ -24,6 +24,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <any>  // For UIElement::Tag support
 
 namespace fluent {
 
@@ -284,6 +285,37 @@ public:
     void SetTooltip(std::wstring text) { tooltip_ = std::move(text); }
     const std::wstring& Tooltip() const { return tooltip_; }
     bool HasTooltip() const { return !tooltip_.empty(); }
+
+    // --- Tag (WPF/WinForms parity) ----------------------------------------
+    // Arbitrary user data attached to this element. Stored as std::any to support
+    // any type (int, string, pointer, etc.). Common usage: storing identifiers.
+    //
+    // Example:
+    //   button->SetTag(42);
+    //   button->SetTag(std::string("user_id"));
+    //   button->SetTag(myObject);
+    //
+    // Retrieval:
+    //   int id = std::any_cast<int>(button->GetTag());
+    //   // or safer:
+    //   if (auto* p = std::any_cast<int>(&button->GetTag())) {
+    //       int id = *p;
+    //   }
+    void SetTag(std::any value) { tag_ = std::move(value); }
+    const std::any& GetTag() const { return tag_; }
+    std::any& GetTag() { return tag_; }
+    bool HasTag() const { return tag_.has_value(); }
+    void ClearTag() { tag_.reset(); }
+
+    // Type-safe retrieval with default value on mismatch/empty
+    template<typename T>
+    T GetTagOr(T defaultValue) const {
+        try {
+            return std::any_cast<T>(tag_);
+        } catch (const std::bad_any_cast&) {
+            return defaultValue;
+        }
+    }
 
     // --- Context menu (WP-03 follow-up) -----------------------------------
     // The menu shown when this element is right-clicked. On a right-click the host
@@ -647,6 +679,10 @@ private:
     Event<UIElement, RoutedEventArgs> lostFocus_;
     Event<UIElement, RoutedEventArgs> sizeChanged_;
     Event<UIElement, ContextMenuEventArgs> contextMenuOpening_;
+
+    // Tag: arbitrary user data (WPF/WinForms parity). Stored as std::any to
+    // support any type. Common usage: storing int/string/pointer identifiers.
+    std::any tag_;
 };
 
 } // namespace fluent

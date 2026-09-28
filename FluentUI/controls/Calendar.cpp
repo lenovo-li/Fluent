@@ -254,19 +254,44 @@ int Calendar::HitTestCell(float dipX, float dipY) const {
     return row * 7 + col;
 }
 
+namespace {
+// Natural (minimum) cell metrics. The grid never shrinks below these: at 36x32 a
+// two-digit day number plus the today ring is already tight.
+constexpr float kNaturalCellW = 36.0f;
+constexpr float kNaturalCellH = 32.0f;
+constexpr int kCols = 7;
+constexpr int kRows = 6;
+}  // namespace
+
 void Calendar::Measure(float availW, float availH) {
-    float w = 7 * cellW_;
-    float h = navH_ + hdrH_ + 6 * cellH_;
-    SetDesired(SizeDip(w, h));
+    UNREFERENCED_PARAMETER(availW);
+    UNREFERENCED_PARAMETER(availH);
+    // Desired size = the natural grid, unless the app pinned Width/Height. Stretch
+    // beyond natural happens in Arrange: a parent that hands the calendar more room
+    // (Grid star cell, SetWidth(360)) gets a proportionally larger grid instead of a
+    // 252-wide grid pinned to the left edge of a 360-wide background — the old
+    // behavior, where the nav arrows sat at the far edges and no longer lined up
+    // with the first/last columns.
+    const float natW = kCols * kNaturalCellW;
+    const float natH = navH_ + hdrH_ + kRows * kNaturalCellH;
+    SetDesired(SizeDip(IsAuto(width_) ? natW : width_,
+                       IsAuto(height_) ? natH : height_));
 }
 
 void Calendar::Arrange(const RectDip& finalRect) {
-    SetBounds(finalRect);
+    FrameworkElement::Arrange(finalRect);  // CRITICAL: sets animPrimed_ on first layout
+    // Derive the cell size from the arranged box so paint (CellRect) and hit-test
+    // (HitTestCell) always cover exactly the bounds. Floor at the natural size so a
+    // too-small slot clips rather than crushing the digits.
+    cellW_ = std::max(kNaturalCellW, finalRect.w / kCols);
+    cellH_ = std::max(kNaturalCellH, (finalRect.h - navH_ - hdrH_) / kRows);
 }
 
 void Calendar::Render(const DrawingContext& dc) {
-    const ThemeSnapshot& th = Theme();
-    const ColorTokens& colors = th.colors;
+    // Orchestration only: every piece of the paint lives in a protected virtual
+    // hook (Calendar.h, "Extension points") so a subclass can replace one part
+    // without re-implementing the rest. Keep this body free of drawing detail.
+    const ColorTokens& colors = Theme().colors;
     const float corner = EffectiveCornerRadius();
 
     // Background.
@@ -275,133 +300,26 @@ void Calendar::Render(const DrawingContext& dc) {
         corner, corner);
     dc.FillRoundedRect(bg, EffectiveBackground(colors.cardFill));
 
-    // Navigation bar.
-    float navY = bounds_.y;
+    RenderNavBar(dc);
+    RenderWeekdayHeader(dc);
 
-    // Header text: "2026年8月"
-    std::wostringstream oss;
-    oss << viewYear_ << L"年" << viewMonth_ << L"月";
-    std::wstring headerText = oss.str();
-
-    if (DWriteContext* dw = Dwrite()) {
-        if (auto* fmt = dw->Format(14.0f, DWRITE_FONT_WEIGHT_SEMI_BOLD,
-                                   DWRITE_TEXT_ALIGNMENT_CENTER,
-                                   DWRITE_PARAGRAPH_ALIGNMENT_CENTER)) {
-            D2D1_RECT_F textRect = D2D1::RectF(
-                bounds_.x + 40, navY,
-                bounds_.right() - 40, navY + navH_);
-            dc.DrawText(headerText.c_str(), static_cast<UINT32>(headerText.size()),
-                       fmt, textRect, EffectiveForeground(colors.textPrimary));
-        }
-
-        // Navigation arrows.
-        if (auto* arrowFmt = dw->Format(16.0f, DWRITE_FONT_WEIGHT_NORMAL,
-                                        DWRITE_TEXT_ALIGNMENT_CENTER,
-                                        DWRITE_PARAGRAPH_ALIGNMENT_CENTER)) {
-            const D2D1_COLOR_F arrowColor = EffectiveForeground(colors.textPrimary);
-            D2D1_RECT_F prevRect = D2D1::RectF(bounds_.x, navY,
-                                               bounds_.x + 40, navY + navH_);
-            dc.DrawText(L"<", 1, arrowFmt, prevRect, arrowColor);
-
-            D2D1_RECT_F nextRect = D2D1::RectF(bounds_.right() - 40, navY,
-                                               bounds_.right(), navY + navH_);
-            dc.DrawText(L">", 1, arrowFmt, nextRect, arrowColor);
-        }
-    }
-
-    // Weekday header.
-    const wchar_t* weekdays[] = {L"日", L"一", L"二", L"三", L"四", L"五", L"六"};
-    float hdrY = bounds_.y + navH_;
-
-    if (DWriteContext* dw = Dwrite()) {
-        if (auto* fmt = dw->Format(12.0f, DWRITE_FONT_WEIGHT_NORMAL,
-                                   DWRITE_TEXT_ALIGNMENT_CENTER,
-                                   DWRITE_PARAGRAPH_ALIGNMENT_CENTER)) {
-            const D2D1_COLOR_F weekdayColor = EffectiveForeground(colors.textSecondary);
-            for (int col = 0; col < 7; ++col) {
-                D2D1_RECT_F r = D2D1::RectF(
-                    bounds_.x + col * cellW_, hdrY,
-                    bounds_.x + (col + 1) * cellW_, hdrY + hdrH_);
-                dc.DrawText(weekdays[col], 1, fmt, r, weekdayColor);
-            }
-        }
-    }
-
-    // Day cells.
+    // Today is sampled once per frame, not per cell (42 GetLocalTime calls).
     SYSTEMTIME today;
     GetLocalTime(&today);
 
-    if (DWriteContext* dw = Dwrite()) {
-        if (auto* fmt = dw->Format(13.0f, DWRITE_FONT_WEIGHT_NORMAL,
-                                   DWRITE_TEXT_ALIGNMENT_CENTER,
-                                   DWRITE_PARAGRAPH_ALIGNMENT_CENTER)) {
-            for (int i = 0; i < 42; ++i) {
-                int y, m, d;
-                CellDate(i, y, m, d);
-
-                bool isCurrentMonth = (y == viewYear_ && m == viewMonth_);
-                bool isToday = (y == today.wYear && m == today.wMonth && d == today.wDay);
-                bool isSelected = (y == selYear_ && m == selMonth_ && d == selDay_);
-                bool isEnabled = IsDateEnabled(y, m, d);
-
-                RectDip cellRect = CellRect(i);
-                D2D1_ROUNDED_RECT cellRR = D2D1::RoundedRect(
-                    D2D1::RectF(cellRect.x, cellRect.y,
-                               cellRect.right(), cellRect.bottom()),
-                    4.0f, 4.0f);
-
-                // Background for selected date (only if enabled).
-                if (isSelected && isEnabled) {
-                    dc.FillRoundedRect(cellRR, colors.accent);
-                }
-                // Hover highlight (only on enabled dates).
-                else if (isEnabled && i == hoverCell_ && hoverFade_ > 0.01f) {
-                    D2D1_COLOR_F hoverColor = colors.controlFillHover;
-                    hoverColor.a *= static_cast<float>(hoverFade_);
-                    dc.FillRoundedRect(cellRR, hoverColor);
-                }
-
-                // Ring for today (when not selected).
-                if (isToday && !isSelected && isEnabled) {
-                    dc.DrawRoundedRect(cellRR, EffectiveAccentColor(colors.accent), 1.0f);
-                }
-
-                // Day number text.
-                std::wstring dayText = std::to_wstring(d);
-                D2D1_RECT_F textRect = D2D1::RectF(
-                    cellRect.x, cellRect.y,
-                    cellRect.right(), cellRect.bottom());
-
-                // Text color: disabled dates are faded gray, others follow original logic.
-                D2D1_COLOR_F textColor;
-                if (!isEnabled) {
-                    textColor = colors.textSecondary;
-                    textColor.a *= 0.5f;  // 50% opacity for disabled
-                } else if (HasForeground()) {
-                    textColor = EffectiveForeground();
-                } else if (isSelected) {
-                    textColor = D2D1::ColorF(D2D1::ColorF::White);
-                } else if (isCurrentMonth) {
-                    textColor = colors.textPrimary;
-                } else {
-                    textColor = colors.textSecondary;
-                }
-
-                dc.DrawText(dayText.c_str(), static_cast<UINT32>(dayText.size()),
-                           fmt, textRect, textColor);
-
-                // Strikethrough for disabled dates.
-                if (!isEnabled) {
-                    float midY = cellRect.y + cellRect.h * 0.5f;
-                    D2D1_COLOR_F strikeColor = colors.textSecondary;
-                    strikeColor.a *= 0.5f;
-                    dc.DrawLine(
-                        D2D1::Point2F(cellRect.x + 6, midY),
-                        D2D1::Point2F(cellRect.right() - 6, midY),
-                        strikeColor, 1.0f);
-                }
-            }
-        }
+    for (int i = 0; i < 42; ++i) {
+        CellInfo cell{};
+        cell.index = i;
+        CellDate(i, cell.year, cell.month, cell.day);
+        cell.rect = CellRect(i);
+        cell.inViewedMonth = (cell.year == viewYear_ && cell.month == viewMonth_);
+        cell.isToday = (cell.year == today.wYear && cell.month == today.wMonth &&
+                        cell.day == today.wDay);
+        cell.isSelected = (cell.year == selYear_ && cell.month == selMonth_ &&
+                           cell.day == selDay_);
+        cell.isEnabled = IsDateEnabled(cell.year, cell.month, cell.day);
+        cell.isHovered = (i == hoverCell_);
+        RenderCell(dc, cell);
     }
 }
 
@@ -411,18 +329,17 @@ void Calendar::OnPointerPressed(PointerEventArgs& e) {
     float relX = e.position.x - bounds_.x;
     float relY = e.position.y - bounds_.y;
 
-    // Check navigation buttons.
-    if (relY >= 0 && relY < navH_) {
-        if (relX >= 0 && relX < 40) {
-            PreviousMonth();
-            e.handled = true;
-            return;
-        }
-        if (relX >= bounds_.w - 40 && relX < bounds_.w) {
-            NextMonth();
-            e.handled = true;
-            return;
-        }
+    // Navigation arrows: the same rects RenderNavBar paints into (Prev/NextArrowRect),
+    // so the painted arrow and its hit zone cannot drift apart.
+    if (PrevArrowRect().contains(e.position.x, e.position.y)) {
+        PreviousMonth();
+        e.handled = true;
+        return;
+    }
+    if (NextArrowRect().contains(e.position.x, e.position.y)) {
+        NextMonth();
+        e.handled = true;
+        return;
     }
 
     // Check day cells. A disabled date (outside min/max or blacked out) swallows
@@ -524,6 +441,148 @@ void Calendar::OnAnimationTick(float dtSec) {
     float target = (hoverCell_ >= 0) ? 1.0f : 0.0f;
     hoverFade_.Approach(target, dtSec, Theme().motion.tintTau);
     Invalidate();
+}
+
+// --- Extension-point implementations (protected virtual) ---------------------
+
+RectDip Calendar::NavBarRect() const {
+    return RectDip{bounds_.x, bounds_.y, bounds_.w, navH_};
+}
+
+RectDip Calendar::WeekdayHeaderRect() const {
+    float y = bounds_.y + navH_;
+    return RectDip{bounds_.x, y, bounds_.w, hdrH_};
+}
+
+RectDip Calendar::PrevArrowRect() const {
+    return RectDip{bounds_.x, bounds_.y, 40.0f, navH_};
+}
+
+RectDip Calendar::NextArrowRect() const {
+    return RectDip{bounds_.x + bounds_.w - 40.0f, bounds_.y, 40.0f, navH_};
+}
+
+void Calendar::RenderNavBar(const DrawingContext& dc) {
+    const ColorTokens& colors = Theme().colors;
+    float navY = bounds_.y;
+    
+    // Month/year title: "2026年8月"
+    std::wostringstream oss;
+    oss << viewYear_ << L"年" << viewMonth_ << L"月";
+    std::wstring headerText = oss.str();
+    
+    if (DWriteContext* dw = Dwrite()) {
+        if (auto* fmt = dw->Format(14.0f, DWRITE_FONT_WEIGHT_SEMI_BOLD,
+                                   DWRITE_TEXT_ALIGNMENT_CENTER,
+                                   DWRITE_PARAGRAPH_ALIGNMENT_CENTER)) {
+            D2D1_RECT_F textRect = D2D1::RectF(
+                bounds_.x + 40, navY,
+                bounds_.right() - 40, navY + navH_);
+            dc.DrawText(headerText.c_str(), static_cast<UINT32>(headerText.size()),
+                       fmt, textRect, EffectiveForeground(colors.textPrimary));
+        }
+        
+        // Navigation arrows
+        if (auto* arrowFmt = dw->Format(16.0f, DWRITE_FONT_WEIGHT_NORMAL,
+                                        DWRITE_TEXT_ALIGNMENT_CENTER,
+                                        DWRITE_PARAGRAPH_ALIGNMENT_CENTER)) {
+            const D2D1_COLOR_F arrowColor = EffectiveForeground(colors.textPrimary);
+            
+            RectDip prev = PrevArrowRect();
+            D2D1_RECT_F prevRect = D2D1::RectF(prev.x, prev.y, prev.right(), prev.bottom());
+            dc.DrawText(L"<", 1, arrowFmt, prevRect, arrowColor);
+            
+            RectDip next = NextArrowRect();
+            D2D1_RECT_F nextRect = D2D1::RectF(next.x, next.y, next.right(), next.bottom());
+            dc.DrawText(L">", 1, arrowFmt, nextRect, arrowColor);
+        }
+    }
+}
+
+void Calendar::RenderWeekdayHeader(const DrawingContext& dc) {
+    const ColorTokens& colors = Theme().colors;
+    const wchar_t* weekdays[] = {L"日", L"一", L"二", L"三", L"四", L"五", L"六"};
+    float hdrY = bounds_.y + navH_;
+    
+    if (DWriteContext* dw = Dwrite()) {
+        if (auto* fmt = dw->Format(12.0f, DWRITE_FONT_WEIGHT_NORMAL,
+                                   DWRITE_TEXT_ALIGNMENT_CENTER,
+                                   DWRITE_PARAGRAPH_ALIGNMENT_CENTER)) {
+            const D2D1_COLOR_F weekdayColor = EffectiveForeground(colors.textSecondary);
+            for (int col = 0; col < 7; ++col) {
+                D2D1_RECT_F r = D2D1::RectF(
+                    bounds_.x + col * cellW_, hdrY,
+                    bounds_.x + (col + 1) * cellW_, hdrY + hdrH_);
+                dc.DrawText(weekdays[col], 1, fmt, r, weekdayColor);
+            }
+        }
+    }
+}
+
+void Calendar::RenderCell(const DrawingContext& dc, const CellInfo& cell) {
+    const ColorTokens& colors = Theme().colors;
+    
+    D2D1_ROUNDED_RECT cellRR = D2D1::RoundedRect(
+        D2D1::RectF(cell.rect.x, cell.rect.y,
+                   cell.rect.right(), cell.rect.bottom()),
+        4.0f, 4.0f);
+    
+    // Background for selected date (only if enabled)
+    if (cell.isSelected && cell.isEnabled) {
+        dc.FillRoundedRect(cellRR, colors.accent);
+    }
+    // Hover highlight (only on enabled dates)
+    else if (cell.isEnabled && cell.isHovered && hoverFade_ > 0.01f) {
+        D2D1_COLOR_F hoverColor = colors.controlFillHover;
+        hoverColor.a *= static_cast<float>(hoverFade_);
+        dc.FillRoundedRect(cellRR, hoverColor);
+    }
+    
+    // Ring for today (when not selected)
+    if (cell.isToday && !cell.isSelected && cell.isEnabled) {
+        dc.DrawRoundedRect(cellRR, EffectiveAccentColor(colors.accent), 1.0f);
+    }
+    
+    // Day number text
+    std::wstring dayText = std::to_wstring(cell.day);
+    D2D1_RECT_F textRect = D2D1::RectF(
+        cell.rect.x, cell.rect.y,
+        cell.rect.right(), cell.rect.bottom());
+    
+    // Text color: disabled dates are faded gray, others follow original logic
+    D2D1_COLOR_F textColor;
+    if (!cell.isEnabled) {
+        textColor = colors.textSecondary;
+        textColor.a *= 0.5f;  // 50% opacity for disabled
+    } else if (HasForeground()) {
+        textColor = EffectiveForeground();
+    } else if (cell.isSelected) {
+        textColor = D2D1::ColorF(D2D1::ColorF::White);
+    } else if (cell.inViewedMonth) {
+        textColor = colors.textPrimary;
+    } else {
+        textColor = colors.textSecondary;
+    }
+    
+    if (DWriteContext* dw = Dwrite()) {
+        if (auto* fmt = dw->Format(13.0f, DWRITE_FONT_WEIGHT_NORMAL,
+                                   DWRITE_TEXT_ALIGNMENT_CENTER,
+                                   DWRITE_PARAGRAPH_ALIGNMENT_CENTER)) {
+            dc.DrawText(dayText.c_str(), static_cast<UINT32>(dayText.size()),
+                       fmt, textRect, textColor);
+        }
+    }
+    
+    // Strikethrough for disabled dates
+    if (!cell.isEnabled) {
+        float midY = cell.rect.y + cell.rect.h * 0.5f;
+        D2D1_COLOR_F strikeColor = colors.textSecondary;
+        strikeColor.a *= 0.5f;
+        dc.DrawLine(
+            D2D1::Point2F(cell.rect.x + 6, midY),
+            D2D1::Point2F(cell.rect.right() - 6, midY),
+            strikeColor, 1.0f);
+    }
 }
 
 } // namespace fluent

@@ -42,6 +42,7 @@
     <ClCompile Include="unit\WordBoundaryTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ClickCounterTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\TextEditInteractionTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\TextControlsCursorTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\TextEditMaxLengthTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\TextEditSelectionTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\TextEditInputPolicyTests.cpp"><Filter>unit</Filter></ClCompile>
@@ -128,11 +129,13 @@
     <ClCompile Include="unit\RichTextBoxEventsTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ScrollViewerEventsTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\GridSplitterEventsTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\GridSplitterTrackUnitTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\MenuItemEventsTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\SliderEventsTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\SelectorTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\SessionLogTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\TreeViewTypeAheadTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\TreeViewHoverTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\TreeViewMultiSelectTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ControlPropertyTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\TextEditInputPolicyTests.cpp"><Filter>unit</Filter></ClCompile>
@@ -147,9 +150,11 @@
     <ClCompile Include="unit\ImageEventsTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ComboBoxEventsTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\CalendarEventsTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\textarealineheightprobe.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\DatePickerEventsTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\CalendarConstraintsTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\CalendarTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\InheritanceExamplesTest.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\DatePickerTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ScrollPanelTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\SeparatorTests.cpp"><Filter>unit</Filter></ClCompile>

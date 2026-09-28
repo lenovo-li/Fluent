@@ -40,6 +40,8 @@
 namespace fluent {
 
 class TextArea;
+class RichTextBox;
+class RichTextDocument;
 class ScrollPanel;
 class StackPanel;
 class TextBlock;
@@ -168,8 +170,9 @@ private:
     std::unique_ptr<ScrollPanel> CreateStockAnalyzerPage();
     std::unique_ptr<ScrollPanel> CreateUniformGridPage();
     std::unique_ptr<ScrollPanel> CreateViewboxPage();
-    std::unique_ptr<ScrollPanel> CreateDynamicListPage();
     std::unique_ptr<ScrollPanel> CreateGroupBoxPage();
+    std::unique_ptr<ScrollPanel> CreateDynamicListPage();
+    std::unique_ptr<ScrollPanel> CreateCustomControlsPage();
 
     std::unique_ptr<ScrollPanel> CreateContentDialogPage();
     std::unique_ptr<ScrollPanel> CreateMessageDialogPage();
@@ -192,6 +195,11 @@ private:
     void ShowMessageDialogOk();
     void ShowMessageDialogOkCancel();
     void ShowMessageDialogYesNo();
+
+    // Message-length cases for the auto-size demo: MessageDialog takes no caller
+    // size, so its height comes entirely from how much text it was given.
+    enum class MessageLengthCase { Tiny, OneLine, Paragraph, MultiParagraph, Huge };
+    void ShowMessageDialogLength(MessageLengthCase which);
 
     // 性能演示页
     std::unique_ptr<ScrollPanel> CreateVirtualizationDemoPage();  // TextArea/TreeView 虚拟化对比
@@ -232,8 +240,11 @@ private:
     Grid*       AddEqualColumns(Panel* parent, int columns);
     static const AccentSwatch* AccentSwatches(int& count);
 
-    // 辅助：创建代码示例区（只读 TextArea，等宽字体）
-    TextArea* CreateCodeExample(Panel* parent, std::wstring code);
+    // 辅助：创建代码示例块（RichTextBox，只读，等宽字体，简单语法色）
+    RichTextBox* CreateCodeExample(Panel* parent, std::wstring code);
+    
+    // 辅助：简单 C++ 语法高亮（关键字、注释、字符串）
+    RichTextDocument ApplySyntaxHighlighting(const std::wstring& code);
 
     // 右侧容器：Grid 单元格（0,0），持有全部详情页（所有权），同时只有一个可见。
     // Grid 而非 StackPanel，因为每个页面都需要铺满可用空间（1* row × 1* column），

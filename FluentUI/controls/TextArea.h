@@ -107,6 +107,9 @@ public:
     void OnPointerPressed(PointerEventArgs& e) override;
     void OnPointerMoved(PointerEventArgs& e) override;
     void OnPointerReleased(PointerEventArgs& e) override;
+    // I-beam over the text, arrow over either scrollbar rail. Decided from the
+    // hover state OnPointerMoved records, since Cursor() gets no coordinates.
+    HCURSOR Cursor() const override;
 
     // --- Wrap mode -----------------------------------------------------------
     // Switching modes discards the cached layout and rebuilds the line index: the two
@@ -593,6 +596,10 @@ private:
     // last known pointer Y (otherwise holding the mouse outside the edge stalls).
     float dragPointerY_ = 0.0f;
     bool dragOutsideEdge_ = false;
+    // Whether the pointer is currently over a scrollbar (vertical or horizontal).
+    // Recorded by OnPointerMoved because Cursor() is passed no coordinates and must
+    // not guess. The same pattern as LogViewer::pointerOverBar_.
+    bool pointerOverScrollBar_ = false;
 };
 
 } // namespace fluent

@@ -26,6 +26,22 @@
 
 namespace fluent {
 
+// Resolved per-control appearance overrides (unset = follow the theme). Declared
+// before Button so Button's protected AppearanceForRender() can return it; the
+// pure color functions below the class consume it.
+struct ButtonAppearance {
+    std::optional<D2D1_COLOR_F> background;
+    std::optional<D2D1_COLOR_F> foreground;
+    std::optional<D2D1_COLOR_F> accent;
+    // Optional per-state overrides. Unset means ButtonFillColor derives the shade from
+    // the base override above; with no base override either, the theme ramp wins. This
+    // is what lets one SetBackground call still produce real hover/press feedback.
+    std::optional<D2D1_COLOR_F> backgroundHover;
+    std::optional<D2D1_COLOR_F> backgroundPressed;
+    std::optional<D2D1_COLOR_F> accentHover;
+    std::optional<D2D1_COLOR_F> accentPressed;
+};
+
 class Button : public ButtonBase {
 public:
     // Standard: filled + bordered (the default chrome). Accent: theme-accent fill
@@ -83,6 +99,33 @@ protected:
     // ButtonBase routes click + Space/Enter here; Button raises Click.
     void OnActivate() override;
 
+    // --- Extension points for derived classes --------------------------------
+    //
+    // Button's kind_/tintOpacity_ stay private: kind drives fill+text color in
+    // sync (ButtonFillColor/ButtonTextColor), and letting a subclass write kind_
+    // alone would let those drift. Read them through CurrentKind/TintOpacity and
+    // call the base Render* hooks which apply the same rules Button does today.
+    // A subclass that wants a fundamentally different appearance model (e.g. flat
+    // icon-only with no fill, or a pill shape) should override Render() entirely
+    // rather than fighting the base color resolution.
+
+    // Read-only state. Derived classes can branch on kind or sync animations.
+    Kind CurrentKind() const { return kind_; }
+    float TintOpacity() const { return static_cast<float>(tintOpacity_); }
+
+    // Split rendering: each base method paints exactly what Button draws today.
+    // Override one to replace it, or call it and then decorate. The helpers below
+    // (like AppearanceForRender) package up the arguments each paint needs, so an
+    // override does not reconstruct them.
+    virtual void RenderBackground(const DrawingContext& dc);
+    virtual void RenderBorder(const DrawingContext& dc);
+    virtual void RenderContent(const DrawingContext& dc);
+
+    // The resolved appearance (user overrides + theme fallbacks), computed once
+    // per frame in Render() for all three hooks. ButtonFillColor / ButtonTextColor
+    // consume this, and a subclass can too.
+    ButtonAppearance AppearanceForRender() const;
+
 private:
     // Open the flyout_ anchored below this button. Helper extracted from
     // OnActivate so the positioning logic has a name.
@@ -112,18 +155,7 @@ private:
 // Each takes the overrides + theme as separate args so a test constructs only
 // the relevant data, not a whole Control. `std::nullopt` means "not set, use theme".
 
-struct ButtonAppearance {
-    std::optional<D2D1_COLOR_F> background;
-    std::optional<D2D1_COLOR_F> foreground;
-    std::optional<D2D1_COLOR_F> accent;
-    // Optional per-state overrides. Unset means ButtonFillColor derives the shade from
-    // the base override above; with no base override either, the theme ramp wins. This
-    // is what lets one SetBackground call still produce real hover/press feedback.
-    std::optional<D2D1_COLOR_F> backgroundHover;
-    std::optional<D2D1_COLOR_F> backgroundPressed;
-    std::optional<D2D1_COLOR_F> accentHover;
-    std::optional<D2D1_COLOR_F> accentPressed;
-};
+
 
 // The fill color Button paints behind its label. Alpha may be 0 (Subtle at rest);
 // caller should skip the draw when a <= 0 rather than issuing a transparent fill.

@@ -8,9 +8,8 @@
 // mapping from meaning to colour lives in the theme, once.
 //
 // It is INLINE, not a dialog. A ContentDialog interrupts and demands a decision; an
-// InfoBar sits in the layout and reports. That distinction is why this is a plain
-// FrameworkElement in the visual tree and takes part in normal layout, unlike
-// MessageDialog which owns a popup HWND.
+// InfoBar sits in the layout and reports. That distinction is why this derives from
+// Control and takes part in normal layout, unlike MessageDialog which owns a popup HWND.
 //
 // SIZING. Height is content-driven: the message wraps at the available width and the
 // control reports whatever height that needs, so a long message in a narrow column grows

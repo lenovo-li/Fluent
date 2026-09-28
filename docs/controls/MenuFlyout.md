@@ -70,8 +70,10 @@ void SetItemsBorrow(const std::vector<MenuItem>* items);
 
 - `SetItems`: 取走所有权（菜单项被移动到 flyout 内部）。每次打开都重建项时用这个
 - `SetItemsBorrow`: 借用调用方持有的向量（flyout 不拷贝，只保存指针）。MenuBar 用这个
-  来复用同一份菜单多次打开，避免每次都拷贝向量。**调用方必须保证向量在菜单打开期间
-  保持有效**——菜单关闭后借用自动清除
+  来复用同一份菜单多次打开，避免每次都拷贝向量。**调用方必须保证向量的存活期覆盖整个
+  借用期，而不只是「菜单打开期间」**——`Close()` 不清除 `borrowedItems_`
+  （`MenuFlyout.cpp:627-642`），指针一直留到下次 `SetItems`（`.cpp:361` 是唯一清除点）
+  或 flyout 销毁。菜单关闭后让被借用的向量先析构，下次打开就是 use-after-free
 
 正在打开时调用任一方法会先关闭菜单。
 
@@ -304,16 +306,26 @@ Esc 的逐层退出是刻意的：三层深的菜单里按一次 Esc 应该退�
 
 ## 右键菜单（IContextMenu）
 
-`UIElement` 支持 `SetContextMenu(std::shared_ptr<IContextMenu>)`，右键时自动打开：
+`UIElement` 有两条右键菜单入口，区别在于**谁拥有菜单**（`UIElement.h:326-338`）：
 
 ```cpp
-auto menu = std::make_shared<MenuFlyout>();
+// 1. 独占：本元素拥有这个菜单
+auto menu = std::make_unique<MenuFlyout>();
 menu->SetItems(BuildMyMenuItems());
-
-myControl->SetContextMenu(menu);  // 自动注入 Context，右键时调 ShowAt
+myControl->SetContextMenu(std::move(menu));  // 自动注入 Context，右键时调 ShowAt
 ```
 
-`UIElement` 持有 `shared_ptr`，多个控件可以共享同一个菜单（内容相同但触发位置不同）。
+```cpp
+// 2. 共享：菜单由别处持有，多个元素引用同一个实例
+MenuFlyout sharedMenu;                       // 生命周期必须长于所有引用它的元素
+sharedMenu.SetItems(BuildMyMenuItems());
+controlA->SetContextMenuRef(&sharedMenu);
+controlB->SetContextMenuRef(&sharedMenu);
+```
+
+`SetContextMenu` 收 `std::unique_ptr<IContextMenu>`（**不是** `shared_ptr`），元素独占所有权。
+要让多个控件共享同一个菜单，用 `SetContextMenuRef(IContextMenu*)` 的非拥有引用——此时
+菜单的存活由调用方负责，元素不参与。
 
 ## 架构细节
 

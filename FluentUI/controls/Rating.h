@@ -12,9 +12,9 @@
 // Measure — RangeBase's Maximum deliberately does not.
 //
 // Fractional values are supported for DISPLAY (a value from a server average like
-// 3.7), and render as a half-filled glyph when the fraction reaches 0.5. User
-// interaction always commits whole stars — half-star input is a separate feature
-// and is not implied by the fractional display.
+// 3.7), and render as a WHOLE filled star when the fraction reaches 0.5 (no half-star
+// glyph). User interaction always commits whole stars — half-star input is a separate
+// feature and is not implied by the fractional display.
 //
 // Cost is O(MaxValue) DrawText calls per paint, which is right for the 5-glyph
 // default. A list showing hundreds of ratings should render a cached text form

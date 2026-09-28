@@ -88,7 +88,12 @@ void TabControl::SetSelectedIndex(int index) {
     // Attach state first, so the tree is consistent before anyone observes the
     // change (a SelectionChanged handler may walk the new content).
     SyncContentAttachment();
-    contentFade_.SetImmediate(0.0f);
+    // Reset fade only when fade-in is enabled; otherwise leave it at 1.0 for instant display.
+    if (contentFadeEnabled_) {
+        contentFade_.SetImmediate(0.0f);
+    } else {
+        contentFade_.SetImmediate(1.0f);
+    }
     // Measure, not Render: the newly selected content has never been measured at
     // this size, and the strip's indicator target moved.
     InvalidateDirty(DirtyFlags::Measure);
@@ -507,7 +512,9 @@ bool TabControl::WantsAnimationTick() const {
     const RectDip hr = HeaderRect(selectedIndex_);
     if (indicatorX_.Animating(hr.x, 0.25f)) return true;
     if (indicatorW_.Animating(hr.w, 0.25f)) return true;
-    return contentFade_.Animating(1.0f, 0.01f);
+    // Only tick content fade when fade-in is enabled.
+    if (contentFadeEnabled_ && contentFade_.Animating(1.0f, 0.01f)) return true;
+    return false;
 }
 
 void TabControl::OnAnimationTick(float dtSec) {
@@ -516,7 +523,10 @@ void TabControl::OnAnimationTick(float dtSec) {
     const float tau = Theme().motion.fadeTau;
     indicatorX_.Approach(hr.x, dtSec, tau, 0.25f);
     indicatorW_.Approach(hr.w, dtSec, tau, 0.25f);
-    contentFade_.Approach(1.0f, dtSec, tau, 0.01f);
+    // Use the configurable fade duration instead of the theme token.
+    if (contentFadeEnabled_) {
+        contentFade_.Approach(1.0f, dtSec, contentFadeTau_, 0.01f);
+    }
     Invalidate();
 }
 

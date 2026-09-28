@@ -103,6 +103,11 @@ public:
     void OnPointerMoved(PointerEventArgs& e) override;
     void OnPointerPressed(PointerEventArgs& e) override;
     void OnPointerReleased(PointerEventArgs& e) override;
+    void OnPointerLeft() override;
+
+    // Whether a point (window DIPs) lies on laid-out glyphs rather than blank space
+    // inside the block. Drives the I-beam; public so tests can check it headlessly.
+    bool IsPointOverText(float dipX, float dipY) const;
 
 protected:
     // DWrite becomes available on attach: re-measure so a TextBlock built and
@@ -167,6 +172,11 @@ private:
     bool dimmed_ = false;
     bool wrap_ = true;
     bool selectable_ = false;  // opt-in: focus + scroll + text selection (SetSelectable)
+    // Whether the pointer is currently over actual text content (not blank space).
+    // Recorded by OnPointerMoved so Cursor() can return I-beam only over text, matching
+    // read-only web text behavior (CSS cursor:auto). Updated on every move; costs one
+    // HitTestPoint per move (cheap: it hits the already-built layout, not O(document)).
+    bool pointerOverText_ = false;
 
     // Cached layout + the key it was built from (roadmap §6.3). Mutable because
     // CreateLayout() is const (called from Render/hit-test) but memoizes here.

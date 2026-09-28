@@ -336,29 +336,44 @@ TEST(Calendar, Measure) {
 // absolute DIPs (bounds-relative offsets folded in).
 TEST(Calendar, CellRectFirstCell) {
     Calendar cal;
-    cal.Arrange(RectDip{0, 0, 252, 276});
+    const float natH = 36.0f + 24.0f + 6 * 32.0f;  // 252
+    cal.Arrange(RectDip{0, 0, 252, natH});  // natural size: 7*36 x 252
     RectDip r = cal.CellRect(0);
     EXPECT_NEAR(0.0f, r.x, 0.01f);
     EXPECT_NEAR(60.0f, r.y, 0.01f);  // nav 36 + header 24
     EXPECT_NEAR(36.0f, r.w, 0.01f);
-    EXPECT_NEAR(32.0f, r.h, 0.01f);
+    EXPECT_NEAR(32.0f, r.h, 0.01f);  // natural cell height
 }
 
 TEST(Calendar, CellRectIsRowMajor) {
     Calendar cal;
-    cal.Arrange(RectDip{0, 0, 252, 276});
-    RectDip c8 = cal.CellRect(8);  // row 1, col 1
-    EXPECT_NEAR(36.0f, c8.x, 0.01f);
-    EXPECT_NEAR(60.0f + 32.0f, c8.y, 0.01f);
+    const float natH = 36.0f + 24.0f + 6 * 32.0f;
+    cal.Arrange(RectDip{0, 0, 252, natH});
+    RectDip c0 = cal.CellRect(0);
+    RectDip c8 = cal.CellRect(8);
+    EXPECT_NEAR(c0.x + 36.0f, c8.x, 0.01f);  // one column right
+    EXPECT_NEAR(c0.y + 32.0f, c8.y, 0.01f);  // one row down
 }
 
-// CellRect must track the arranged origin, not assume (0,0).
 TEST(Calendar, CellRectHonorsArrangedOrigin) {
     Calendar cal;
-    cal.Arrange(RectDip{100, 50, 252, 276});
+    const float natH = 36.0f + 24.0f + 6 * 32.0f;
+    cal.Arrange(RectDip{100, 50, 252, natH});
     RectDip r = cal.CellRect(0);
     EXPECT_NEAR(100.0f, r.x, 0.01f);
     EXPECT_NEAR(50.0f + 60.0f, r.y, 0.01f);
+}
+
+TEST(Calendar, CellRectStretchesWhenArrangedLarger) {
+    // When given more room (e.g., SetWidth(360) or a Grid star cell), the cells
+    // stretch proportionally instead of staying 36x32 with a gap on the right.
+    Calendar cal;
+    cal.Arrange(RectDip{0, 0, 350, 300});  // 350 / 7 = 50 per cell
+    RectDip r = cal.CellRect(0);
+    EXPECT_NEAR(50.0f, r.w, 0.01f);  // stretched from natural 36
+    EXPECT_NEAR(60.0f, r.y, 0.01f);  // nav+header unchanged
+    // Height: (300 - 60) / 6 rows = 40
+    EXPECT_NEAR(40.0f, r.h, 0.01f);  // stretched from natural 32
 }
 
 TEST(Calendar, CellRectOutOfRangeIsEmpty) {

@@ -21,6 +21,8 @@ namespace fluent {
 class D2DContext;
 class DWriteContext;
 class ICompositionBackend;
+class AnimationRegistry;
+class UIElement;
 
 // Why the host asked an active popup to dismiss. Free (namespace-level) so a
 // control's callback signature does not have to name a concrete window class.
@@ -78,6 +80,47 @@ public:
                            int screenY)> cb) = 0;
     virtual Subscription RegisterActivePopupKeyHandler(
         std::function<bool(UINT)> cb) = 0;
+    
+    // Register a handler for WM_MOUSEWHEEL events that should be forwarded to an
+    // active popup. Returns a Subscription that clears the registration. The
+    // callback receives screen-pixel coordinates and wheel delta; it should return
+    // true if the wheel event was handled (consumed) by the popup.
+    //
+    // WHY THIS EXISTS: WS_EX_NOACTIVATE popups (ComboBox dropdown, MenuFlyout) never
+    // receive focus, so WM_MOUSEWHEEL goes to the parent window instead. Without
+    // forwarding, the dropdown is unscrollable via mouse wheel — a functional gap.
+    virtual Subscription RegisterActivePopupWheelHandler(
+        std::function<bool(int screenX, int screenY, int delta)> cb) = 0;
+
+    // Register an auxiliary animation root (e.g. PopupHost content) that should be
+    // collected when UpdateAnimationTimer gathers animating elements. Returns a
+    // Subscription that unregisters on destruction. The host ticks these roots
+    // alongside elements_ so popup content can use smooth scrolling, scrollbar
+    // fade-in/out, and other UIElement animations without needing their own timer.
+    //
+    // WHY THIS EXISTS: PopupHost is a lightweight WS_EX_NOACTIVATE window with no
+    // FrameHost of its own. Without this, popup content (ComboListView scrollbar)
+    // sets WantsAnimationTick but never receives OnAnimationTick, so AnimateBy and
+    // scrollbar expand/fade remain frozen. Hooking into the parent window's clock
+    // reuses one message loop, one scheduler, zero idle overhead when not animating.
+    //
+    // Default: no-op (empty Subscription) for hosts without an animation clock
+    // (test doubles); popup content then simply never ticks.
+    virtual Subscription RegisterAuxAnimationRoot(UIElement* root) {
+        UNREFERENCED_PARAMETER(root);
+        return Subscription();
+    }
+
+    // The host's AnimationRegistry, injected into popup content's UIContext so
+    // UIElement::DetachFromContext can drop it from the active set. Must be the
+    // same registry RegisterAuxAnimationRoot collects into. Default: nullptr.
+    virtual AnimationRegistry* Anims() { return nullptr; }
+
+    // Ask the host to re-collect its active-animation set now. A popup calls this
+    // after routing its own input (hover / press / leave arrive on the popup's
+    // WndProc, never on the host's), so a hover-started scrollbar expand actually
+    // gets ticked. Default: no-op.
+    virtual void RequestAnimationUpdate() {}
 
 protected:
     // Non-virtual protected dtor: the host owns its own lifetime; controls hold

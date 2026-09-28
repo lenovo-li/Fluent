@@ -55,16 +55,33 @@ float Slider::TrackX()     const { return bounds_.x + bounds_.w * 0.5f; }
 float Slider::ValueFromX(float dipX) const {
     float range = max_ - min_;
     if (range <= 0.0f) return min_;
-    float t = std::clamp((dipX - TrackLeft()) / (TrackRight() - TrackLeft()), 0.0f, 1.0f);
+    float trackW = TrackRight() - TrackLeft();
+    if (trackW <= 0.0f) return min_;  // Slider too narrow, return min
+    float t = std::clamp((dipX - TrackLeft()) / trackW, 0.0f, 1.0f);
     return t * range + min_;
 }
 
 float Slider::ValueFromY(float dipY) const {
     float range = max_ - min_;
     if (range <= 0.0f) return min_;
+    float trackH = TrackBottom() - TrackTop();
+    if (trackH <= 0.0f) return min_;  // Slider too narrow, return min
     // Vertical: top = max, bottom = min (inverted Y)
-    float t = std::clamp((TrackBottom() - dipY) / (TrackBottom() - TrackTop()), 0.0f, 1.0f);
+    float t = std::clamp((TrackBottom() - dipY) / trackH, 0.0f, 1.0f);
     return t * range + min_;
+}
+
+float Slider::ValueToTrackPos(float v) const {
+    float range = max_ - min_;
+    if (range <= 0.0f) return TrackStart();
+    float t = (v - min_) / range;  // unclamped
+    if (orientation_ == Orientation::Horizontal) {
+        float trackW = TrackRight() - TrackLeft();
+        return TrackLeft() + t * trackW;
+    } else {
+        float trackH = TrackBottom() - TrackTop();
+        return TrackBottom() - t * trackH;  // inverted Y
+    }
 }
 
 float Slider::NormalizedAnim() const {

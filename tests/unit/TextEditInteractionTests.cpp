@@ -44,6 +44,8 @@ public:
         std::function<bool(PopupDismissReason, HWND, int, int)>) override { return {}; }
     Subscription RegisterActivePopupKeyHandler(
         std::function<bool(UINT)>) override { return {}; }
+    Subscription RegisterActivePopupWheelHandler(
+        std::function<bool(int, int, int)>) override { return {}; }
     bool Ready() const { return dwrite_.Valid(); }
 private:
     ICompositionBackend* backend_ = nullptr;
@@ -117,6 +119,81 @@ TEST(TextEditInteraction, DoubleClickSelectsWordInTextArea) {
     // Whatever word was hit, it must contain no space — that is the word-granularity
     // promise, and it fails loudly if clickCount never reached the selection logic
     // (a single-click selection would have length 0).
+    EXPECT_TRUE(sel.find(L' ') == std::wstring::npos);
+}
+
+// ---------------------------------------------------------------------------
+// Shift+click selection extension
+// ---------------------------------------------------------------------------
+
+TEST(TextEditInteraction, ShiftClickExtendsSelectionInTextBox) {
+    // Shift+click extends from the anchor (where you first clicked) to the new click,
+    // standard editor behavior.
+    MockHost host;
+    AnimationRegistry anims;
+    InputManager input;
+    TextBox box;
+    if (!host.Ready()) return;
+    
+    box.SetText(L"hello world");
+    box.SetBounds({0, 0, 200, 30});
+    box.AttachToContext(MakeCtx(host, anims, input));
+    
+    // First click at left edge (sets anchor)
+    auto e1 = PressAt(5.0f, 15.0f, 1);
+    box.OnPointerPressed(e1);
+    
+    // Shift+click at right edge
+    auto e2 = PressAt(100.0f, 15.0f, 1);
+    e2.modifiers = ModifierKeys::Shift;
+    box.OnPointerPressed(e2);
+    
+    // Must have a selection (anchor != caret)
+    UINT32 lo = std::min(box.SelectionStartForTest(), box.SelectionEndForTest());
+    UINT32 hi = std::max(box.SelectionStartForTest(), box.SelectionEndForTest());
+    EXPECT_TRUE(hi > lo);
+    
+    box.DetachFromContext();
+}
+
+TEST(TextEditInteraction, ShiftClickWorksOnBareCaretInTextArea) {
+    // Shift+click on a bare caret (no selection) treats the caret as the anchor.
+    AreaFixture f;
+    if (!f.Ready()) return;
+    f.Open(L"line one\nline two");
+    
+    // Single click sets caret without selection
+    auto e1 = PressAt(20.0f, 15.0f, 1);
+    f.area.OnPointerPressed(e1);
+    EXPECT_EQ(f.area.SelectionStartForTest(), f.area.SelectionEndForTest());
+    
+    // Shift+click elsewhere
+    auto e2 = PressAt(60.0f, 15.0f, 1);
+    e2.modifiers = ModifierKeys::Shift;
+    f.area.OnPointerPressed(e2);
+    
+    // Now must have a selection
+    UINT32 lo = std::min(f.area.SelectionStartForTest(), f.area.SelectionEndForTest());
+    UINT32 hi = std::max(f.area.SelectionStartForTest(), f.area.SelectionEndForTest());
+    EXPECT_TRUE(hi > lo);
+}
+
+TEST(TextEditInteraction, ShiftDoubleClickIgnoresShift) {
+    // Shift+double-click selects a word, ignoring Shift (multi-click takes precedence).
+    AreaFixture f;
+    if (!f.Ready()) return;
+    f.Open(L"hello world again");
+    
+    // Shift+double-click inside "world"
+    auto e = PressAt(60.0f, 15.0f, 2);
+    e.modifiers = ModifierKeys::Shift;
+    f.area.OnPointerPressed(e);
+    
+    UINT32 start = std::min(f.area.SelectionStartForTest(), f.area.SelectionEndForTest());
+    UINT32 len = std::max(f.area.SelectionStartForTest(), f.area.SelectionEndForTest()) - start;
+    EXPECT_TRUE(len > 0);
+    const std::wstring sel = f.area.Text().substr(start, len);
+    // Must be a whole word (no spaces), not a Shift-extended selection
     EXPECT_TRUE(sel.find(L' ') == std::wstring::npos);
 }
 

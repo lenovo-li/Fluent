@@ -4,6 +4,7 @@
 #include "TextBox.h"
 #include "../graphics/DrawingContext.h"
 #include "../graphics/DWriteContext.h"
+#include "../graphics/PixelSnapping.h"
 #include "../styling/ThemeTokens.h"
 #include "../styling/FocusVisual.h"
 #include "../input/InputManager.h"
@@ -442,6 +443,14 @@ void DataGrid::Render(const DrawingContext& dc) {
     VisibleRowRange(firstRow, lastRow);
     VisibleColumnRange(firstCol, lastCol);
 
+    // Draw-time scroll offset, snapped to the pixel grid. The smooth-scroll tween
+    // produces fractional offsets and ClearType weights each glyph by its subpixel
+    // position, so unsnapped cell text shimmers while scrolling — same fix as
+    // TextArea / RichTextBox / LogViewer (graphics/PixelSnapping.h). VisibleRowRange
+    // above deliberately keeps using the RAW offset: which rows are visible is a
+    // content question, and its floor/ceil already covers the partial row.
+    const float scrollY = SnapToPixel(scroll_.Offset(), dc.DpiScale());
+
     // --- Body -------------------------------------------------------------
     // Clipped to the viewport so a partially-scrolled row cannot paint over the header or
     // past the bottom edge. Rows are drawn before gridlines so the lines sit on top.
@@ -450,7 +459,7 @@ void DataGrid::Render(const DrawingContext& dc) {
             D2D1::RectF(vp.x, vp.y, vp.right(), vp.bottom()));
 
         for (int r = firstRow; r <= lastRow; ++r) {
-            const float rowY = vp.y + r * rowHeight_ - scroll_.Offset();
+            const float rowY = vp.y + r * rowHeight_ - scrollY;
             const D2D1_RECT_F rowRect =
                 D2D1::RectF(vp.x, rowY, vp.right(), rowY + rowHeight_);
 
@@ -526,7 +535,7 @@ void DataGrid::Render(const DrawingContext& dc) {
             // Horizontal rules only between visible rows, vertical only between visible
             // columns: drawing all of them would be O(rows) and defeat the point.
             for (int r = firstRow; r <= lastRow + 1 && r <= rowCount_; ++r) {
-                const float y = vp.y + r * rowHeight_ - scroll_.Offset();
+                const float y = vp.y + r * rowHeight_ - scrollY;
                 if (y < vp.y || y > vp.bottom()) continue;
                 dc.DrawLine(D2D1::Point2F(vp.x, y), D2D1::Point2F(vp.right(), y),
                             c.gridLine, 1.0f);
@@ -549,7 +558,7 @@ void DataGrid::Render(const DrawingContext& dc) {
             // whether the drop lands before or after the row under the pointer.
             const int edgeRow = (dropTargetRow_ > draggingRow_) ? dropTargetRow_ + 1
                                                                 : dropTargetRow_;
-            const float y = vp.y + edgeRow * rowHeight_ - scroll_.Offset();
+            const float y = vp.y + edgeRow * rowHeight_ - scrollY;
             if (y >= vp.y && y <= vp.bottom())
                 dc.DrawLine(D2D1::Point2F(vp.x, y), D2D1::Point2F(vp.right(), y),
                             c.accent, 2.5f);

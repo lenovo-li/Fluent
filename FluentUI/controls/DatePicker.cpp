@@ -50,6 +50,8 @@ void DatePicker::OpenCalendar() {
             popup_.reset();
             return;
         }
+        // Share the parent window's animation clock so Calendar's hover animation can tick.
+        popup_->SetParentAnimationClock(window_, window_->Anims());
         popup_->SetResourceCache(Context().resourceCache);
         popup_->SetTheme(Context().theme);
 
@@ -84,15 +86,21 @@ void DatePicker::OpenCalendar() {
     // position must be added — the previous code scaled by DPI only and the
     // calendar opened near the top-left corner of the MONITOR instead of under
     // the button. Same conversion as ComboBox/ToolBar.
-    RECT rcWindow;
-    GetWindowRect(window_->Hwnd(), &rcWindow);
-    RECT anchor = AnchorScreenRect(rcWindow.left, rcWindow.top,
+    // Client origin, not GetWindowRect: bounds_ are client DIPs and the window
+    // keeps an NC resize band on the left (see ComboBox::HeaderScreenRect).
+    POINT rcWindow = {0, 0};
+    ClientToScreen(window_->Hwnd(), &rcWindow);
+    RECT anchor = AnchorScreenRect(rcWindow.x, rcWindow.y,
                                    bounds_.x, bounds_.y, bounds_.w, bounds_.h,
                                    window_->DpiScale());
 
-    // Calendar is 7 cells × 36 DIP wide, plus nav + header height.
-    float popupW = 7 * 36.0f;
-    float popupH = 36.0f + 24.0f + 6 * 32.0f;  // nav + hdr + 6 rows
+    // Let Calendar measure itself to compute its natural size. The old
+    // hardcoded calculation (7*36 + nav + header) would break silently if
+    // Calendar's internal metrics changed. Measure with unbounded space so
+    // the calendar reports its ideal size.
+    calendar_->Measure(1e6f, 1e6f);
+    float popupW = calendar_->Desired().w;
+    float popupH = calendar_->Desired().h;
 
     if (SUCCEEDED(popup_->Open(anchor, popupW, popupH))) {
         popupOpen_ = true;
@@ -101,10 +109,11 @@ void DatePicker::OpenCalendar() {
         AddContextSubscription(
             window_->RegisterActivePopupDismiss(
                 [this](PopupDismissReason reason, HWND otherHwnd, int screenX, int screenY) {
+                    UNREFERENCED_PARAMETER(otherHwnd);
                     if (!popupOpen_) return false;
                     if (reason == PopupDismissReason::Click) {
-                        if (popup_ && otherHwnd == popup_->Hwnd())
-                            return false;  // click inside popup
+                        // Keep open when the click lands inside the popup window
+                        // (Calendar handles it). Same pattern as ComboBox.
                         if (popup_ && popup_->ContainsScreenPoint(screenX, screenY))
                             return false;
                     }

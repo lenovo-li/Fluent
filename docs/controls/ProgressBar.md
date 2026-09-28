@@ -175,7 +175,9 @@ sub_ = slider->ValueChanged().Subscribe(this,
 | Token | 用途 |
 | --- | --- |
 | `accent` | 已填充部分(未设 AccentColor 时) |
-| `controlFillDefault` | 未填充轨道槽 |
+
+**说明**：未填充轨道槽使用硬编码回退值（`ProgressBar.cpp:64`：dark = rgba(255,255,255,0.16), 
+light = rgba(0,0,0,0.10)），不是 `controlFillDefault` token。
 
 ### 尚未实现
 

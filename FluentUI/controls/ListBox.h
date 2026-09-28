@@ -97,6 +97,17 @@ public:
     bool WantsAnimationTick() const override { return scroll_.NeedsTick(); }
     void OnAnimationTick(float dtSec) override {
         scroll_.Tick(dtSec);
+        
+        // Update hover during smooth scrolling: the content moves under the pointer,
+        // which didn't move. Without this, the old hoverIndex_ points to an item that
+        // scrolled away, leaving the actual item under the pointer without highlight.
+        if (pointerInside_) {
+            int newHover = HitItem(lastPointerPos_.y);
+            if (newHover != hoverIndex_) {
+                hoverIndex_ = newHover;
+            }
+        }
+        
         // scroll_ is a MEMBER, not a tree node: the Invalidate() inside its Tick has
         // no path to the frame scheduler, so fade/expand steps would only appear when
         // some other element happened to invalidate that frame ("segmented" animation).
@@ -141,6 +152,10 @@ private:
     size_t virtualItemCount_ = 0;  // 0 = use items_.size()
     ScrollViewer scroll_;
     int hoverIndex_ = -1;
+    // Last known pointer position and whether it's inside the control, for updating
+    // hover during smooth scrolling (the content moves under a stationary pointer).
+    Point lastPointerPos_;
+    bool pointerInside_ = false;
     Event<ListBox, int> selectionChanged_;
     Event<ListBox, std::vector<int>> selectionSetChanged_;
 };

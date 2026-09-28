@@ -68,7 +68,7 @@ void AppendText(std::wstring_view s);
 void SetMaxLines(size_t n);        size_t MaxLines() const;
 void SetAutoScrollToTail(bool);    bool AutoScrollToTail() const;
 bool FollowingTail() const;
-void ScrollToTail();
+void JumpToTail();
 ```
 
 **`AppendText` 是为日志优化的追加路径**:只扫描新增字符来扩展行索引,不做全量
@@ -80,9 +80,9 @@ void ScrollToTail();
 | --- | --- |
 | `SetAutoScrollToTail(bool)` | 功能是否**武装** |
 | `FollowingTail()` | 当前是否**正在**跟随(向上滚会清除,滚回底部会恢复) |
-| `ScrollToTail()` | **立即**跳到底部并标记为跟随 |
+| `JumpToTail()` | **立即**跳到底部并标记为跟随 |
 
-用户点「跳到末尾」按钮时应当调 `ScrollToTail()`,而不是 `SetAutoScrollToTail(true)` ——
+用户点「跳到末尾」按钮时应当调 `JumpToTail()`,而不是 `SetAutoScrollToTail(true)` —— 后者只是武装功能,不会移动视图。
 后者只是武装功能,不会移动视图。
 
 #### ⚠️ MaxLines 在两种换行模式下的行为不同

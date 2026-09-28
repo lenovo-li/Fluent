@@ -306,6 +306,37 @@ std::unique_ptr<ScrollPanel> GalleryApp::CreateComboBoxPage() {
         for (int m = 1; m <= 12; ++m) months.push_back(std::to_wstring(m) + L" 月");
         many->SetItems(std::move(months));
         many->SetSelectedIndex(7);
+        
+        // 测试键盘按键列表（67 项）：验证滚轮、打开时滚动到选中项、滚动条间距
+        AddNote(sec4, L"↓ 键盘按键列表（67 项）：测试滚轮滚动、自动定位选中项、滚动条安全间距");
+        auto* keyCombo = sec4->Add(std::make_unique<ComboBox>());
+        keyCombo->SetWidth(300.0f);
+        keyCombo->SetHAlign(HAlign::Left);
+        std::vector<std::wstring> keys = {
+            L"A (0x04)", L"B (0x05)", L"C (0x06)", L"D (0x07)",
+            L"E (0x08)", L"F (0x09)", L"G (0x0A)", L"H (0x0B)",
+            L"I (0x0C)", L"J (0x0D)", L"K (0x0E)", L"L (0x0F)",
+            L"M (0x10)", L"N (0x11)", L"O (0x12)", L"P (0x13)",
+            L"Q (0x14)", L"R (0x15)", L"S (0x16)", L"T (0x17)",
+            L"U (0x18)", L"V (0x19)", L"W (0x1A)", L"X (0x1B)",
+            L"Y (0x1C)", L"Z (0x1D)",
+            L"1 (0x1E)", L"2 (0x1F)", L"3 (0x20)", L"4 (0x21)",
+            L"5 (0x22)", L"6 (0x23)", L"7 (0x24)", L"8 (0x25)",
+            L"9 (0x26)", L"0 (0x27)",
+            L"Enter (0x28)", L"Esc (0x29)", L"Backspace (0x2A)",
+            L"Tab (0x2B)", L"Space (0x2C)",
+            L"F1 (0x3A)", L"F2 (0x3B)", L"F3 (0x3C)", L"F4 (0x3D)",
+            L"F5 (0x3E)", L"F6 (0x3F)", L"F7 (0x40)", L"F8 (0x41)",
+            L"F9 (0x42)", L"F10 (0x43)", L"F11 (0x44)", L"F12 (0x45)",
+            L"PrintScreen (0x46)", L"ScrollLock (0x47)", L"Pause (0x48)",
+            L"Insert (0x49)", L"Home (0x4A)", L"PageUp (0x4B)",
+            L"Delete (0x4C)", L"End (0x4D)", L"PageDown (0x4E)",
+            L"Right (0x4F)", L"Left (0x50)", L"Down (0x51)", L"Up (0x52)",
+            L"LeftCtrl (0xE0)", L"LeftShift (0xE1)", L"LeftAlt (0xE2)"
+        };
+        keyCombo->SetItems(std::move(keys));
+        keyCombo->SetSelectedIndex(40);  // 选中 F1，位于列表中部
+        keyCombo->SetTooltip(L"打开时应自动滚动到 F1，支持鼠标滚轮滚动");
     }
 
     // --- 2. 布局行为 -----------------------------------------------------

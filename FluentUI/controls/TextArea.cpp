@@ -113,6 +113,14 @@ IDWriteTextLayout* TextArea::LineLayout(size_t lineNumber, size_t minCover) cons
                          Dwrite()->Factory(), fmt, Context().dpiScale, gen,
                          minCover);
     NoteLineWidth(layout);
+    
+    // 强制统一行高：NoWrap 模式也需要，防止同样的 font fallback 问题
+    if (layout) {
+        const float uniformHeight = LineHeight();
+        const float baseline = uniformHeight * 0.8f;
+        layout->SetLineSpacing(DWRITE_LINE_SPACING_METHOD_UNIFORM, uniformHeight, baseline);
+    }
+    
     return layout;
 }
 
@@ -327,6 +335,15 @@ IDWriteTextLayout* TextArea::WrapParagraphLayout(size_t p) const {
     IDWriteTextLayout* layout =
         lineLayouts_.Get(p, LineSliceOfText(p), Dwrite()->Factory(), fmt,
                          Context().dpiScale, gen);
+    
+    // 强制统一行高：防止 font fallback 导致纯中文行(YaHei 15.24)和混合行(Segoe 16.00)
+    // 行高不一致，造成输入首个拉丁字符时该行向下跳变 ~0.76 DIP。
+    if (layout) {
+        const float uniformHeight = LineHeight();
+        const float baseline = uniformHeight * 0.8f;  // DWrite 默认 baseline 比例
+        layout->SetLineSpacing(DWRITE_LINE_SPACING_METHOD_UNIFORM, uniformHeight, baseline);
+    }
+    
     return layout;
 }
 
@@ -561,14 +578,18 @@ float TextArea::LineHeight() const {
 
     float result = EffectiveFontSize() * 1.4f;
     if (Dwrite()) {
-        // Line spacing of an empty layout at this font size.
+        // Line spacing probe. Must use a MIXED Latin+CJK string to force DWrite to
+        // pick the PRIMARY font (Segoe UI Variable) for line metrics, not a fallback.
+        // Pure CJK ("" or "中文") would measure the CJK fallback font's shorter line
+        // height, causing the first Latin character typed into a CJK-only line to jump
+        // the row by ~0.7 DIP (font switch from YaHei 15.24 to Segoe 16.00 at 12pt).
         IDWriteTextFormat* fmt = Dwrite()->Format(
             EffectiveFontSize(), EffectiveFontWeight(DWRITE_FONT_WEIGHT_NORMAL), DWRITE_TEXT_ALIGNMENT_LEADING,
             DWRITE_PARAGRAPH_ALIGNMENT_NEAR, DWRITE_WORD_WRAPPING_WRAP);
         if (fmt) {
             ComPtr<IDWriteTextLayout> probe;
             if (SUCCEEDED(Dwrite()->Factory()->CreateTextLayout(
-                    L"Ag", 2, fmt, 1e5f, 1e5f, probe.GetAddressOf()))) {
+                    L"Ag中", 3, fmt, 1e5f, 1e5f, probe.GetAddressOf()))) {
                 DWRITE_TEXT_METRICS tm{};
                 if (SUCCEEDED(probe->GetMetrics(&tm)) && tm.height > 0)
                     result = tm.height;
@@ -1116,9 +1137,18 @@ void TextArea::OnPointerPressed(PointerEventArgs& e) {
         return;
     }
     const UINT32 index = HitIndex(dipX, dipY);
+    const bool shift = (e.modifiers & ModifierKeys::Shift) == ModifierKeys::Shift;
+
+    // Shift+click extends from the anchor to the click (works on a bare caret too:
+    // the anchor is then the caret). See TextBox::OnPointerPressed.
+    if (shift && e.clickCount <= 1) {
+        MoveCaret(index, /*extend*/ true);
+        BeginCharacterDrag(index);
+        OnSelectionChanged();
+    }
     // Double-click selects the word, triple selects the logical line. Both also record
     // the drag granularity so OnPointerMoved extends by whole units.
-    if (!ApplyMultiClickSelection(index, e.clickCount)) {
+    else if (!ApplyMultiClickSelection(index, e.clickCount)) {
         caret_ = selAnchor_ = index;
         BeginCharacterDrag(index);
     }
@@ -1169,13 +1199,18 @@ void TextArea::OnPointerMoved(PointerEventArgs& e) {
         return;
     }
     scroll_.Wake();
-    scroll_.SetBarHover(scroll_.HitBarRegion(dipX, dipY));
-    scroll_.SetHBarHover(scroll_.HitHBarRegion(dipX, dipY));
+    const bool overV = scroll_.HitBarRegion(dipX, dipY);
+    const bool overH = scroll_.HitHBarRegion(dipX, dipY);
+    scroll_.SetBarHover(overV);
+    scroll_.SetHBarHover(overH);
+    // Read by Cursor(), which gets no coordinates. No repaint needed for a cursor.
+    pointerOverScrollBar_ = overV || overH;
 }
 
 void TextArea::OnPointerLeft() {
     scroll_.SetBarHover(false);
     scroll_.SetHBarHover(false);
+    pointerOverScrollBar_ = false;
 }
 
 void TextArea::OnPointerReleased(PointerEventArgs& e) {
@@ -1645,6 +1680,7 @@ void TextArea::DrawParagraphsToSurface(DrawingContext& rc, float surfaceOriginDi
 void TextArea::OnAttachedToTree() {
     TextEditBase::OnAttachedToTree();   // marks the layout dirty + invalidates
     lineHeightCache_ = 0.0f;            // DWrite is available now; re-probe
+    LineHeight();                       // 立即测量并缓存真实行高，避免首次输入时跳变
     // The scrollable extent needs a DWrite layout, and DWrite only arrives with the
     // context — so bounds set before attach measured nothing. Re-sync now rather than
     // relying on a later layout pass to happen to fix it up.
@@ -1686,6 +1722,14 @@ void TextArea::OnThemeChanged() {
 void TextArea::OnDpiChanged(float dpiScale) {
     lineHeightCache_ = 0.0f;
     Invalidate();
+}
+
+HCURSOR TextArea::Cursor() const {
+    // Over a scrollbar track: system default (arrow).
+    if (pointerOverScrollBar_)
+        return nullptr;
+    // Over text content: I-beam (inherited from TextEditBase).
+    return TextEditBase::Cursor();
 }
 
 

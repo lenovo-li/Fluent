@@ -499,7 +499,21 @@ void NativeWindowHost::UpdateAnimationTimer() {
     // input events and program state changes — not every frame, so the timer
     // only ever ticks elements that are actually animating (roadmap §6.1). Arm
     // the clock iff something wants a tick; the scheduler owns the edge logic.
-    frame_.Anims().Collect(elements_);
+    //
+    // Auxiliary roots (open PopupHost content) have no FrameHost of their own and
+    // share this clock. They MUST go through the same single Collect call:
+    // AnimationRegistry::Collect clears the active set first, so a second Collect
+    // for the aux roots would wipe everything the main tree just registered.
+    // Fast path: no open popup -> collect elements_ directly, no allocation.
+    if (auxAnimRoots_.empty()) {
+        frame_.Anims().Collect(elements_);
+    } else {
+        std::vector<UIElement*> roots;
+        roots.reserve(elements_.size() + auxAnimRoots_.size());
+        roots.insert(roots.end(), elements_.begin(), elements_.end());
+        roots.insert(roots.end(), auxAnimRoots_.begin(), auxAnimRoots_.end());
+        frame_.Anims().Collect(roots);
+    }
     frame_.Scheduler().SetWanted(!frame_.Anims().Empty());
 }
 
@@ -1485,14 +1499,28 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
             HideTooltip();  // scrolling dismisses a visible tooltip
             POINT pt = {GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
             ScreenToClient(hwnd_, &pt);
+            
+            // Forward to an active popup FIRST (WS_EX_NOACTIVATE popups never receive
+            // WM_MOUSEWHEEL themselves — the focused window gets it, which is us). The
+            // popup callback checks whether the wheel is over its HWND and routes the
+            // event to its own content if so. Only when no popup consumes it do we
+            // route to our own element tree (so wheel-over-main-window still works).
+            int delta = GET_WHEEL_DELTA_WPARAM(wp);
+            if (popupWheel_) {
+                POINT screenPt = {GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+                if (popupWheel_(screenPt.x, screenPt.y, delta)) {
+                    UpdateAnimationTimer();  // popup may have started a smooth scroll
+                    return 0;
+                }
+            }
+            
             // Normalize WHEEL_PAGESCROLL (0xFFFFFFFF) to 0 before passing down — the
             // element tree reads 0 as "page per notch" without multiply-by-height confusion.
             UINT lines = wheelScrollLines_;
             if (lines == WHEEL_PAGESCROLL) lines = 0;
-            input_.Input().PointerWheel(ToDip(pt.x, pt.y), GET_WHEEL_DELTA_WPARAM(wp),
+            input_.Input().PointerWheel(ToDip(pt.x, pt.y), delta,
                                         CurrentModifiers(), lines);
-            OnMouseWheel(pt.x * (96.0f / dpi_), pt.y * (96.0f / dpi_),
-                         GET_WHEEL_DELTA_WPARAM(wp));
+            OnMouseWheel(pt.x * (96.0f / dpi_), pt.y * (96.0f / dpi_), delta);
             UpdateAnimationTimer();  // a wheel may have kicked off a smooth scroll
             return 0;
         }

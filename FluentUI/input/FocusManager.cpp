@@ -11,8 +11,8 @@ void FocusManager::SetFocus(UIElement* e) {
     if (e == focused_) return;
 
     UIElement* old = focused_;
+    focused_ = e;  // Update state BEFORE triggering events to prevent reentrant overwrites
     if (old) old->SetFocused(false);
-    focused_ = e;
     if (focused_) focused_->SetFocused(true);
 
     FocusChangedArgs args{old, focused_};

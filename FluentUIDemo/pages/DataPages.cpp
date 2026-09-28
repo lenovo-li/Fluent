@@ -391,6 +391,61 @@ tabs->SetTabStripPlacement(TabStripPlacement::Bottom);  // 底部
 tabs->SetTabStripPlacement(TabStripPlacement::Left);    // 左侧
 tabs->SetTabStripPlacement(TabStripPlacement::Right);   // 右侧)");
 
+    // 示例 3：内容淡入控制
+    auto* card3 = CreateExampleCard(content, L"内容淡入（切换过渡）");
+    auto* desc3 = card3->Add(std::make_unique<TextBlock>());
+    desc3->SetText(L"切换 Tab 时内容会淡入。默认时间常数 0.1s（约 300ms 完成）。"
+                   L"并排比较三种设置：关闭、默认、较慢。");
+    desc3->SetMargin(Thickness{0, 0, 0, 12.0f});
+
+    auto* fadePanel = card3->Add(std::make_unique<StackPanel>());
+    fadePanel->SetOrientation(StackPanel::Orientation::Horizontal);
+    fadePanel->SetSpacing(16.0f);
+
+    // 关闭淡入：立即切换，无过渡
+    auto* noFade = fadePanel->Add(std::make_unique<TabControl>());
+    noFade->SetWidth(190.0f); noFade->SetHeight(150.0f);
+    noFade->SetContentFadeEnabled(false);
+    for (int i = 1; i <= 3; ++i) {
+        auto p = std::make_unique<StackPanel>();
+        p->SetMargin(Thickness(12.0f));
+        auto* t = p->Add(std::make_unique<TextBlock>());
+        t->SetText(L"无淡入 " + std::to_wstring(i));
+        noFade->AddTab(L"N" + std::to_wstring(i), std::move(p));
+    }
+
+    // 默认淡入：0.1s
+    auto* defFade = fadePanel->Add(std::make_unique<TabControl>());
+    defFade->SetWidth(190.0f); defFade->SetHeight(150.0f);
+    for (int i = 1; i <= 3; ++i) {
+        auto p = std::make_unique<StackPanel>();
+        p->SetMargin(Thickness(12.0f));
+        auto* t = p->Add(std::make_unique<TextBlock>());
+        t->SetText(L"默认 0.1s " + std::to_wstring(i));
+        defFade->AddTab(L"D" + std::to_wstring(i), std::move(p));
+    }
+
+    // 较慢淡入：0.3s
+    auto* slowFade = fadePanel->Add(std::make_unique<TabControl>());
+    slowFade->SetWidth(190.0f); slowFade->SetHeight(150.0f);
+    slowFade->SetContentFadeDuration(0.3f);
+    for (int i = 1; i <= 3; ++i) {
+        auto p = std::make_unique<StackPanel>();
+        p->SetMargin(Thickness(12.0f));
+        auto* t = p->Add(std::make_unique<TextBlock>());
+        t->SetText(L"慢速 0.3s " + std::to_wstring(i));
+        slowFade->AddTab(L"S" + std::to_wstring(i), std::move(p));
+    }
+
+    CreateCodeExample(content, LR"(// 关闭淡入：切换立即生效，无过渡动画
+tabs->SetContentFadeEnabled(false);
+
+// 自定义淡入时间常数（秒）。视觉完成时间约为 3 倍时间常数：
+//   0.05s -> ~150ms（偏快，看起来像闪烁）
+//   0.10s -> ~300ms（默认）
+//   0.30s -> ~900ms（明显的慢速过渡）
+tabs->SetContentFadeDuration(0.3f);)");
+
     return std::move(page);
 }
 

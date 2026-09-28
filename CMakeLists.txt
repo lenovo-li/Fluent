@@ -180,6 +180,21 @@ if(FLUENTUI_BUILD_EXAMPLES)
     endif()
 endif()
 
+# Size test executables (tests/size_test/)
+if(FLUENTUI_BUILD_EXAMPLES)
+    add_executable(MinimalButton WIN32 tests/size_test/MinimalButton.cpp)
+    target_link_libraries(MinimalButton PRIVATE FluentUI::FluentUI)
+    if(MSVC AND FLUENTUI_STATIC_RUNTIME)
+        set_property(TARGET MinimalButton PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    endif()
+    
+    add_executable(MaximalControls WIN32 tests/size_test/MaximalControls.cpp)
+    target_link_libraries(MaximalControls PRIVATE FluentUI::FluentUI)
+    if(MSVC AND FLUENTUI_STATIC_RUNTIME)
+        set_property(TARGET MaximalControls PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    endif()
+endif()
+
 install(TARGETS FluentUI
     EXPORT FluentUITargets
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})

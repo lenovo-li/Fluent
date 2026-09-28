@@ -1542,9 +1542,16 @@ void RichTextBox::OnPointerPressed(PointerEventArgs& e) {
     const float contentX = e.position.x - bounds_.x - kPadding + scrollViewer_->OffsetX();
     const float contentY = e.position.y - bounds_.y - kPadding + scrollY;
     const UINT32 index = IndexAtPoint(contentX, contentY);
+    const bool shift = (e.modifiers & ModifierKeys::Shift) == ModifierKeys::Shift;
     
+    // Shift+click extends from the anchor to the click, keeping anchor_ (works on a
+    // bare caret too). SelectionMoved below raises the notification.
+    if (shift && e.clickCount <= 1) {
+        caret_ = index;
+        dragGranularity_ = SelectGranularity::Character;
+    }
     // Multi-click selection: double-click selects word, triple-click selects line.
-    if (!ApplyMultiClickSelection(index, e.clickCount)) {
+    else if (!ApplyMultiClickSelection(index, e.clickCount)) {
         // Single click: reset to character granularity and place caret.
         dragGranularity_ = SelectGranularity::Character;
         caret_ = index;

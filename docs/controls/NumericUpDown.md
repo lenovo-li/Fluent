@@ -163,10 +163,13 @@ form->AddColumn(GridLength::Star(1.0f));       // 输入框
 
 | Token | 用途 |
 | --- | --- |
-| `controlFillDefault` / `controlFillHover` | 输入区底色 |
+| `controlFillDefault` | 输入区底色 |
+| `controlFillHover` / `controlFillPressed` | 箭头按钮填充（悬停 / 按下，`.cpp:160`） |
 | `controlStrokeDefault` | 边框 |
 | `accent` | 聚焦边框 |
-| `textPrimary` | 数字与箭头 |
+| `focusStroke` | 焦点环（`.cpp:127` DrawFocusRing） |
+| `textPrimary` | 数字与箭头（正常态） |
+| `textSecondary` | 禁用态箭头与文字（`.cpp:178/181/195`） |
 
 ### 演示页
 

@@ -375,3 +375,98 @@ TEST(ScrollPanel, Scrollbar_DragStartsInHoverStrip) {
     panel.OnPointerPressed(e);
     EXPECT_TRUE(e.handled);  // drag started
 }
+
+// Pixel snapping during smooth scroll: fractional scroll offsets are snapped to
+// the physical pixel grid before being baked into child bounds, so text rendered
+// with ClearType (subpixel hinting) stays stable instead of shimmering. At DPI
+// scale 1.0 (the test default), snapping rounds to integer DIPs. A scroll offset
+// of 15.7 yields child bounds offset by -16.0, not -15.7.
+TEST(ScrollPanel, FractionalScrollOffset_ChildBoundsSnappedToPixels) {
+    ScrollPanel panel;
+    // Content (4 * 40 = 160) must exceed the viewport (80) or the offset clamps to 0
+    // and there is nothing to snap.
+    auto* first = panel.Emplace<Button>();
+    first->SetHeight(40.0f);
+    auto* second = panel.Emplace<Button>();
+    second->SetHeight(40.0f);
+    for (int i = 0; i < 2; ++i) {
+        auto* filler = panel.Emplace<Button>();
+        filler->SetHeight(40.0f);
+    }
+
+    panel.Measure(400.0f, 80.0f);
+    panel.Arrange(RectDip{0, 100, 400, 80});  // y=100 start
+
+    // Scroll to 15.7 (a fractional offset from smooth-scroll interpolation).
+    // The underlying ScrollViewer allows it, but Arrange must snap before using it.
+    panel.SetVerticalOffset(15.7f);
+    panel.Arrange(RectDip{0, 100, 400, 80});
+
+    // The offset is snapped to 16.0, so bounds.y = 100 - 16 = 84.
+    // If it were NOT snapped, first->Bounds().y would be 84.3, which D2D rounds
+    // differently from frame to frame as the interpolation drifts through subpixel
+    // positions, causing text jitter.
+    EXPECT_EQ(first->Bounds().y, 84.0f);
+    EXPECT_EQ(second->Bounds().y, 124.0f);  // 84 + 40
+}
+
+// Wheel distance = system lines-per-notch * wheelStep_. The step is settable because
+// ScrollPanel's content is heterogeneous: there is no intrinsic row height to derive
+// it from the way ListBox uses itemHeight_.
+TEST(ScrollPanel, WheelStep_ScalesScrollDistance) {
+    ScrollPanel panel;
+    for (int i = 0; i < 20; ++i) {
+        auto* btn = panel.Emplace<Button>();
+        btn->SetHeight(40.0f);
+    }
+    panel.Measure(400.0f, 300.0f);
+    panel.Arrange(RectDip{0, 0, 400, 300});
+
+    EXPECT_EQ(panel.WheelStep(), 32.0f);  // default matches ListBox item height
+
+    // One notch down. wheelScrollLines defaults to 3 in a hand-built args, so the
+    // target is 3 * 32 = 96. AnimateBy sets the tween TARGET; with no animation tick
+    // the live offset stays put, so assert on the target the wheel asked for.
+    PointerEventArgs e;
+    e.wheelDelta = -120;  // one notch toward the content end
+    panel.OnPointerWheelChanged(e);
+    EXPECT_TRUE(e.handled);
+    EXPECT_EQ(panel.TargetVerticalOffset(), 96.0f);
+
+    // A custom step scales it proportionally: 3 * 48 = 144.
+    ScrollPanel wide;
+    for (int i = 0; i < 20; ++i) {
+        auto* btn = wide.Emplace<Button>();
+        btn->SetHeight(40.0f);
+    }
+    wide.SetWheelStep(48.0f);
+    wide.Measure(400.0f, 300.0f);
+    wide.Arrange(RectDip{0, 0, 400, 300});
+
+    PointerEventArgs e2;
+    e2.wheelDelta = -120;
+    wide.OnPointerWheelChanged(e2);
+    EXPECT_EQ(wide.TargetVerticalOffset(), 144.0f);
+}
+
+// Regression: SetWheelStep(0) caused division by zero when WheelScrollLines=0
+// (commit a4fcbe7). Now enforces minimum of 1.0 DIP.
+TEST(ScrollPanel, SetWheelStepZero_IsClamped) {
+    ScrollPanel panel;
+    for (int i = 0; i < 10; ++i) {
+        auto* btn = panel.Emplace<Button>();
+        btn->SetHeight(40.0f);
+    }
+    
+    panel.Measure(400.0f, 300.0f);
+    panel.Arrange(RectDip{0, 0, 400, 300});
+    
+    panel.SetWheelStep(0.0f);  // Should be clamped to 1.0
+    EXPECT_EQ(panel.WheelStep(), 1.0f);
+    
+    panel.SetWheelStep(-5.0f);  // Negative also clamped
+    EXPECT_EQ(panel.WheelStep(), 1.0f);
+    
+    panel.SetWheelStep(16.0f);  // Valid value accepted
+    EXPECT_EQ(panel.WheelStep(), 16.0f);
+}

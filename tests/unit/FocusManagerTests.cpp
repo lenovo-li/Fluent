@@ -149,3 +149,43 @@ TEST(FocusManager, DirectionalNavigation) {
     fm.MoveDirectional(FocusDirection::Up);  // nothing above -> no change
     EXPECT_EQ(fm.Focused(), static_cast<UIElement*>(&a));
 }
+
+// Regression: Reentrant SetFocus in LostFocus handler (commit a4fcbe7).
+// Before fix: old->SetFocused(false) fired event BEFORE focused_=e, so reentrant
+// SetFocus(other) would be overwritten by outer focused_=e.
+TEST(FocusManager, ReentrantSetFocusDoesNotCorruptState) {
+    FocEl a, b, c;
+    std::vector<UIElement*> roots{&a, &b, &c};
+    FocusManager fm;
+    fm.SetRoots(&roots);
+    
+    fm.SetFocus(&a);
+    
+    // The reentry point is the ELEMENT's LostFocus (UIElement::SetFocused raises it),
+    // which SetFocus calls while its own bookkeeping is half-done.
+    struct Handler {
+        FocusManager* fm;
+        UIElement* target;
+        int calls = 0;
+        void OnLostFocus(UIElement&, RoutedEventArgs&) {
+            if (++calls > 1) return;      // only reenter once
+            fm->SetFocus(target);         // reentrant SetFocus from inside SetFocus
+        }
+    } handler{&fm, &c};
+
+    Subscription sub = a.LostFocus().Subscribe<&Handler::OnLostFocus>(&handler);
+
+    fm.SetFocus(&b);   // a loses focus -> handler reenters with SetFocus(&c)
+
+    // Whatever the ordering, the manager and the element bits must agree afterwards:
+    // exactly one element focused, and Focused() is that element. Before the fix the
+    // outer call's `focused_ = e` ran AFTER the reentrant one, so focused_ pointed at
+    // b while c's IsFocused() bit was also set — two elements believing they had focus.
+    UIElement* f = fm.Focused();
+    EXPECT_TRUE(f == &b || f == &c);
+    const int focusedCount = (a.IsFocused() ? 1 : 0) + (b.IsFocused() ? 1 : 0) +
+                             (c.IsFocused() ? 1 : 0);
+    EXPECT_EQ(focusedCount, 1);
+    EXPECT_TRUE(f && f->IsFocused());
+    EXPECT_FALSE(a.IsFocused());
+}

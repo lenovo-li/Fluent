@@ -12,6 +12,8 @@
 
 #include "../framework/Test.h"
 #include "../../FluentUI/controls/LogViewer.h"
+#include "../../FluentUI/graphics/DWriteContext.h"
+#include "../../FluentUI/core/UIContext.h"
 
 using namespace fluent;
 
@@ -121,6 +123,65 @@ TEST(LogViewer, WeightAndUnderlineDoNotChangeRowHeight)
     decorated.AppendLine({{L"text", kYellow, 12.0f, DWRITE_FONT_WEIGHT_BOLD, true}});
 
     EXPECT_NEAR(decorated.ContentExtentDip(), plain.ContentExtentDip(), 0.01f);
+}
+
+// --- Measurement on attach (real DWrite, no GPU needed) ----------------------
+//
+// Regression: OnAttachedToTree used to measure ONE span of ONE line and stamp that
+// height onto every unmeasured line, marking them all measured so the paint pass
+// never corrected them. A 24 DIP "BUILD FAILED" row then got a 10 DIP row's height
+// and the rows below were drawn on top of it. Each line must be measured from its
+// own tallest span.
+
+namespace {
+// Attach with a real DWrite context; returns false when DWrite is unavailable so the
+// test can bail instead of failing on a machine without it.
+bool AttachWithDWrite(LogViewer& v, DWriteContext& dw) {
+    if (!dw.Valid() && FAILED(dw.Initialize())) return false;
+    UIContext ctx;
+    ctx.dwrite = &dw;
+    ctx.dpiScale = 1.0f;
+    v.AttachToContext(ctx);
+    return true;
+}
+} // namespace
+
+TEST(LogViewer, AttachMeasuresEachLineFromItsOwnTallestSpan)
+{
+    DWriteContext dw;
+    LogViewer v;
+    v.Arrange(RectDip{0, 0, 400, 300});
+    v.AppendLine({{L"small 10", kWhite, 10.0f}});                    // measured first
+    v.AppendLine({{L"BUILD FAILED", kRed, 24.0f, DWRITE_FONT_WEIGHT_BOLD}});
+    v.AppendLine({{L"small 10", kWhite, 10.0f}});
+    if (!AttachWithDWrite(v, dw)) return;
+
+    const float row0 = v.LineHeightDip(0);
+    const float row1 = v.LineHeightDip(1);
+    const float row2 = v.LineHeightDip(2);
+    // The 24 DIP row must be clearly taller than its 10 DIP neighbours. Under the
+    // old code all three were equal (the first line's height copied everywhere).
+    EXPECT_TRUE(row1 > row0 * 1.8f);
+    EXPECT_NEAR(row0, row2, 0.01f);
+    // And the extent is the sum, so the rows below the tall one are pushed down.
+    EXPECT_NEAR(v.ContentExtentDip(), row0 + row1 + row2, 0.01f);
+    v.DetachFromContext();
+}
+
+// A mixed line is as tall as its tallest span, not its first span. The old code
+// sampled spans[0] only, so a line that starts small and ends large was undersized.
+TEST(LogViewer, AttachUsesTallestSpanNotFirstSpan)
+{
+    DWriteContext dw;
+    LogViewer mixed;
+    mixed.AppendLine({{L"a ", kWhite, 10.0f}, {L"BIG", kYellow, 20.0f}});
+    LogViewer big;
+    big.AppendLine({{L"BIG", kYellow, 20.0f}});
+    if (!AttachWithDWrite(mixed, dw) || !AttachWithDWrite(big, dw)) return;
+
+    EXPECT_NEAR(mixed.LineHeightDip(0), big.LineHeightDip(0), 0.01f);
+    mixed.DetachFromContext();
+    big.DetachFromContext();
 }
 
 // --- Ring buffer -------------------------------------------------------------
@@ -380,6 +441,172 @@ TEST(LogViewer, TrimDropsSelectionBecauseLinesAreRenumbered)
     // This append pushes the buffer over the cap and trims the oldest line.
     v.AppendLine({{L"overflow", kWhite}});
     EXPECT_EQ(v.LineCount(), size_t(3));
+    EXPECT_FALSE(v.HasSelection());
+}
+
+// --- Keyboard selection (scheme A: no caret) --------------------------------
+//
+// The anchor is set by a plain click (SetSelectionPoint headless); Shift+keys move
+// only the other end. Plain navigation keys scroll and must NOT touch the selection.
+
+namespace {
+KeyEventArgs Key(UINT vk, ModifierKeys mods) {
+    KeyEventArgs e;
+    e.vk = vk;
+    e.modifiers = mods;
+    return e;
+}
+constexpr ModifierKeys kShift = ModifierKeys::Shift;
+const ModifierKeys kCtrlShift = ModifierKeys::Ctrl | ModifierKeys::Shift;
+} // namespace
+
+TEST(LogViewerKeys, ShiftRightExtendsByOneCharacter)
+{
+    LogViewer v;
+    v.AppendLine({{L"hello world", kWhite}});
+    v.SetSelectionPoint({0, 0});
+    auto e = Key(VK_RIGHT, kShift);
+    v.OnKeyDownRouted(e);
+    EXPECT_TRUE(e.handled);
+    EXPECT_TRUE(v.SelectedText() == L"h");
+    auto e2 = Key(VK_RIGHT, kShift);
+    v.OnKeyDownRouted(e2);
+    EXPECT_TRUE(v.SelectedText() == L"he");
+}
+
+TEST(LogViewerKeys, ShiftLeftExtendsBackwardsAndKeepsAnchor)
+{
+    LogViewer v;
+    v.AppendLine({{L"hello", kWhite}});
+    v.SetSelectionPoint({0, 5});
+    auto e = Key(VK_LEFT, kShift);
+    v.OnKeyDownRouted(e);
+    EXPECT_TRUE(v.SelectedText() == L"o");
+    EXPECT_EQ(v.SelectionAnchor().column, size_t(5));
+    EXPECT_EQ(v.SelectionActiveEnd().column, size_t(4));
+}
+
+TEST(LogViewerKeys, ShiftEndSelectsToLineEnd)
+{
+    LogViewer v;
+    v.AppendLine({{L"[ERROR] ", kRed}, {L"disk full", kWhite}});
+    v.SetSelectionPoint({0, 8});
+    auto e = Key(VK_END, kShift);
+    v.OnKeyDownRouted(e);
+    EXPECT_TRUE(v.SelectedText() == L"disk full");   // across the span boundary
+}
+
+TEST(LogViewerKeys, ShiftHomeSelectsToLineStart)
+{
+    LogViewer v;
+    v.AppendLine({{L"hello world", kWhite}});
+    v.SetSelectionPoint({0, 5});
+    auto e = Key(VK_HOME, kShift);
+    v.OnKeyDownRouted(e);
+    EXPECT_TRUE(v.SelectedText() == L"hello");
+}
+
+TEST(LogViewerKeys, CtrlShiftEndSelectsToDocumentEnd)
+{
+    LogViewer v;
+    v.AppendLine({{L"first", kWhite}});
+    v.AppendLine({{L"second", kWhite}});
+    v.AppendLine({{L"third", kWhite}});
+    v.SetSelectionPoint({1, 0});
+    auto e = Key(VK_END, kCtrlShift);
+    v.OnKeyDownRouted(e);
+    EXPECT_TRUE(v.SelectedText() == L"second\nthird");
+}
+
+TEST(LogViewerKeys, CtrlShiftHomeSelectsToDocumentStart)
+{
+    LogViewer v;
+    v.AppendLine({{L"first", kWhite}});
+    v.AppendLine({{L"second", kWhite}});
+    v.SetSelectionPoint({1, 3});
+    auto e = Key(VK_HOME, kCtrlShift);
+    v.OnKeyDownRouted(e);
+    EXPECT_TRUE(v.SelectedText() == L"first\nsec");
+}
+
+TEST(LogViewerKeys, ShiftRightAtLineEndCrossesTheLineBreak)
+{
+    LogViewer v;
+    v.AppendLine({{L"ab", kWhite}});
+    v.AppendLine({{L"cd", kWhite}});
+    v.SetSelectionPoint({0, 2});
+    auto e = Key(VK_RIGHT, kShift);
+    v.OnKeyDownRouted(e);
+    EXPECT_EQ(v.SelectionActiveEnd().line, size_t(1));
+    EXPECT_EQ(v.SelectionActiveEnd().column, size_t(0));
+    EXPECT_TRUE(v.SelectedText() == L"\n");
+}
+
+TEST(LogViewerKeys, ShiftDownExtendsToNextLineSameColumn)
+{
+    LogViewer v;
+    v.AppendLine({{L"abcdef", kWhite}});
+    v.AppendLine({{L"ghijkl", kWhite}});
+    v.SetSelectionPoint({0, 2});
+    auto e = Key(VK_DOWN, kShift);
+    v.OnKeyDownRouted(e);
+    EXPECT_TRUE(v.SelectedText() == L"cdef\ngh");
+}
+
+TEST(LogViewerKeys, CtrlShiftRightExtendsByWord)
+{
+    LogViewer v;
+    v.AppendLine({{L"alpha beta gamma", kWhite}});
+    v.SetSelectionPoint({0, 0});
+    auto e = Key(VK_RIGHT, kCtrlShift);
+    v.OnKeyDownRouted(e);
+    // Lands on the next word start, like Ctrl+Right in TextBox.
+    EXPECT_EQ(v.SelectionActiveEnd().column, size_t(6));
+}
+
+// The defining property of scheme A: looking around must not destroy the selection.
+TEST(LogViewerKeys, PlainNavigationKeysDoNotTouchSelection)
+{
+    LogViewer v;
+    v.Arrange(RectDip{0, 0, 400, 30});
+    for (int i = 0; i < 50; ++i) v.AppendLine({{L"line", kWhite, 12.0f}});
+    v.SetAutoScrollToTail(false);
+    v.SetSelectionPoint({2, 0});
+    auto s = Key(VK_END, kShift);
+    v.OnKeyDownRouted(s);
+    const std::wstring before = v.SelectedText();
+    EXPECT_FALSE(before.empty());
+
+    for (UINT vk : {VK_DOWN, VK_NEXT, VK_UP, VK_PRIOR}) {
+        auto e = Key(vk, ModifierKeys::None);
+        v.OnKeyDownRouted(e);
+        EXPECT_TRUE(e.handled);                 // consumed as a scroll
+    }
+    EXPECT_TRUE(v.SelectedText() == before);
+}
+
+TEST(LogViewerKeys, PageDownScrollsTheView)
+{
+    LogViewer v;
+    v.Arrange(RectDip{0, 0, 400, 60});
+    for (int i = 0; i < 100; ++i) v.AppendLine({{L"line", kWhite, 12.0f}});
+    v.SetAutoScrollToTail(false);
+    // AppendLine does not scroll with tail-follow off, so the view starts at the top.
+    auto e = Key(VK_NEXT, ModifierKeys::None);
+    v.OnKeyDownRouted(e);
+    auto end = Key(VK_END, ModifierKeys::Ctrl);
+    v.OnKeyDownRouted(end);
+    EXPECT_TRUE(e.handled);
+    EXPECT_TRUE(end.handled);
+}
+
+TEST(LogViewerKeys, ShiftKeysIgnoredWhenSelectionDisabled)
+{
+    LogViewer v;
+    v.AppendLine({{L"hello", kWhite}});
+    v.SetSelectionEnabled(false);
+    auto e = Key(VK_END, kShift);
+    v.OnKeyDownRouted(e);
     EXPECT_FALSE(v.HasSelection());
 }
 

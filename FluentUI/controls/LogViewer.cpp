@@ -22,8 +22,11 @@ namespace {
 // viewer wants — a wrapped log line destroys column alignment.
 constexpr float kUnboundedWidth = 1.0e6f;
 constexpr float kUnboundedHeight = 1.0e4f;
-// Wheel step, matching the other scrolling controls' feel.
-constexpr float kWheelStepDip = 60.0f;
+// Wheel step per line: estimated average row height (12pt font × 1.2 line spacing).
+// User's system "lines per notch" setting multiplies this, so one notch scrolls
+// roughly (setting × kWheelStepDip) / actual_row_height rows — around 3-5 rows
+// at the default 3-lines setting with typical 12-14pt logs.
+constexpr float kWheelStepDip = 16.0f;
 // Right gutter so text clears the scrollbar rail.
 constexpr float kScrollReserve = 12.0f;
 // Max auto-scroll speed when dragging selection past the edge. Capped so an
@@ -367,7 +370,8 @@ void LogViewer::OnPointerWheelChanged(PointerEventArgs& e) {
     if (scroll_.MaxOffset() <= 0.0f) return;
 
     scroll_.Wake();
-    scroll_.AnimateBy(-e.wheelDelta * kWheelStepDip);
+    // WheelScrollLines() 已归一化为系统设置的行数，直接乘步进距离即可
+    scroll_.AnimateBy(e.WheelScrollLines() * kWheelStepDip);
 
     // Follow-mode is recomputed only on user-driven scrolls, and against the
     // TARGET rather than the current offset: on the frame the notch arrives the
@@ -407,9 +411,17 @@ void LogViewer::OnPointerPressed(PointerEventArgs& e) {
     // selection vanishes — that is the 'click clears selection' behavior.
     if (selectionEnabled_) {
         const LogTextPos pos = HitTestPosition(dipX, dipY);
+        const bool shift = (e.modifiers & ModifierKeys::Shift) == ModifierKeys::Shift;
         
+        // Shift+click: extend selection from anchor to clicked position (keep anchor).
+        // A plain click sets both anchor and current to the same point, so a bare
+        // "caret" is the anchor — Shift+click then selects from there.
+        if (shift && e.clickCount <= 1) {
+            dragGranularity_ = SelectGranularity::Character;
+            selCurrent_ = pos;  // keep selAnchor_
+        }
         // Multi-click selection: double-click selects word, triple-click selects line.
-        if (!ApplyMultiClickSelection(pos, e.clickCount)) {
+        else if (!ApplyMultiClickSelection(pos, e.clickCount)) {
             // Single click: reset to character granularity and clear selection.
             dragGranularity_ = SelectGranularity::Character;
             selAnchor_ = selCurrent_ = pos;
@@ -534,6 +546,37 @@ void LogViewer::OnAttachedToTree() {
     // back to the LIGHT default snapshot — drawing the rail in near-black ink
     // regardless of the real theme.
     scroll_.AttachToContext(Context());
+
+    // Fix first-frame layout jump: if lines were appended before attach, their heights
+    // are estimated (fontSize * kLineSpacing). Now that we have DWrite context, measure
+    // each unmeasured line's actual height (= max height of all its spans) to avoid
+    // visible reflow when the first Render measures them.
+    bool anyMeasured = false;
+    for (size_t i = 0; i < lines_.size(); ++i) {
+        if (!lines_[i].heightMeasured && !lines_[i].spans.empty()) {
+            // Measure all spans in this line to find the tallest one
+            float maxHeight = 0.0f;
+            for (const auto& span : lines_[i].spans) {
+                if (span.text.empty()) continue;
+                ComPtr<IDWriteTextLayout> layout = MakeSpanLayout(span);
+                if (layout) {
+                    DWRITE_TEXT_METRICS tm{};
+                    if (SUCCEEDED(layout->GetMetrics(&tm)) && tm.height > maxHeight) {
+                        maxHeight = tm.height;
+                    }
+                }
+            }
+            if (maxHeight > 0.0f) {
+                lines_[i].height = maxHeight;
+                lines_[i].heightMeasured = true;
+                anyMeasured = true;
+            }
+        }
+    }
+    // If any heights changed, rebuild Y-position table and update scroll extent
+    if (anyMeasured) {
+        RebuildYPositions(0);
+    }
 }
 
 void LogViewer::OnDetachedFromTree() {
@@ -863,7 +906,123 @@ void LogViewer::OnKeyDownRouted(KeyEventArgs& e) {
         e.handled = true;
         return;
     }
+
+    // Keyboard selection without a caret (scheme A). The movable end is selCurrent_;
+    // the anchor is wherever the last plain click put it. Only Shift combinations are
+    // handled — an unshifted arrow has no caret to move in a read-only view, so plain
+    // Up/Down/PageUp/PageDown scroll instead, and plain Left/Right/Home/End fall through.
+    const bool shift = (e.modifiers & ModifierKeys::Shift) == ModifierKeys::Shift;
+    if (selectionEnabled_ && shift && !lines_.empty()) {
+        if (MoveSelectionEnd(e.vk, ctrl)) {
+            e.handled = true;
+            return;
+        }
+    }
+
+    if (!shift && ScrollByKey(e.vk, ctrl)) {
+        e.handled = true;
+        return;
+    }
     Control::OnKeyDownRouted(e);
+}
+
+LogTextPos LogViewer::ClampPos(LogTextPos p) const {
+    if (lines_.empty()) return {};
+    p.line = std::min(p.line, lines_.size() - 1);
+    p.column = std::min(p.column, lines_[p.line].PlainText().size());
+    return p;
+}
+
+bool LogViewer::MoveSelectionEnd(UINT vk, bool ctrl) {
+    LogTextPos p = ClampPos(selCurrent_);
+    // A never-clicked viewer has its anchor at {0,0}; keep it consistent with the end.
+    selAnchor_ = ClampPos(selAnchor_);
+
+    switch (vk) {
+    case VK_LEFT: {
+        const std::wstring text = lines_[p.line].PlainText();
+        if (ctrl) {
+            // Ctrl+Shift+Left: previous word start; at column 0 cross to the prior line end.
+            if (p.column == 0 && p.line > 0) { --p.line; p.column = lines_[p.line].PlainText().size(); }
+            else p.column = PrevWordBoundary(text, p.column);
+        } else if (p.column > 0) {
+            --p.column;
+        } else if (p.line > 0) {
+            --p.line;
+            p.column = lines_[p.line].PlainText().size();  // the line break is one step
+        }
+        break;
+    }
+    case VK_RIGHT: {
+        const std::wstring text = lines_[p.line].PlainText();
+        if (ctrl) {
+            if (p.column >= text.size() && p.line + 1 < lines_.size()) { ++p.line; p.column = 0; }
+            else p.column = NextWordBoundary(text, p.column);
+        } else if (p.column < text.size()) {
+            ++p.column;
+        } else if (p.line + 1 < lines_.size()) {
+            ++p.line;
+            p.column = 0;
+        }
+        break;
+    }
+    case VK_UP:
+        if (p.line > 0) { --p.line; p = ClampPos(p); }
+        else p.column = 0;
+        break;
+    case VK_DOWN:
+        if (p.line + 1 < lines_.size()) { ++p.line; p = ClampPos(p); }
+        else p.column = lines_[p.line].PlainText().size();
+        break;
+    case VK_HOME:
+        if (ctrl) p = LogTextPos{0, 0};
+        else p.column = 0;
+        break;
+    case VK_END:
+        if (ctrl) p = LogTextPos{lines_.size() - 1, lines_.back().PlainText().size()};
+        else p.column = lines_[p.line].PlainText().size();
+        break;
+    default:
+        return false;
+    }
+
+    selCurrent_ = p;
+    EnsureLineVisible(p.line);
+    Invalidate();
+    return true;
+}
+
+bool LogViewer::ScrollByKey(UINT vk, bool ctrl) {
+    // No caret to move, so plain navigation keys scroll the view. The selection is
+    // left untouched — the whole point of scheme A is that looking around a log does
+    // not destroy what the reader highlighted.
+    float target = scroll_.TargetOffset();
+    const float line = kWheelStepDip;
+    const float page = std::max(line, bounds_.h - line);
+    switch (vk) {
+    case VK_UP:    target -= line; break;
+    case VK_DOWN:  target += line; break;
+    case VK_PRIOR: target -= page; break;
+    case VK_NEXT:  target += page; break;
+    case VK_HOME:  if (!ctrl) return false; target = 0.0f; break;
+    case VK_END:   if (!ctrl) return false; target = scroll_.MaxOffset(); break;
+    default: return false;
+    }
+    scroll_.Wake();
+    scroll_.SetOffset(target);
+    autoScrollToTail_ = scroll_.Offset() >= scroll_.MaxOffset() - 1.0f;
+    Invalidate();
+    return true;
+}
+
+void LogViewer::EnsureLineVisible(size_t line) {
+    if (line >= lines_.size()) return;
+    const float top = lineYPositions_[line];
+    const float bottom = top + lines_[line].height;
+    const float viewTop = scroll_.Offset();
+    if (top < viewTop) scroll_.SetOffset(top);
+    else if (bottom > viewTop + bounds_.h) scroll_.SetOffset(bottom - bounds_.h);
+    autoScrollToTail_ = scroll_.Offset() >= scroll_.MaxOffset() - 1.0f;
 }
 
 } // namespace fluent

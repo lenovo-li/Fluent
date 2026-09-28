@@ -28,23 +28,29 @@ TEST(MessageDialog, DefaultsToOkWhenButtonsOmitted) {
     EXPECT_EQ(d.ButtonCount(), static_cast<size_t>(1));
 }
 
-TEST(MessageDialog, IsSmallerThanTheGenericDialogDefault) {
+TEST(MessageDialog, SizesItselfToItsContent) {
     MessageDialog d(L"Note", L"One paragraph.");
-    // A message box is one paragraph; inheriting DialogWindow's generic 420x260
-    // leaves a visibly empty band under the text. MessageDialog uses a tighter
-    // title bar (32 DIP vs 48) and allocates enough client area for the fixed
-    // layout: title(30) + content(120 for single-line) + spacing(24) + buttons(36).
-    EXPECT_NEAR(d.ClientWidth(), 360.0f, 0.001f);
-    EXPECT_NEAR(d.ClientHeight(), 210.0f, 0.001f);
+    // MessageDialog no longer hard-codes a client size. It leaves AutoSize on, and
+    // DialogWindow::Start measures the built tree between OnInitialize and Create,
+    // so the window ends up exactly as tall as the message needs. That is the whole
+    // contract: a caller never picks a size for a message box.
+    //
+    // Before the HWND exists the size is still DialogWindow's fallback, so what is
+    // asserted here is the INTENT (auto-size armed), not a pixel count — measuring
+    // requires the tree, which OnInitialize builds during Start.
+    EXPECT_TRUE(d.AutoSize());
+    EXPECT_NEAR(d.TitleBarHeight(), 32.0f, 0.001f);
 }
 
-TEST(MessageDialog, LongMessageGetsRoomForWrappedTextAndActions) {
-    MessageDialog d(L"Saved",
-                    L"Output directory:\nC:\\Users\\Example\\A-very-long-output-directory-name");
-    // Multi-line messages get a taller content slot (180 DIP vs 120) to accommodate
-    // wrapped text without clipping the button row.
-    EXPECT_NEAR(d.ClientWidth(), 360.0f, 0.001f);
-    EXPECT_NEAR(d.ClientHeight(), 270.0f, 0.001f);
+TEST(MessageDialog, AnExplicitSizeFromTheCallerDisarmsAutoSize) {
+    MessageDialog d(L"Saved", L"Output directory:\nC:\\Users\\Example\\Long-path-name");
+    EXPECT_TRUE(d.AutoSize());
+    // SetClientSize is the opt-out: whoever states a size owns it, and the measure
+    // pass in Start must not overwrite it.
+    d.SetClientSize(500.0f, 400.0f);
+    EXPECT_FALSE(d.AutoSize());
+    EXPECT_NEAR(d.ClientWidth(), 500.0f, 0.001f);
+    EXPECT_NEAR(d.ClientHeight(), 400.0f, 0.001f);
 }
 
 TEST(MessageDialog, StartsWithNoResolvedResult) {

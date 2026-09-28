@@ -1,9 +1,24 @@
 // GridSplitter.h — Resizable divider between Grid tracks (roadmap §5).
 //
 // A GridSplitter is a thin draggable bar placed between two Grid columns or rows.
-// Dragging it resizes the adjacent tracks by converting them to Pixel definitions.
-// The conversion is deliberate (WPF does the same): a Star track's size is a
-// *proportion* of leftover space, so assigning it a DIP size is meaningless.
+// Dragging it redistributes size between the two adjacent tracks as a zero-sum
+// move, and writes each one back IN ITS ORIGINAL UNIT:
+//
+//   Star  ↔ Star   the two star WEIGHTS are re-proportioned, their sum conserved.
+//                  Both tracks stay Star, so the grid keeps absorbing window
+//                  resizes — at the new ratio the user just dragged out.
+//   Star  ↔ Pixel  the Star stays Star (weight derived from the two live sizes);
+//                  the Pixel track takes its new DIP size.
+//   Auto           becomes Pixel. Auto's size comes from its content and has no
+//                  writable parameter, so pinning it is the only way it can move
+//                  at all. This is the one case where a drag does freeze a track.
+//
+// Two earlier versions converted tracks to Pixel — first both sides, then only the
+// shrinking side — and both lost the grid's elasticity: with no Star track left,
+// growing the window leaves a permanent gap outside the last track, which looks
+// like "the right-hand content stopped following the window edge". The
+// shrinking-side-only variant survived a single-direction drag but not a drag that
+// crossed back over its own anchor, since then both directions have occurred.
 //
 // Usage:
 //   auto* grid = root->Emplace<Grid>();
@@ -23,8 +38,10 @@
 // column 1, it resizes columns 0 and 2. If placed in the first or last track,
 // there's nothing to resize on one side, so dragging is disabled.
 //
-// After the first drag, the affected tracks are Pixel (frozen size). Resizing the
-// Grid does not re-proportion them. This matches WPF GridSplitter behavior.
+// After a drag, a Star track is still Star (at a new weight) and a Pixel track is
+// still Pixel (at a new size) — the drag changes numbers, never units, except for
+// Auto as noted above. An app persisting the layout on DragCompleted should read
+// Grid::ColumnAt / RowAt rather than assuming Pixel.
 
 #pragma once
 #include "../core/Control.h"
@@ -100,6 +117,11 @@ private:
     // which drifts (and, once a track hits its 1 DIP clamp, ratchets).
     std::optional<float> trackBeforeStart_;
     std::optional<float> trackAfterStart_;
+    // The two tracks' DEFINITIONS at drag start. Write-back restores the unit that
+    // was there when the drag began; see the comment at the snapshot site in
+    // OnPointerPressed for why this is a snapshot and not a live read of the grid.
+    std::optional<GridLength> defBeforeStart_;
+    std::optional<GridLength> defAfterStart_;
 
     Event<GridSplitter, RoutedEventArgs> dragStarted_;
     Event<GridSplitter, GridSplitterDragDeltaArgs> dragDelta_;

@@ -54,7 +54,11 @@ void SetKind(Kind k);
 
 **说明**: 控制按钮的视觉风格  
 **默认值**: `Kind::Standard`  
-**脏标记**: Render
+**脏标记**: Measure
+
+> 为什么是 Measure 而不是 Render：`Kind::Accent` 用 SemiBold 字重绘制，同一字符串比
+> Normal 更宽，desired 宽度会随 Kind 变化（见 `Button.h:39-50`）。曾经标成 Render-only
+> 是 bug——标签会一直按旧字重的尺寸测量，直到某个无关操作触发重新测量。
 
 **风格说明**:
 - `Standard` — 填充 + 边框（默认样式）
@@ -155,7 +159,7 @@ int main() {
 
 ```cpp
 auto stack = std::make_unique<StackPanel>();
-stack->SetOrientation(Orientation::Vertical);
+stack->SetOrientation(StackPanel::Orientation::Vertical);
 stack->SetSpacing(10.0f);
 
 auto standardBtn = std::make_unique<Button>();
@@ -184,13 +188,14 @@ button->SetText(L"Options ▾");
 
 // MenuFlyout 一次性接收整个 items 向量，没有逐条 AddItem —— 菜单结构是
 // 声明式的，子菜单靠 MenuItem::submenu 嵌套，分隔符用 MenuItem::Sep()。
+// MenuItem 拷贝构造 = delete（MenuFlyout.h:71），必须逐个构造后 move：
 auto menu = std::make_shared<MenuFlyout>();
-menu->SetItems({
-    MenuItem{L"Open"},
-    MenuItem{L"Save"},
-    MenuItem::Sep(),
-    MenuItem{L"Exit"},
-});
+std::vector<MenuItem> items;
+MenuItem open;  open.text  = L"Open";  items.push_back(std::move(open));
+MenuItem save;  save.text  = L"Save";  items.push_back(std::move(save));
+items.push_back(MenuItem::Sep());
+MenuItem exit;  exit.text  = L"Exit";  items.push_back(std::move(exit));
+menu->SetItems(std::move(items));
 
 button->SetFlyout(menu.get());  // 点击按钮打开菜单
 
@@ -205,7 +210,7 @@ window->SetRoot(std::move(panel));
 
 ```cpp
 auto buttonPanel = std::make_unique<StackPanel>();
-buttonPanel->SetOrientation(Orientation::Horizontal);
+buttonPanel->SetOrientation(StackPanel::Orientation::Horizontal);
 buttonPanel->SetSpacing(8.0f);
 buttonPanel->SetHAlign(HAlign::Right);
 
@@ -241,7 +246,7 @@ buttonPanel->Add(std::move(cancelBtn));
 - **动画**: 高亮色调在 UI 线程通过 `OnAnimationTick` 淡入淡出（小控件不拥有独立 surface 的设计决策）
 - **Idle 成本**: 静止时 `WantsAnimationTick()` 返回 false，零 CPU 开销
 - **脏标记**: 
-  - `SetKind` 仅触发 Render（只改变颜色，不影响布局）
+  - `SetKind` 触发 Measure（Accent 按钮用 SemiBold 字重，文本宽度会变）
   - `SetText` 触发 Measure（文本长度改变自然尺寸）
 
 ### 自然尺寸
@@ -271,8 +276,8 @@ buttonPanel->Add(std::move(cancelBtn));
 按钮使用以下主题 token（见 `styling/ThemeTokens.h`）：
 
 **Standard 风格**:
-- `controlFill` — 静止填充色
-- `controlStroke` — 边框色
+- `controlFillDefault` — 静止填充色
+- `controlStrokeDefault` — 边框色
 - `controlFillHover` — 悬停填充色
 - `controlFillPressed` — 按下填充色
 
@@ -300,15 +305,17 @@ buttonPanel->Add(std::move(cancelBtn));
 
 ## 相关控件
 
-- [RepeatButton](RepeatButton.md) — 按住时重复触发的按钮（用于滚动条、数字微调器）
-- [ToggleButton](ToggleButton.md) — 开/关状态按钮（用于工具栏的按下态按钮）
 - [MenuFlyout](MenuFlyout.md) — 可通过 `SetFlyout` 关联到按钮的弹出菜单
-- [ButtonBase](../primitives/ButtonBase.md) — 所有按钮类控件的基类
+- `RepeatButton`（文档待写，`controls/RepeatButton.h`）— 按住时重复触发的按钮
+- `ToggleButton`（基类，`controls/primitives/ToggleButton.h`）— 开/关状态按钮基类
+- `ButtonBase`（基类，`controls/primitives/ButtonBase.h`）— 所有按钮类控件的基类
 
 ---
 
 ## 另见
 
-- [元素模型概述](../ELEMENT_MODEL.md)
-- [主题定制指南](../THEMING_GUIDE.md)
-- [性能最佳实践](../PERFORMANCE_BEST_PRACTICES.md)
+以下通用指南尚未编写，头文件注释是权威参考：
+
+- 元素模型概述 — Visual/UIElement/FrameworkElement/Control 四层
+- 主题定制指南 — `styling/ThemeTokens.h`
+- 性能最佳实践 — 虚拟化、脏标记、compositor 动画

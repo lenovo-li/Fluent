@@ -187,10 +187,20 @@ bool TextBox::OnNavigationKey(UINT vk, bool shift) {
 void TextBox::OnPointerPressed(PointerEventArgs& e) {
     if (e.button != PointerButton::Left) return;
     const UINT32 index = HitIndex(e.position.x);
+    const bool shift = (e.modifiers & ModifierKeys::Shift) == ModifierKeys::Shift;
+
+    // Shift+click extends from the anchor to the click, keeping the anchor. With no
+    // selection the anchor IS the caret, so this also works on a bare caret — the
+    // standard editor behaviour. A following drag keeps extending character-wise.
+    if (shift && e.clickCount <= 1) {
+        MoveCaret(index, /*extend*/ true);
+        BeginCharacterDrag(index);
+        OnSelectionChanged();
+    }
     // Double-click selects the word, triple selects the whole (single-line) buffer.
     // ApplyMultiClickSelection also records the drag granularity, so the move handler
     // below extends by whole words after a double-click.
-    if (!ApplyMultiClickSelection(index, e.clickCount)) {
+    else if (!ApplyMultiClickSelection(index, e.clickCount)) {
         caret_ = selAnchor_ = index;
         BeginCharacterDrag(index);
     }

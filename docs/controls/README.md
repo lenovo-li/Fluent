@@ -2,7 +2,7 @@
 
 本目录包含 FluentUI 所有控件的详细 API 文档。
 
-> **文档覆盖状态（诚实说明）**：本目录目前有 21 份控件文档（另有 `TEMPLATE.md` 作模板）。
+> **文档覆盖状态（诚实说明）**：本目录目前有 **26 份控件文档**（另有 `TEMPLATE.md` 作模板）。
 > 下面清单里标注「文档待写」的条目**没有对应文件** —— 它们此前是失效链接，点了会 404，
 > 现在改成纯文本以免误导。控件本身的权威说明始终在各自的头文件注释里。
 >
@@ -66,10 +66,8 @@
 ### 显示控件
 
 - [ProgressBar](ProgressBar.md) — 进度条
-- Image（文档待写） — 图像显示
-- ToolTip（文档待写） — 工具提示
-- MenuFlyout（文档待写） — 弹出菜单
-- ColorPicker（文档待写） — 颜色选择器
+- [Image](Image.md) — 图像显示
+- [MenuFlyout](MenuFlyout.md) — 弹出菜单
 
 ### 对话框
 
@@ -89,8 +87,20 @@
 
 ### 其他
 
-- GridSplitter（文档待写） — 可拖动分隔条
+- [GridSplitter](GridSplitter.md) — 可拖动分隔条
 - Expander（文档待写） — 可展开/折叠容器
+
+### 富文本（独立分类）
+
+- [RichTextBox](RichTextBox.md) — 富文本编辑器（样式、段落格式、撤销栈）
+
+### 布局容器（补充）
+
+- [ScrollViewer](ScrollViewer.md) — 通用滚动容器
+
+### 专用工具（补充）
+
+- LogViewer（文档待写） — 高吞吐日志查看器（虚拟化 + 自动尾随）
 
 ---
 
@@ -109,10 +119,12 @@
 
 ## 快速链接
 
-- [元素模型概述](../ELEMENT_MODEL.md) — Visual/UIElement/FrameworkElement/Control 四层
-- [布局指南](../LAYOUT_GUIDE.md) — Measure/Arrange 与各 Panel 使用场景
-- [主题定制指南](../THEMING_GUIDE.md) — ThemeTokens 与自定义品牌色
-- [性能最佳实践](../PERFORMANCE_BEST_PRACTICES.md) — 虚拟化、脏标记、compositor 动画
+以下四份通用指南尚未编写（头文件和源码注释始终是权威参考）：
+
+- 元素模型概述 — Visual/UIElement/FrameworkElement/Control 四层
+- 布局指南 — Measure/Arrange 与各 Panel 使用场景
+- 主题定制指南 — ThemeTokens 与自定义品牌色
+- 性能最佳实践 — 虚拟化、脏标记、compositor 动画
 
 ---
 

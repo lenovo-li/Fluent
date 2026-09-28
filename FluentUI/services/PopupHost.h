@@ -59,6 +59,16 @@ public:
     // Must be set before SetContent to be injected into the content's context.
     void SetResourceCache(ResourceCache* cache) { resourceCache_ = cache; }
 
+    // Hook popup content onto the parent window's animation clock, so it can use
+    // smooth scrolling, scrollbar fade, and other UIElement animations without the
+    // popup needing its own FrameHost. `ws` registers content as an auxiliary
+    // animation root while open; `anims` is the parent's registry, injected into
+    // the content's UIContext. Both non-owning. Call before SetContent.
+    void SetParentAnimationClock(WindowServices* ws, AnimationRegistry* anims) {
+        parentWindow_ = ws;
+        animations_ = anims;
+    }
+
     // Share the parent's stable theme snapshot (roadmap §11, WP-05) so popup
     // content reads the same tokens the tree does, and the popup paints its own
     // card chrome (fill / border) from it. The pointer is stable (overwritten in
@@ -79,6 +89,12 @@ public:
     // Check if a screen-pixel point is inside the popup client rect (for parent
     // window to implement light-dismiss by checking clicks outside).
     bool ContainsScreenPoint(int screenX, int screenY) const;
+    
+    // Route a mouse wheel event from the parent window. Called by the parent's
+    // WM_MOUSEWHEEL handler when the wheel is over this popup's HWND (popups with
+    // WS_EX_NOACTIVATE never receive WM_MOUSEWHEEL themselves). px/py are in the
+    // popup's client coordinates; delta is WHEEL_DELTA units.
+    void RouteMouseWheel(int px, int py, int delta);
 
     // Card background opacity [0..1], default 1.0 = fully opaque.
     //
@@ -120,7 +136,6 @@ private:
     void RouteMouseMove(int px, int py);
     void RouteMouseDown(int px, int py);
     void RouteMouseUp(int px, int py);
-    void RouteMouseWheel(int px, int py, int delta);
 
     static void InvalidateThunk(void* ctx) {
         static_cast<PopupHost*>(ctx)->Render();
@@ -138,6 +153,8 @@ private:
     DWriteContext* dwrite_ = nullptr;
     const ThemeSnapshot* theme_ = nullptr;  // parent's stable snapshot (non-owning)
     ResourceCache* resourceCache_ = nullptr;  // shared parent cache (non-owning)
+    WindowServices* parentWindow_ = nullptr;   // parent window services (non-owning)
+    AnimationRegistry* animations_ = nullptr;  // parent's animation set (non-owning)
     DCompHost comp_;
 
     UIElement* content_ = nullptr;       // not owned
@@ -147,6 +164,7 @@ private:
     // keyboard reaches the content via ForwardKey -> OnKeyDownRouted.
     InputManager input_;
     std::vector<UIElement*> roots_;      // holds content_ so InputManager can walk it
+    Subscription auxAnimSub_;  // unregisters content_ from parent's AnimationRegistry on close
 
     float cardOpacity_ = 1.0f;     // background card opacity [0..1]
     float contentOpacity_ = 1.0f;  // content opacity [0..1]

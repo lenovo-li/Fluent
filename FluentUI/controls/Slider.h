@@ -96,6 +96,39 @@ protected:
     void OnStateChanged() override { Invalidate(); }
     void OnFocusChanged() override { Invalidate(); }
 
+    // --- Extension points for derived classes --------------------------------
+    //
+    // A LogSlider / DecibelSlider overrides CoerceValue (above) to snap to its own
+    // grid, and OnValueChanged to react — calling Slider::OnValueChanged first so
+    // ValueChanging/ValueChanged keep firing. These read-only accessors let such a
+    // subclass tell a drag from a keyboard/programmatic change and paint a custom
+    // tick scale against the same track geometry the thumb and the hit-test use.
+    // The geometry stays computed here (not stored) so a subclass cannot make the
+    // painted track and the pointer mapping disagree.
+
+    // True between pointer press and release. Inside OnValueChanged this is
+    // exactly the "mid-drag preview" condition Slider itself branches on.
+    bool IsDragging() const { return dragging_; }
+    // The eased value currently painted (lags value_ while animating). Not named
+    // AnimatedValue(): a member function of that name hides the AnimatedValue TYPE
+    // inside the class scope and breaks the animFill_ declaration below.
+    float DisplayedValue() const { return static_cast<float>(animFill_); }
+    // Track endpoints in window DIPs along the slider's axis (x for Horizontal,
+    // y for Vertical), and the track's cross-axis centerline.
+    float TrackStart() const {
+        return orientation_ == Orientation::Horizontal ? TrackLeft() : TrackTop();
+    }
+    float TrackEnd() const {
+        return orientation_ == Orientation::Horizontal ? TrackRight() : TrackBottom();
+    }
+    float TrackCenterline() const {
+        return orientation_ == Orientation::Horizontal ? TrackY() : TrackX();
+    }
+    // Map a value to its position on the track axis (window DIPs) — the inverse of
+    // the pointer mapping, so ticks drawn at ValueToTrackPos(v) line up with where
+    // a click lands v. Unclamped: out-of-range values extrapolate.
+    float ValueToTrackPos(float v) const;
+
 private:
     float NormalizedAnim() const;
     float TrackLeft()  const;

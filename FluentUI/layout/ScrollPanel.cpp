@@ -1,6 +1,7 @@
 // ScrollPanel.cpp
 #include "ScrollPanel.h"
 #include "../graphics/DrawingContext.h"
+#include "../graphics/PixelSnapping.h"
 #include "../core/UIContext.h"
 #include "../input/InputManager.h"
 #include "../styling/ThemeTokens.h"
@@ -70,8 +71,24 @@ void ScrollPanel::ArrangeOverride(const RectDip& content)
     const float offsetX = scroll_.OffsetX();
     arrangedOffset_ = offsetY;    // record for SyncScrollArrange comparison
     arrangedOffsetX_ = offsetX;
-    float y = content.y + padding_.top - offsetY;
-    const float childX = content.x + padding_.left - offsetX;
+
+    // SNAP THE OFFSET TO THE PIXEL GRID. The smooth-scroll tween produces fractional
+    // offsets (123.7, 124.2, 124.6 …), and because the offset goes into the children's
+    // bounds, every child — and every glyph it draws — lands on a fractional pixel.
+    // DirectWrite's ClearType weights each glyph differently per subpixel position, so
+    // successive frames shimmer: text visibly jitters while scrolling. Snapping here
+    // rather than in Render is what makes it work for this panel: the offset is baked
+    // into bounds_ (see the note above), so Render never sees it, and a composited
+    // child positions its DComp visual from those same bounds.
+    //
+    // TextArea / RichTextBox / LogViewer snap at their own draw call for the same
+    // reason (graphics/PixelSnapping.h). Sub-half-pixel shift, no visible cost.
+    const float dpiScale = Context().dpiScale;
+    const float offsetYSnapped = SnapToPixel(offsetY, dpiScale);
+    const float offsetXSnapped = SnapToPixel(offsetX, dpiScale);
+
+    float y = content.y + padding_.top - offsetYSnapped;
+    const float childX = content.x + padding_.left - offsetXSnapped;
     for (auto& childPtr : children_) {
         FrameworkElement* child = childPtr.get();
         if (!child || !child->IsVisible()) continue;
@@ -118,8 +135,10 @@ void ScrollPanel::OnPointerWheelChanged(PointerEventArgs& e)
     const bool shift = (e.modifiers & ModifierKeys::Shift) != ModifierKeys::None;
     if (shift) {
         if (scroll_.MaxOffsetX() <= 0.0f) return;  // nothing to scroll sideways
-        constexpr float kStep = 3.0f * 16.0f;      // 3 lines per notch
-        scroll_.SetOffsetX(scroll_.OffsetX() - (e.wheelDelta / 120.0f) * kStep);
+        float lines = e.WheelScrollLines();
+        if (lines == 0.0f)
+            lines = bounds_.h / wheelStep_;
+        scroll_.SetOffsetX(scroll_.OffsetX() - lines * wheelStep_);
         SyncScrollArrange();
         e.handled = true;
         return;
@@ -127,11 +146,21 @@ void ScrollPanel::OnPointerWheelChanged(PointerEventArgs& e)
 
     if (scroll_.MaxOffset() <= 0.0f) return;  // nothing to scroll
 
-    // Standard wheel scroll: 3 lines per notch (120 delta units).
-    constexpr float kLinesPerNotch = 3.0f;
-    constexpr float kLineHeight = 16.0f;  // arbitrary line height
-    float lines = (e.wheelDelta / 120.0f) * kLinesPerNotch;
-    scroll_.AnimateBy(-lines * kLineHeight);
+    // One wheel notch scrolls WheelScrollLines() lines, read from the system setting
+    // (Settings → Bluetooth & devices → Mouse → scroll lines; 3 by default), the same
+    // way TreeView / ListBox / TextArea do it. 0 means the user picked "one screen at
+    // a time", so estimate a page's worth of lines from the viewport.
+    //
+    // Multiplied by wheelStep_ (default 32 DIP, settable via SetWheelStep): a
+    // ScrollPanel holds heterogeneous content, so unlike ListBox (itemHeight_) or
+    // TreeView (rowHeight_) there is no intrinsic row height to scale by. 32 matches
+    // ListBox's default item height, which makes one notch travel the same distance
+    // as scrolling a list.
+    float lines = e.WheelScrollLines();
+    if (lines == 0.0f)
+        lines = bounds_.h / wheelStep_;
+
+    scroll_.AnimateBy(lines * wheelStep_);
     SyncScrollArrange();
     e.handled = true;
 }

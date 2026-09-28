@@ -135,6 +135,7 @@
     <ClCompile Include="unit\DatePickerEventsTests.cpp" />
     <ClCompile Include="unit\CalendarConstraintsTests.cpp" />
     <ClCompile Include="unit\CalendarTests.cpp" />
+    <ClCompile Include="unit\InheritanceExamplesTest.cpp" />
     <ClCompile Include="unit\DatePickerTests.cpp" />
     <ClCompile Include="unit\ScrollPanelTests.cpp" />
     <ClCompile Include="unit\SeparatorTests.cpp" />
@@ -146,6 +147,8 @@
     <ClCompile Include="unit\WordBoundaryTests.cpp" />
     <ClCompile Include="unit\ClickCounterTests.cpp" />
     <ClCompile Include="unit\TextEditInteractionTests.cpp" />
+    <ClCompile Include="unit\TextControlsCursorTests.cpp" />
+    <ClCompile Include="unit\TextAreaLineHeightProbe.cpp" />
     <ClCompile Include="unit\TextEditMaxLengthTests.cpp" />
     <ClCompile Include="unit\TextEditSelectionTests.cpp" />
     <ClCompile Include="unit\TextEditInputPolicyTests.cpp" />
@@ -161,6 +164,7 @@
     <ClCompile Include="unit\RichTextBoxEventsTests.cpp" />
     <ClCompile Include="unit\ScrollViewerEventsTests.cpp" />
     <ClCompile Include="unit\GridSplitterEventsTests.cpp" />
+    <ClCompile Include="unit\GridSplitterTrackUnitTests.cpp" />
     <ClCompile Include="unit\MenuFlyoutEventsTests.cpp" />
     <ClCompile Include="unit\SliderEventsTests.cpp" />
     <ClCompile Include="unit\ImageTests.cpp" />
@@ -184,6 +188,7 @@
     <ClCompile Include="unit\DeviceLostControllerTests.cpp" />
     <ClCompile Include="unit\DeviceLostStatePreservationTests.cpp" />
     <ClCompile Include="unit\TreeViewTypeAheadTests.cpp" />
+    <ClCompile Include="unit\TreeViewHoverTests.cpp" />
     <ClCompile Include="unit\TreeViewMultiSelectTests.cpp" />
     <ClCompile Include="unit\DialogApiTests.cpp" />
     <ClCompile Include="unit\WindowLifecycleTests.cpp" />

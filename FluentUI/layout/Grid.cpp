@@ -45,6 +45,16 @@ std::vector<float> Grid::ResolveTracks(const std::vector<GridLength>& tracks,
         for (int i = 0; i < n; ++i)
             if (tracks[i].isStar())
                 sizes[i] = leftover * (std::max(0.0f, tracks[i].value) / starWeight);
+    } else {
+        // All Star weights are zero: distribute leftover equally among Star tracks
+        int starCount = 0;
+        for (int i = 0; i < n; ++i)
+            if (tracks[i].isStar()) ++starCount;
+        if (starCount > 0) {
+            float each = leftover / static_cast<float>(starCount);
+            for (int i = 0; i < n; ++i)
+                if (tracks[i].isStar()) sizes[i] = each;
+        }
     }
     return sizes;
 }

@@ -38,14 +38,13 @@ public:
     // appends or replaces wholesale). These four accessors are the minimum needed;
     // deliberately not a general "track collection" abstraction.
     //
-    // The resize contract, and why it is Pixel-only: dragging a splitter means
-    // "these two tracks now have these exact sizes". A Star track's size is a
-    // *proportion* of leftover space, so assigning it a DIP size is meaningless —
-    // the next Arrange would recompute it from the star weight and discard the
-    // drag. So ResizeTracks CONVERTS both affected tracks to Pixel. That is what
-    // WPF does too, and it is why a splitter between two Star columns "freezes"
-    // them on first drag: after the drag they no longer re-proportion on resize.
-    // Document that in any UI that uses one.
+    // These accessors are unit-agnostic on purpose: a splitter writes each track
+    // back in the unit it already had (Star → a new weight, Pixel → a new size),
+    // so both the read and the write have to carry a full GridLength rather than a
+    // bare DIP number. See GridSplitter.h for why the unit must be preserved — in
+    // short, converting a Star track to Pixel leaves the grid with nothing to
+    // absorb a window resize, and the slack then shows as a gap outside the last
+    // track.
     size_t ColumnCount() const { return columns_.size(); }
     size_t RowCount() const { return rows_.size(); }
     const GridLength& ColumnAt(size_t i) const { return columns_.at(i); }

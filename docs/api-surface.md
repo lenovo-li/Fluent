@@ -89,7 +89,6 @@ them.
 | `controls/TextEditBase.h` | Shared text-editing behavior (TextBox / TextArea). |
 | `animation/AnimatedValue.h` `Animation.h` | Per-frame animated properties. |
 | `composition/ICompositionBackend.h` | The compositor seam. **Always null-check** — see CLAUDE.md. |
-| `composition/ScrollContentHost.h` | Overscan scrolling engine. |
 | `window/WindowServices.h` | The host interface a control depends on (never the concrete window). |
 | `core/UIContext.h` | The injected service aggregate. |
 | `core/IContextMenu.h` | Context-menu participation. |

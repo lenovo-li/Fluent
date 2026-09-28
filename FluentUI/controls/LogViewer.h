@@ -125,6 +125,13 @@ public:
     // Headless tests have no device and therefore no other way to check it.
     float ContentExtentDip() const { return GetContentExtent(); }
 
+    // Current height (DIPs) of one row: the estimate until measured, then the real
+    // value. 0 when out of range. Public so a test can check that each row is sized
+    // from its own spans — the rows' relative heights are what decide overlap.
+    float LineHeightDip(size_t index) const {
+        return index < lines_.size() ? lines_[index].height : 0.0f;
+    }
+
     // --- Scrolling --------------------------------------------------------
     // Auto-scroll to tail when new lines arrive (tail -f mode). The scroll
     // happens only if the user is already at the bottom; manually scrolling up
@@ -153,6 +160,14 @@ public:
     bool SelectionEnabled() const { return selectionEnabled_; }
 
     bool HasSelection() const;
+    // Selection endpoints as set by the user: the anchor (fixed end) and the movable
+    // end that Shift+keys / Shift+click extend. Unordered on purpose, so a test can
+    // tell a backwards extension from a forwards one.
+    LogTextPos SelectionAnchor() const { return selAnchor_; }
+    LogTextPos SelectionActiveEnd() const { return selCurrent_; }
+    // Place a collapsed selection point (anchor = active end) without a pointer — what
+    // a plain click does. Clamped into the document.
+    void SetSelectionPoint(LogTextPos p) { selAnchor_ = selCurrent_ = ClampPos(p); Invalidate(); }
     // The selected text: lines joined with '\n', partial lines cut at the column.
     // Empty when nothing is selected.
     std::wstring SelectedText() const;
@@ -249,6 +264,17 @@ private:
     
     // Extend the selection during drag, respecting the current granularity.
     void ExtendDragSelection(const LogTextPos& pos);
+
+    // --- Keyboard selection (no caret) -----------------------------------------
+    // Move the selection's movable end (selCurrent_) for a Shift+navigation key;
+    // the anchor stays put. Returns false for keys it does not handle.
+    bool MoveSelectionEnd(UINT vk, bool ctrl);
+    // Scroll the view for an unshifted navigation key, leaving the selection alone.
+    bool ScrollByKey(UINT vk, bool ctrl);
+    // Scroll just enough to bring `line` fully into view.
+    void EnsureLineVisible(size_t line);
+    // Clamp a position into the document (line and column).
+    LogTextPos ClampPos(LogTextPos p) const;
 
     // Hit-test: the (line, column) under a point in WINDOW DIPs. Clamps into the
     // document, so a press below the last line lands at its end rather than failing.

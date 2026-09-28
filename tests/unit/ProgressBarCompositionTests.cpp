@@ -47,9 +47,9 @@ public:
         return Subscription();
     }
     Subscription RegisterActivePopupKeyHandler(
-        std::function<bool(UINT)>) override {
-        return Subscription();
-    }
+        std::function<bool(UINT)>) override { return {}; }
+    Subscription RegisterActivePopupWheelHandler(
+        std::function<bool(int, int, int)>) override { return {}; }
 
 private:
     ICompositionBackend* backend_ = nullptr;

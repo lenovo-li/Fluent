@@ -73,6 +73,48 @@ Tests are headless by design — no window, no GPU. Anything touching a real dev
 (`ServiceModalFrame`, actual pixel output, visual smoothness) is not covered and
 needs the user to verify on real hardware. Say so rather than implying otherwise.
 
+## Control Inheritance (2026-09-27)
+
+**How users extend FluentUI**: by inheriting controls in a **separate library**, not by modifying FluentUI source.
+
+### Phase 1-3 Status
+
+| Phase | Controls | Status | Notes |
+|-------|----------|--------|-------|
+| **Phase 1** | Calendar, Button, Slider | ✅ Implemented | Added `protected` APIs (read-only accessors + geometry helpers + split rendering) |
+| **Phase 2** | ComboBox, TextBox, TextArea | ✅ Evaluated, skipped | ComboBox public API sufficient; TextEditBase already fully inheritable |
+| **Phase 3** | CheckBox, ToggleSwitch, ProgressBar, Rating, DataGrid, TreeView | ✅ Evaluated, skipped | Base classes (ToggleButton, RangeBase) already expose `protected` members |
+
+### Architecture: Separate-Library Pattern
+
+**Don't** put custom controls in FluentUI source tree. Instead:
+
+```
+FluentUI.lib (framework, unchanged)
+    ↓ links
+examples/CustomControls/ (user extension library: LunarCalendar, BigButton, LogSlider)
+    ↓ links
+FluentUIDemo.exe (links both)
+```
+
+**Why:**
+- ✅ Clear boundary: FluentUI = stable core, CustomControls = user code
+- ✅ Demonstrates real integration path (users fork CustomControls, not FluentUI)
+- ✅ FluentUI.lib doesn't bloat with examples
+- ❌ Old pattern (`examples/InheritanceExamples.h` in source tree) kept for tests only
+
+### Documentation
+
+- **User guide**: `docs/controls/inheritance-guide.md` (when to inherit, what's exposed, extension points)
+- **Design decisions**: `docs/design/control_inheritance_enhancement_plan.md` (Phase 1-3 plan)
+- **Evaluation report**: `docs/design/phase_2_3_assessment.md` (why Phase 2-3 need no code changes)
+- **Separate library template**: `examples/CustomControls/README.md` (how to build extension library)
+
+### Implementation Files
+
+- **Separate library** (recommended for users): `examples/CustomControls/*.{h,cpp}` — LunarCalendar, BigButton, LogSlider
+- **Header-only test** (kept): `examples/InheritanceExamples.h` — compile-checked by `tests/unit/InheritanceExamplesTest.cpp`
+
 ## Projects
 
 | Project | Kind | Role |
@@ -82,6 +124,7 @@ needs the user to verify on real hardware. Say so rather than implying otherwise
 | `FluentUITests` | console | headless unit/component tests; count grows, so read it from a run rather than from here |
 | `FluentUIBench` | console | perf scenes; CPU-measurable ones run, GPU ones stub out |
 | `FluentSettings` | static lib | JSON config persistence (`nlohmann/json` vendored) |
+| `examples/CustomControls` | (template) | demonstrates user-library pattern: LunarCalendar, BigButton, LogSlider link FluentUI.lib |
 
 ## Architecture
 

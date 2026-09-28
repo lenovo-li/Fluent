@@ -199,8 +199,9 @@ submitSub_ = submit->Click().Subscribe(this,
 
 - **不要写死高度。** 高度取决于换行结果，写死一个值在窗口变窄时会切掉文字。这个
   框架的 Arrange 契约是「子元素永不超出容器」，超出部分静默裁剪 —— 没有警告。
-- 单子元素容器（`Border`、`GroupBox`、`Viewbox`、`Expander`）一致忽略子元素的
-  `Margin`，这是框架约定。给 InfoBar 设 Margin 只在 Panel 里有效。
+单子元素容器（`Viewbox`、`Expander`）忽略子元素的 `Margin`——但 `Border` 与 `GroupBox`
+其实尊重 Margin（两者都通过 `FrameworkElement::ComputeArrangeRect` 应用它）。Panel 的
+子元素 Margin 始终生效。给 InfoBar 自己设 Margin 在 Panel 里有效。
 - 焦点环画在 `bounds_` 之外，`VisualOverflowDip()` **无条件**上报该外扩量（不按
   `IsFocused()` 门控）—— 失焦那一帧仍需重绘环占据的像素，而那时 `IsFocused()`
   已经是 false 了。

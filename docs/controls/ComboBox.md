@@ -295,5 +295,4 @@ demo 导航 → 基础输入 → ComboBox。包含只读、可编辑、多选项
 ## 相关控件
 
 - [MenuFlyout](MenuFlyout.md) — 同样的弹出基础设施，但用于上下文菜单
-- [ListBox](ListBox.md) — 始终展开的多选列表（未来）
-- [AutoSuggestBox](AutoSuggestBox.md) — 输入建议控件（未来）
+- [ListBox](ListBox.md) — 始终展开的列表

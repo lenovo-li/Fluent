@@ -29,6 +29,7 @@
 #include "../layout/Panel.h"
 #include "../animation/AnimatedValue.h"
 #include "../base/Event.h"
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <vector>
@@ -136,6 +137,22 @@ public:
     bool IsContentAttached(int index) const;
 
     Event<TabControl, int>& SelectionChanged() { return selectionChanged_; }
+    
+    // Content fade-in animation control. When enabled (default), switching tabs
+    // fades the new content from transparent to opaque over contentFadeTau_
+    // seconds. Disable for instant switching with no visual transition.
+    void SetContentFadeEnabled(bool enabled) {
+        contentFadeEnabled_ = enabled;
+    }
+    bool ContentFadeEnabled() const { return contentFadeEnabled_; }
+    
+    // Content fade-in duration (time constant in seconds for exponential approach).
+    // Default 0.1s gives a ~300ms visual completion time (3τ). Smaller = faster.
+    // Only applies when contentFadeEnabled_ is true.
+    void SetContentFadeDuration(float tauSeconds) {
+        contentFadeTau_ = std::max(0.01f, tauSeconds);
+    }
+    float ContentFadeDuration() const { return contentFadeTau_; }
 
     // Strip geometry, as pure functions of the header text metrics. Public so a
     // headless test can check hit-testing without a device.
@@ -238,6 +255,8 @@ private:
     AnimatedValue indicatorW_{0.0f};
     // Content cross-fade: 0 right after a switch, eased to 1.
     AnimatedValue contentFade_{1.0f};
+    bool contentFadeEnabled_ = true;
+    float contentFadeTau_ = 0.1f;  // Default 0.1s (was 0.05s = fadeTau token)
     int hoverIndex_ = -1;
     Event<TabControl, int> selectionChanged_;
     bool closeButtonVisible_ = false;

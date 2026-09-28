@@ -141,7 +141,7 @@ sub_ = dark->Selected().Subscribe(this,
 | `controlFillDefault` / `controlFillHover` | 未选中态填充 |
 | `onAccent` | 中心圆点(未设 Foreground 时) |
 | `textPrimary` | 标签 |
-| `focusStroke` | 焦点环 |
+| `accent` | 焦点环（RadioButton 自绘，用 accent 不是 focusStroke，`.cpp:108-109`） |
 
 **禁用态**:填充与圆点保留色相、alpha ×0.4。
 

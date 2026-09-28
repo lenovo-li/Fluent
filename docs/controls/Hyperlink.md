@@ -167,7 +167,8 @@ terms->SetVAlign(VAlign::Center);
 | `accent` | 链接文字与下划线 |
 | `accentHover` / `accentPressed` | 悬停 / 按下 |
 | `focusStroke` | 焦点环 |
-| `textSecondary` | 禁用态 |
+
+**说明**：Hyperlink 无禁用态颜色处理（`Hyperlink.cpp:106-155` Render 方法中无禁用态配色分支）。
 
 ### 演示页
 

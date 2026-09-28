@@ -26,6 +26,7 @@ constexpr UINT IDM_EXIT = 1002;
 
 class TrayDemoWindow : public Window {
 public:
+    float TitleBarHeightDip() const override { return 24.0f; }
     void OnInitialize() override {
         auto* root = new StackPanel();
         root->SetPadding(Thickness{20.0f});
@@ -35,7 +36,7 @@ public:
         title->SetText(L"FluentUI 托盘应用演示");
         title->SetFontSize(24.0f);
         title->SetWeight(static_cast<DWRITE_FONT_WEIGHT>(600));
-
+        title->SetHitTestVisible(false);
         auto* info = root->Emplace<TextBlock>();
         info->SetText(
             L"这是一个托盘应用演示。\n\n"

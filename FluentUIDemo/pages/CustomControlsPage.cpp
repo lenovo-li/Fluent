@@ -1,0 +1,98 @@
+// CustomControlsPage.cpp — 用户扩展控件演示
+#include "../GalleryMain.h"
+#include "../../examples/CustomControls/CustomControls.h"
+#include "../../examples/CustomControls/SpinnerControl.h"
+#include "../../FluentUI/layout/StackPanel.h"
+#include "../../FluentUI/layout/WrapPanel.h"
+#include "../../FluentUI/layout/ScrollPanel.h"
+#include "../../FluentUI/controls/TextBlock.h"
+#include "../../FluentUI/controls/Button.h"
+
+namespace fluent {
+
+using namespace fluent::custom;
+
+std::unique_ptr<ScrollPanel> GalleryApp::CreateCustomControlsPage() {
+    auto [page, content] = CreatePageShell(L"Custom Controls");
+
+    // SpinnerControl
+    auto title1 = content->Add(std::make_unique<TextBlock>());
+    title1->SetText(L"SpinnerControl (Fully Custom)");
+    title1->SetFontSize(20.0f);
+    title1->SetMargin(Thickness{0, 0, 0, 8.0f});
+
+    auto desc1 = content->Add(std::make_unique<TextBlock>());
+    desc1->SetText(L"Built from Control base. AnimatedValue + WantsAnimationTick for smooth rotation.");
+    desc1->SetMargin(Thickness{0, 0, 0, 12.0f});
+
+    auto* card1 = CreateExampleCard(content, L"Rotating Spinners");
+    auto wrap1 = card1->Add(std::make_unique<WrapPanel>());
+    // WrapPanel uses fixed spacing, no SetSpacing method
+
+    for (int i = 0; i < 3; ++i) {
+        auto spinner = std::make_unique<SpinnerControl>();
+        spinner->SetDiameter(32.0f + i * 16.0f);
+        spinner->SetSpeed(0.8f + i * 0.4f);
+        spinner->SetMargin(Thickness{8.0f});
+        wrap1->Add(std::move(spinner));
+    }
+
+    CreateCodeExample(content, LR"(auto spinner = std::make_unique<SpinnerControl>();
+spinner->SetDiameter(48.0f);
+spinner->SetSpeed(1.0f);
+
+bool WantsAnimationTick() const override { return running_; }
+void OnAnimationTick(float dtSec) override {
+    rotation_ += speed_ * 2*pi * dtSec;
+    pulse_.Approach(target, dtSec, 0.15f);
+    Invalidate();
+})");
+
+    // LunarCalendar
+    auto title2 = content->Add(std::make_unique<TextBlock>());
+    title2->SetText(L"LunarCalendar (Inherits Calendar)");
+    title2->SetFontSize(20.0f);
+    title2->SetMargin(Thickness{0, 24.0f, 0, 8.0f});
+
+    auto desc2 = content->Add(std::make_unique<TextBlock>());
+    desc2->SetText(L"Calls Calendar::RenderCell() to reuse base rendering, adds lunar dates below.");
+    desc2->SetMargin(Thickness{0, 0, 0, 12.0f});
+
+    auto* card2 = CreateExampleCard(content, L"Calendar with Lunar Dates");
+    auto lunar = card2->Add(std::make_unique<LunarCalendar>());
+    lunar->SetSelectedDate(2026, 9, 27);
+
+    // BigButton
+    auto title3 = content->Add(std::make_unique<TextBlock>());
+    title3->SetText(L"BigButton (Inherits Button)");
+    title3->SetFontSize(20.0f);
+    title3->SetMargin(Thickness{0, 24.0f, 0, 8.0f});
+
+    auto desc3 = content->Add(std::make_unique<TextBlock>());
+    desc3->SetText(L"64dp tall, reads CurrentKind() to sync state, reuses RenderBackground().");
+    desc3->SetMargin(Thickness{0, 0, 0, 12.0f});
+
+    auto* card3 = CreateExampleCard(content, L"Big Button");
+    auto bigBtn = card3->Add(std::make_unique<BigButton>());
+    bigBtn->SetText(L"Download");
+    bigBtn->SetWidth(200.0f);
+
+    // LogSlider
+    auto title4 = content->Add(std::make_unique<TextBlock>());
+    title4->SetText(L"LogSlider (Inherits Slider)");
+    title4->SetFontSize(20.0f);
+    title4->SetMargin(Thickness{0, 24.0f, 0, 8.0f});
+
+    auto desc4 = content->Add(std::make_unique<TextBlock>());
+    desc4->SetText(L"Logarithmic snapping (1, 10, 100, 1000). Overrides CoerceValue().");
+    desc4->SetMargin(Thickness{0, 0, 0, 12.0f});
+
+    auto* card4 = CreateExampleCard(content, L"Logarithmic Slider");
+    auto logSlider = card4->Add(std::make_unique<LogSlider>());
+    logSlider->SetWidth(300.0f);
+    logSlider->SetValue(100.0f);
+
+    return std::move(page);
+}
+
+}  // namespace fluent

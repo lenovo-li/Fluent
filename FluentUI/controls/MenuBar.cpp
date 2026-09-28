@@ -118,13 +118,15 @@ int MenuBar::ItemAt(float dipX) const {
 RECT MenuBar::ItemScreenRect(int i) const {
     RECT r = {0, 0, 0, 0};
     if (!window_ || i < 0 || i >= static_cast<int>(items_.size())) return r;
-    RECT rcWindow;
-    GetWindowRect(window_->Hwnd(), &rcWindow);
+    // Client origin, not GetWindowRect: bounds_ are client DIPs and the window
+    // keeps an NC resize band on the left (see ComboBox::HeaderScreenRect).
+    POINT rcWindow = {0, 0};
+    ClientToScreen(window_->Hwnd(), &rcWindow);
     // Anchor the dropdown under the VISIBLE slice, so a partly-clipped title opens its
     // menu against what the user can actually see rather than off the bar's edge.
     const RectDip vis = VisibleTitleRect(ItemXOffset(i), items_[i].width, bounds_);
     if (vis.isEmpty()) return r;
-    return AnchorScreenRect(rcWindow.left, rcWindow.top,
+    return AnchorScreenRect(rcWindow.x, rcWindow.y,
                             vis.x, bounds_.y, vis.w, bounds_.h,
                             window_->DpiScale());
 }

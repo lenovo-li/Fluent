@@ -131,6 +131,56 @@ public:
 protected:
     void OnThemeChanged() override { Invalidate(); }
 
+    // --- Extension points for derived classes --------------------------------
+    //
+    // Calendar's layout state (cellW_/cellH_/navH_/hdrH_, hoverCell_) stays
+    // private: the hit-test in OnPointerPressed/HitTestCell and the paint in
+    // Render must agree on the geometry, and letting a subclass write those
+    // fields would let the two drift. Instead a subclass READS geometry through
+    // CellRect() (public, above) / NavBarRect() / WeekdayHeaderRect() and
+    // REPLACES pieces of the paint through the three Render* hooks below.
+    // Render() itself is only the orchestration: background, then nav bar, then
+    // weekday header, then 42 × RenderCell — so overriding one hook never
+    // requires re-implementing the others.
+
+    // Read-only geometry / state. Prefer CellRect() over computing from these.
+    float CellWidth() const { return cellW_; }
+    float CellHeight() const { return cellH_; }
+    // Cell under the pointer [0..41], or -1. Already excludes disabled dates.
+    int HoverCell() const { return hoverCell_; }
+    // Current hover-highlight opacity [0..1] of HoverCell(), so a subclass
+    // decoration can fade in step with the base highlight.
+    float HoverOpacity() const { return static_cast<float>(hoverFade_); }
+
+    // Bounds of the navigation bar (title + prev/next arrows), window DIPs.
+    RectDip NavBarRect() const;
+    // Bounds of the weekday header row, window DIPs.
+    RectDip WeekdayHeaderRect() const;
+    // Hit zones of the prev / next arrows, window DIPs. OnPointerPressed tests
+    // these same rects, so a RenderNavBar override that draws its arrows inside
+    // them stays clickable without touching input code.
+    RectDip PrevArrowRect() const;
+    RectDip NextArrowRect() const;
+
+    // Paint hooks, called in this order by Render(). Each base implementation is
+    // exactly what Calendar draws today; call it and then decorate, or replace it.
+    virtual void RenderNavBar(const DrawingContext& dc);
+    virtual void RenderWeekdayHeader(const DrawingContext& dc);
+
+    // Everything a cell painter needs, computed once by Render() so an override
+    // does not repeat the min/max/blackout/today lookups.
+    struct CellInfo {
+        int index;            // 0..41, row-major, Sunday-first
+        int year, month, day;
+        RectDip rect;         // == CellRect(index)
+        bool inViewedMonth;   // false for the leading/trailing spill-over days
+        bool isToday;
+        bool isSelected;
+        bool isEnabled;       // within min/max and not blacked out
+        bool isHovered;       // index == HoverCell()
+    };
+    virtual void RenderCell(const DrawingContext& dc, const CellInfo& cell);
+
 private:
     // Raise DisplayMonthChanged when the view has moved off (oldYear, oldMonth).
     void NotifyViewChanged(int oldYear, int oldMonth);

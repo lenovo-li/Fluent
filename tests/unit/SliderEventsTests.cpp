@@ -134,3 +134,24 @@ TEST(SliderEvents, ValueChangedMultipleSubscribers) {
     EXPECT_EQ(a.last, 77.0f);
     EXPECT_EQ(b.last, 77.0f);
 }
+
+// Regression: Slider too narrow (bounds.w <= 2*kPadX ~27 DIP) caused division by zero
+// in ValueFromX, producing inf/NaN. Fixed in commit a4fcbe7.
+TEST(SliderEvents, NarrowSliderDoesNotCauseDivisionByZero) {
+    Slider s;
+    s.SetMinimum(0.0f);
+    s.SetMaximum(100.0f);
+    s.SetWidth(20.0f);  // Narrower than 2*kPadX (27.2 DIP)
+    s.SetHeight(32.0f);
+    s.Measure(20.0f, 32.0f);
+    s.Arrange(RectDip{0, 0, 20.0f, 32.0f});
+    
+    // Click center: should return min (not inf/NaN)
+    PointerEventArgs e;
+    e.position = {10.0f, 16.0f};
+    e.button = PointerButton::Left;
+    s.OnPointerPressed(e);
+    
+    EXPECT_TRUE(std::isfinite(s.Value()));
+    EXPECT_EQ(s.Value(), 0.0f);  // Returns min when track width <= 0
+}

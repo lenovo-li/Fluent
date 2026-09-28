@@ -459,7 +459,7 @@ void GalleryApp::ShowModalContentDialog() {
     // 可见期间都活着。非模态的那条路径不能这样写 —— 见下面的 modelessDialog_。
     ContentDialog dialog;
     dialog.SetTitle(L"模态对话框 — 设置");
-    dialog.SetClientSize(420.0f, 320.0f);
+    dialog.SetClientSize(420.0f, 330.0f);
     dialog.SetContent(BuildDialogBody(
         L"主窗口在对话框关闭前是禁用的（点它没有反应，标题栏也不响应）。"
         L"但它的背景仍在正常重绘 —— 模态泵服务的是整个 Application。"));
@@ -563,7 +563,70 @@ std::unique_ptr<ScrollPanel> GalleryApp::CreateMessageDialogPage() {
             static_cast<GalleryApp*>(owner)->ShowMessageDialogYesNo();
         });
 
-    // 示例 2：典型用例
+    // 示例 2：文本长度与自适应尺寸
+    //
+    // MessageDialog 不接受调用方设置尺寸，窗口高度完全由文本量决定。这一组按钮
+    // 覆盖从几个字到超长多段落的跨度，用来检查三件事：短文本没有多余留白、长文本
+    // 不把按钮挤出可视区、超长文本触发高度上限后由 ScrollPanel 接管滚动。
+    auto* cardLen = CreateExampleCard(content, L"文本长度自适应");
+    auto* lenDesc = cardLen->Add(std::make_unique<TextBlock>());
+    lenDesc->SetText(
+        L"对话框宽度固定 360 DIP，高度按文本实测高度增长，最高不超过工作区的 80%。"
+        L"超过上限后消息区变为可滚动，按钮行始终留在可视区内。");
+    lenDesc->SetWrap(true);
+
+    auto* lenRow = cardLen->Add(std::make_unique<StackPanel>());
+    lenRow->SetOrientation(StackPanel::Orientation::Horizontal);
+    lenRow->SetSpacing(8.0f);
+    lenRow->SetMargin(Thickness{0, 8.0f, 0, 0});
+
+    auto* btnTiny = lenRow->Add(std::make_unique<Button>());
+    btnTiny->SetText(L"极短（3 字）");
+    btnTiny->SetTooltip(L"最小高度：标题栏 + 一行文字 + 按钮行");
+
+    auto* btnOneLine = lenRow->Add(std::make_unique<Button>());
+    btnOneLine->SetText(L"单行");
+    btnOneLine->SetTooltip(L"恰好一行不换行");
+
+    auto* btnParagraph = lenRow->Add(std::make_unique<Button>());
+    btnParagraph->SetText(L"单段长文本");
+    btnParagraph->SetTooltip(L"一段连续文字，靠自动换行撑高");
+
+    auto* btnMultiPara = lenRow->Add(std::make_unique<Button>());
+    btnMultiPara->SetText(L"多段落");
+    btnMultiPara->SetTooltip(L"5 段，带空行分隔");
+
+    auto* btnHuge = lenRow->Add(std::make_unique<Button>());
+    btnHuge->SetText(L"超长（触发上限 + 滚动）");
+    btnHuge->SetTooltip(L"20 段，高度被工作区上限截断，消息区可滚动");
+
+    pageSubs_ += btnTiny->Click().Subscribe(
+        this, [](void* owner, Button&, RoutedEventArgs&) {
+            static_cast<GalleryApp*>(owner)->ShowMessageDialogLength(
+                MessageLengthCase::Tiny);
+        });
+    pageSubs_ += btnOneLine->Click().Subscribe(
+        this, [](void* owner, Button&, RoutedEventArgs&) {
+            static_cast<GalleryApp*>(owner)->ShowMessageDialogLength(
+                MessageLengthCase::OneLine);
+        });
+    pageSubs_ += btnParagraph->Click().Subscribe(
+        this, [](void* owner, Button&, RoutedEventArgs&) {
+            static_cast<GalleryApp*>(owner)->ShowMessageDialogLength(
+                MessageLengthCase::Paragraph);
+        });
+    pageSubs_ += btnMultiPara->Click().Subscribe(
+        this, [](void* owner, Button&, RoutedEventArgs&) {
+            static_cast<GalleryApp*>(owner)->ShowMessageDialogLength(
+                MessageLengthCase::MultiParagraph);
+        });
+    pageSubs_ += btnHuge->Click().Subscribe(
+        this, [](void* owner, Button&, RoutedEventArgs&) {
+            static_cast<GalleryApp*>(owner)->ShowMessageDialogLength(
+                MessageLengthCase::Huge);
+        });
+
+    // 示例 3：典型用例
     auto* card2 = CreateExampleCard(content, L"典型用例");
     auto* useCaseList = card2->Add(std::make_unique<StackPanel>());
     useCaseList->SetSpacing(6.0f);
@@ -613,6 +676,71 @@ if (result == DialogResult::Primary) {
     Close();  // 不保存
 })");
     return std::move(page);
+}
+
+void GalleryApp::ShowMessageDialogLength(MessageLengthCase which) {
+    NativeWindowHost* owner = ownerWindow_ ? ownerWindow_() : nullptr;
+    if (!owner) {
+        if (messageResultText_) messageResultText_->SetText(L"结果：宿主窗口不可用");
+        return;
+    }
+
+    std::wstring title;
+    std::wstring message;
+    switch (which) {
+        case MessageLengthCase::Tiny:
+            title = L"已保存";
+            message = L"完成。";
+            break;
+
+        case MessageLengthCase::OneLine:
+            title = L"单行消息";
+            message = L"配置已写入磁盘，重启后生效。";
+            break;
+
+        case MessageLengthCase::Paragraph:
+            title = L"单段长文本";
+            message =
+                L"导入过程中发现若干条记录的时间戳缺少时区信息，这些记录已按本地时区"
+                L"解释并写入数据库。如果原始数据来自其他时区的系统，建议重新导出一份"
+                L"带时区标记的文件后再次导入，否则跨时区的时间比较可能出现最多一天的"
+                L"偏差。本次导入的其余记录没有问题。";
+            break;
+
+        case MessageLengthCase::MultiParagraph: {
+            title = L"多段落消息";
+            message =
+                L"同步已完成，但有几处需要你确认。\n\n"
+                L"本地有 3 个文件比远端更新，它们已被上传覆盖远端版本。如果这不是你"
+                L"想要的结果，可以从版本历史里恢复。\n\n"
+                L"远端有 1 个文件在本地不存在，已下载到工作目录根部。\n\n"
+                L"有 2 个文件双方都有修改，无法自动合并，已保留两份并在文件名后追加"
+                L"了 .conflict 后缀。\n\n"
+                L"其余 148 个文件没有变化，未做任何处理。";
+            break;
+        }
+
+        case MessageLengthCase::Huge: {
+            title = L"超长消息（测试高度上限）";
+            // 拼接足够多的段落，必然超过工作区 80% 的高度上限，用来验证
+            // ScrollPanel 接管后按钮行仍留在可视区内。
+            message = L"以下是完整的迁移报告，共 20 个阶段。\n\n";
+            for (int i = 1; i <= 20; ++i) {
+                message += L"阶段 " + std::to_wstring(i) +
+                           L"：扫描源目录并建立文件清单，校验每个条目的哈希，"
+                           L"把与目标端不一致的条目加入待传队列。此阶段耗时取决于"
+                           L"文件数量而非总字节数，小文件很多时会明显变慢。\n\n";
+            }
+            message += L"全部阶段已完成，没有发现不可恢复的错误。";
+            break;
+        }
+    }
+
+    const DialogResult r =
+        MessageDialog::Show(*owner, title, message, DialogButtons::OkCancel);
+
+    if (messageResultText_)
+        messageResultText_->SetText(std::wstring(L"结果：长度测试返回 ") + ResultName(r));
 }
 
 void GalleryApp::ShowMessageDialogOk() {

@@ -21,7 +21,27 @@ constexpr float kFadeTau = 0.06f;      // fade/expand time constant (s)
 void ScrollViewer::SetContentHeight(float heightDip)
 {
     contentHeight_ = std::max(0.0f, heightDip);
-    SetOffset(offset_);
+    // Clamp the current offset to the new valid range, but DON'T cancel an in-flight
+    // smooth scroll — Tick already clamps target_ on its own (line 145+). The old
+    // SetOffset(offset_) call turned every height change into an animation cancel,
+    // causing DisplayChange's rapid wheel input to feel sluggish: each notch restarted
+    // from the current interpolated position (18.5) instead of accumulating momentum
+    // against the pending target (114.5), losing ~90 DIP per notch.
+    float newMax = MaxOffset();
+    if (offset_ > newMax) {
+        offset_ = newMax;
+        if (animating_ && target_ > newMax)
+            target_ = newMax;
+        Invalidate();
+        if (scrollChanged_.HasSubscribers()) {
+            ScrollChangedArgs args;
+            args.offsetOld = offset_;  // best-effort: we don't have the true old value here
+            args.offsetNew = offset_;
+            args.offsetXOld = offsetX_;
+            args.offsetXNew = offsetX_;
+            scrollChanged_.Raise(*this, args);
+        }
+    }
 }
 
 float ScrollViewer::MaxOffset() const

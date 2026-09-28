@@ -94,17 +94,11 @@ sub_ = toggle->Toggled().Subscribe(this,
     });
 ```
 
-⚠️ **返回的 `Subscription` 必须持有**。它是 RAII 的,丢掉返回值等于立刻退订。
+**返回的 `Subscription` 必须持有**。它是 RAII 的,丢掉返回值等于立刻退订。
 
-### 几何
-
-```cpp
-float TrackW() const;   // 40.0 DIP
-float TrackH() const;   // 20.0 DIP
-```
-
-轨道尺寸是**固定的**,不随字号变化。字号变大只增加控件的 desired 高度,轨道与命中区
-保持一致 —— 开关的可点区域不该因为标签排版而变。
+轨道尺寸是**固定的** 40×20 DIP,不随字号变化。字号变大只增加控件的 desired 高度,
+轨道与命中区保持一致 —— 开关的可点区域不该因为标签排版而变。
+(`TrackW()` / `TrackH()` 是 private 方法，`ToggleSwitch.h:62-63`)
 
 ---
 
@@ -177,11 +171,10 @@ for (int i = 0; i < 3; ++i) {
 
 | Token | 用途 |
 | --- | --- |
-| `accent` / `accentHover` / `accentPressed` | 开启态轨道(未设 AccentColor 时) |
+| `accent` / `accentHover` / `accentPressed` | 开启态轨道与焦点环（自绘，不走 DrawFocusRing，`:135`） |
 | `controlFillDefault` / `controlFillHover` | 关闭态轨道 |
 | `onAccent` | 旋钮(未设 Foreground 时) |
 | `textPrimary` | 标签 |
-| `focusStroke` | 焦点环 |
 | `motion.fadeTau` | 滑动时间常数 |
 
 **禁用态**:填充与旋钮保留色相、alpha ×0.4,和禁用的 Button 一致。显式设的

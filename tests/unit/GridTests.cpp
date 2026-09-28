@@ -168,3 +168,23 @@ TEST(Grid, AutoRowsWithUnboundedHeight_DoNotCollapse) {
     EXPECT_TRUE(std::isfinite(desired.h));
     EXPECT_NEAR(desired.h, 0.0f, 0.01f);
 }
+
+// Regression: All Star tracks with 0* weight caused them to get zero space,
+// making content disappear (commit a4fcbe7).
+TEST(Grid, AllZeroStarWeights_DistributeEqually) {
+    Grid g;
+    g.SetColumns({GridLength::Star(0.0f), GridLength::Star(0.0f)});
+    g.SetRows({GridLength::Star()});
+    
+    auto* left = g.Emplace<TestLeaf>();
+    g.SetCell(left, 0, 0);
+    auto* right = g.Emplace<TestLeaf>();
+    g.SetCell(right, 0, 1);
+    
+    g.UpdateLayout({0, 0, 200, 40});
+    
+    // Before fix: both columns got 0 width (starWeight sum = 0, leftover not distributed)
+    // After fix: leftover distributed equally -> each column gets 100 DIP
+    EXPECT_NEAR(left->Bounds().w, 100.0f, 0.1f);
+    EXPECT_NEAR(right->Bounds().w, 100.0f, 0.1f);
+}

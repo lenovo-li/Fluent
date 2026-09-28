@@ -54,7 +54,7 @@ void SetSpacing(float dip);
 template <class T> T* Add(std::unique_ptr<T> child);   // 继承自 Panel，返回裸指针
 size_t ChildCount() const;
 FrameworkElement* ChildAt(size_t i) const;             // 只读，越界返回 nullptr
-void ClearChildren();
+void Clear();
 ```
 
 `Add` 返回裸指针,便于链式配置:

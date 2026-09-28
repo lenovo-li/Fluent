@@ -47,16 +47,27 @@ public:
             if (keyGen_ == gen) { key_ = nullptr; ++keyGen_; }
         });
     }
+    Subscription RegisterActivePopupWheelHandler(
+        std::function<bool(int, int, int)> cb) override {
+        wheel_ = std::move(cb);
+        unsigned gen = ++wheelGen_;
+        return Subscription([this, gen] {
+            if (wheelGen_ == gen) { wheel_ = nullptr; ++wheelGen_; }
+        });
+    }
 
     // Test observers.
     bool HasDismiss() const { return static_cast<bool>(dismiss_); }
     bool HasKey() const { return static_cast<bool>(key_); }
+    bool HasWheel() const { return static_cast<bool>(wheel_); }
 
 private:
     std::function<bool(PopupDismissReason, HWND, int, int)> dismiss_;
     std::function<bool(UINT)> key_;
+    std::function<bool(int, int, int)> wheel_;
     unsigned dismissGen_ = 0;
     unsigned keyGen_ = 0;
+    unsigned wheelGen_ = 0;
     D2DContext d2d_;      // uninitialized; never used by these tests
     DWriteContext dwrite_;
 };

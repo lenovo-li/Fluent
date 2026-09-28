@@ -76,12 +76,16 @@
     <ProjectReference Include="..\FluentSettings\FluentSettings.vcxproj">
       <Project>{a5f1c3e2-7b84-4d16-9c0a-2e6f8d3b1a44}</Project>
     </ProjectReference>
+    <ProjectReference Include="..\examples\CustomControls\CustomControls.vcxproj">
+      <Project>{e8c9d8a1-9b4e-4f2c-8d3e-1a2b3c4d5e6f}</Project>
+    </ProjectReference>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="GalleryMain.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="pages\BasicInputPages.cpp" />
     <ClCompile Include="pages\CheckRadioPages.cpp" />
+    <ClCompile Include="pages\CustomControlsPage.cpp" />
     <ClCompile Include="pages\TextPages.cpp" />
     <ClCompile Include="pages\PasswordBoxPage.cpp" />
     <ClCompile Include="pages\TextInputPages.cpp" />

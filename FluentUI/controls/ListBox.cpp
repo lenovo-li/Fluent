@@ -6,6 +6,7 @@
 #include "../input/InputManager.h"
 #include "../window/WindowServices.h"
 #include "../graphics/DWriteContext.h"
+#include "../graphics/PixelSnapping.h"
 #include <algorithm>
 
 namespace fluent {
@@ -150,7 +151,13 @@ int ListBox::HitItem(float dipY) const
 
 int ListBox::VisibleCapacity() const
 {
-    return std::max(0, static_cast<int>(bounds_.h / itemHeight_) + 1);
+    // Use ceil to ensure we render enough items to cover the viewport. At the worst
+    // scroll position (top item almost fully scrolled out, bottom item almost fully
+    // scrolled in), we need: 1 (top partial) + N (full items) + 1 (bottom partial).
+    // Without ceil, bounds_.h=200 / itemHeight_=32 = 6.25 truncates to 6, giving
+    // 6+1=7 items when we actually need ceil(6.25)+1=8. The missing item causes the
+    // bottom edge to flicker blank during smooth scrolling. Matches DataGrid pattern.
+    return std::max(0, static_cast<int>(std::ceil(bounds_.h / itemHeight_)) + 1);
 }
 
 int ListBox::PageStep() const
@@ -270,6 +277,8 @@ void ListBox::OnPointerWheelChanged(PointerEventArgs& e)
 void ListBox::OnPointerMoved(PointerEventArgs& e)
 {
     float dipX = e.position.x, dipY = e.position.y;
+    lastPointerPos_ = e.position;
+    pointerInside_ = true;
 
     // Scrollbar drag: track the thumb.
     if (scroll_.IsDragging()) {
@@ -369,7 +378,7 @@ void ListBox::OnPointerReleased(PointerEventArgs& e)
 
 void ListBox::OnPointerLeft()
 {
-    // Pointer left the control: drop bar hover and clear item hover.
+    pointerInside_ = false;
     scroll_.SetBarHover(false);
     if (hoverIndex_ != -1) {
         hoverIndex_ = -1;
@@ -393,11 +402,18 @@ void ListBox::Render(const DrawingContext& dc)
         D2D1::RectF(bounds_.x, bounds_.y, bounds_.right(), bounds_.bottom()));
 
     // Draw only visible items (virtualized).
+    //
+    // The draw offset is snapped to the pixel grid: the smooth-scroll tween produces
+    // fractional offsets, and ClearType weights each glyph by its subpixel position,
+    // so unsnapped item text shimmers while scrolling. Same fix as TextArea /
+    // RichTextBox / LogViewer (graphics/PixelSnapping.h). The item INDEX keeps using
+    // the raw offset — which items are visible is a content question, not a pixel one.
+    const float snappedOffset = SnapToPixel(scroll_.Offset(), dc.DpiScale());
     int first = static_cast<int>(scroll_.Offset() / itemHeight_);
     int visible = VisibleCapacity();
     int count = ItemCount();
 
-    float y = bounds_.y - (scroll_.Offset() - first * itemHeight_);
+    float y = bounds_.y - (snappedOffset - first * itemHeight_);
 
     const float itemCorner = Theme().spacing.cornerRadiusSmall;
 

@@ -14,6 +14,9 @@
     <ClCompile Include="pages\CheckRadioPages.cpp">
       <Filter>pages</Filter>
     </ClCompile>
+    <ClCompile Include="pages\CustomControlsPage.cpp">
+      <Filter>pages</Filter>
+    </ClCompile>
     <ClCompile Include="pages\TextPages.cpp">
       <Filter>pages</Filter>
     </ClCompile>

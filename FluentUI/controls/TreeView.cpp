@@ -5,6 +5,7 @@
 #include "../core/ScrollMath.h"
 #include "../input/InputManager.h"
 #include "../window/WindowServices.h"
+#include "../graphics/PixelSnapping.h"
 #include <algorithm>
 #include <cmath>
 
@@ -254,6 +255,11 @@ void TreeView::OnItemsChanged()
     // different row (or none) — see Selector::ReseedSelectionSet for why this
     // re-seeds rather than only clearing.
     ReseedSelectionSet();
+    
+    // Clear hover: the row set changed, so the old index no longer points to the
+    // same row (or may now be out of range).
+    hoverRowIndex_ = -1;
+    
     scroll_.SetContentHeight(rowHeight_ * visibleRows_.size());
     Invalidate();
 }
@@ -304,7 +310,13 @@ void TreeView::OnBoundsChanged()
 
 int TreeView::VisibleCapacity() const
 {
-    return std::max(0, static_cast<int>(bounds_.h / rowHeight_) + 1);
+    // Use ceil to ensure we render enough rows to cover the viewport. At the worst
+    // scroll position (top row almost fully scrolled out, bottom row almost fully
+    // scrolled in), we need: 1 (top partial) + N (full rows) + 1 (bottom partial).
+    // Without ceil, bounds_.h=200 / rowHeight_=28 = 7.14 truncates to 7, giving
+    // 7+1=8 rows when we actually need ceil(7.14)+1=9. The missing row causes the
+    // bottom edge to flicker blank during smooth scrolling. Matches DataGrid pattern.
+    return std::max(0, static_cast<int>(std::ceil(bounds_.h / rowHeight_)) + 1);
 }
 
 int TreeView::PageStep() const
@@ -382,6 +394,9 @@ void TreeView::ToggleRow(int rowIndex)
 void TreeView::OnPointerMoved(PointerEventArgs& e)
 {
     float dipX = e.position.x, dipY = e.position.y;
+    lastPointerPos_ = e.position;
+    pointerInside_ = true;
+    
     // scroll_ is an internal member with no invalidate callback of its own, so
     // its SetOffset can't repaint us — drive the repaint from here.
     if (scroll_.IsDragging()) {
@@ -392,8 +407,13 @@ void TreeView::OnPointerMoved(PointerEventArgs& e)
     // edge expands it to a pill (WinUI-11 style).
     scroll_.Wake();
     scroll_.SetBarHover(scroll_.HitBarRegion(dipX, dipY));
-    // Hover/wake only affects the overlay (rail visibility/expand). The sig gate in
-    // RefreshComposition still no-ops it if nothing actually moved.
+    
+    // Row hover: update hoverRowIndex_ for visual feedback (subtle fill on the row).
+    int newHover = HitRow(dipY);
+    if (newHover != hoverRowIndex_) {
+        hoverRowIndex_ = newHover;
+        Invalidate();
+    }
 }
 
 void TreeView::OnPointerPressed(PointerEventArgs& e)
@@ -511,8 +531,14 @@ void TreeView::OnPointerReleased(PointerEventArgs& e)
 
 void TreeView::OnPointerLeft()
 {
+    pointerInside_ = false;
     // Pointer left the control entirely: drop bar hover so it shrinks + fades.
     scroll_.SetBarHover(false);
+    // Clear row hover.
+    if (hoverRowIndex_ != -1) {
+        hoverRowIndex_ = -1;
+        Invalidate();
+    }
 }
 
 void TreeView::EnsureSelectedVisible()
@@ -672,6 +698,17 @@ void TreeView::OnAnimationTick(float dtSec)
 {
     if (!IsEffectivelyVisible()) return;
     scroll_.Tick(dtSec);
+    
+    // Update hover during smooth scrolling: the content moves under the pointer,
+    // which didn't move. Without this, the old hoverRowIndex_ points to a row that
+    // scrolled away, leaving the actual row under the pointer without highlight.
+    if (pointerInside_) {
+        int newHover = HitRow(lastPointerPos_.y);
+        if (newHover != hoverRowIndex_) {
+            hoverRowIndex_ = newHover;
+        }
+    }
+    
     Invalidate();
 }
 
@@ -721,6 +758,11 @@ void TreeView::DrawRow(const DrawingContext& dc, IDWriteTextFormat* fmt,
     if (rowIsSelected) {
         dc.FillRoundedRect(D2D1::RoundedRect(rr, itemCorner, itemCorner),
                            D2D1::ColorF(pal.accent.r, pal.accent.g, pal.accent.b, 0.18f));
+    }
+    // Hover highlight: subtle fill, only when not selected.
+    else if (rowIndex == hoverRowIndex_) {
+        dc.FillRoundedRect(D2D1::RoundedRect(rr, itemCorner, itemCorner),
+                           D2D1::ColorF(pal.textPrimary.r, pal.textPrimary.g, pal.textPrimary.b, 0.05f));
     }
     if (rowIndex == selectedIndex_) {
         dc.FillRoundedRect(D2D1::RoundedRect(D2D1::RectF(rr.left, rr.top + 5, rr.left + 3, rr.bottom - 5), 2.0f, 2.0f),
@@ -792,9 +834,16 @@ void TreeView::Render(const DrawingContext& dc)
         ClipGuard clip = dc.PushClip(
             D2D1::RectF(bounds_.x, bounds_.y, bounds_.right(), bounds_.bottom()));
 
+        // Snap the offset to the pixel grid before it reaches a glyph position. The
+        // smooth-scroll tween yields fractional offsets, and DirectWrite weights
+        // ClearType differently per subpixel position, so unsnapped row text shimmers
+        // while scrolling. Same fix as TextArea / RichTextBox / LogViewer
+        // (graphics/PixelSnapping.h). The row INDEX still comes from the raw offset:
+        // which rows are visible is a content question, not a pixel one.
+        const float snappedOffset = SnapToPixel(scroll_.Offset(), dc.DpiScale());
         int first = static_cast<int>(scroll_.Offset() / rowHeight_);
         int visible = VisibleCapacity();
-        float y = bounds_.y - (scroll_.Offset() - first * rowHeight_);
+        float y = bounds_.y - (snappedOffset - first * rowHeight_);
         for (int n = 0; n < visible && first + n < static_cast<int>(visibleRows_.size()); ++n) {
             DrawRow(dc, fmt, visibleRows_[first + n], y, bounds_.x, bounds_.right());
             y += rowHeight_;

@@ -28,6 +28,8 @@ public:
         std::function<bool(PopupDismissReason, HWND, int, int)>) override { return {}; }
     Subscription RegisterActivePopupKeyHandler(
         std::function<bool(UINT)>) override { return {}; }
+    Subscription RegisterActivePopupWheelHandler(
+        std::function<bool(int, int, int)>) override { return {}; }
 private:
     D2DContext d2d_;
     DWriteContext dwrite_;
@@ -544,4 +546,85 @@ TEST(TabControl, RemoveTabClearsCloseButtonHover) {
     // old index, which is now out of bounds or names the wrong tab. No assertion
     // needed: passing means the implementation cleared it.
     EXPECT_EQ(tc.TabCount(), 1);
+}
+
+// --- Content fade configuration ---------------------------------------------
+// The fade-in was hard-wired to the theme's fadeTau (0.05s => ~150ms to full
+// opacity), which read as a flicker on a tab switch rather than a transition.
+// It is now caller-controlled: a longer default duration, an explicit off
+// switch, and a settable duration.
+
+TEST(TabControl, ContentFadeDefaults) {
+    TabControl tc;
+    EXPECT_TRUE(tc.ContentFadeEnabled());
+    // 0.1s time constant => ~300ms to visual completion (3 tau).
+    EXPECT_NEAR(tc.ContentFadeDuration(), 0.1f, 0.0001f);
+}
+
+TEST(TabControl, ContentFadeDurationIsSettable) {
+    TabControl tc;
+    tc.SetContentFadeDuration(0.25f);
+    EXPECT_NEAR(tc.ContentFadeDuration(), 0.25f, 0.0001f);
+}
+
+TEST(TabControl, ContentFadeDurationClampsNonPositive) {
+    TabControl tc;
+    // 0 or negative would make AnimatedValue::Approach snap instantly, which is
+    // what SetContentFadeEnabled(false) is for. Clamp to a small positive tau so
+    // the two knobs stay independent.
+    tc.SetContentFadeDuration(0.0f);
+    EXPECT_TRUE(tc.ContentFadeDuration() > 0.0f);
+    tc.SetContentFadeDuration(-5.0f);
+    EXPECT_TRUE(tc.ContentFadeDuration() > 0.0f);
+}
+
+TEST(TabControl, ContentFadeDisabledSkipsAnimationTick) {
+    MockHost host;
+    TabControl tc;
+    tc.SetContentFadeEnabled(false);
+    EXPECT_FALSE(tc.ContentFadeEnabled());
+
+    tc.AddTab(L"A", std::make_unique<Button>());
+    tc.AddTab(L"B", std::make_unique<Button>());
+    tc.AttachToContext(MakeCtx(host));
+    tc.Measure(500, 400);
+    tc.Arrange(RectDip{0, 0, 500, 400});
+
+    // Settle the indicator slide so the only animation left could be the fade.
+    for (int i = 0; i < 200 && tc.WantsAnimationTick(); ++i)
+        tc.OnAnimationTick(0.016f);
+    EXPECT_FALSE(tc.WantsAnimationTick());
+
+    // Switching with fade disabled must not request a tick: the content is already
+    // fully opaque, so there is nothing to ease.
+    tc.SetSelectedIndex(1);
+    for (int i = 0; i < 200 && tc.WantsAnimationTick(); ++i)
+        tc.OnAnimationTick(0.016f);
+    EXPECT_FALSE(tc.WantsAnimationTick());
+    EXPECT_EQ(tc.SelectedIndex(), 1);
+}
+
+TEST(TabControl, ContentFadeEnabledRequestsTickAfterSwitch) {
+    MockHost host;
+    TabControl tc;
+    tc.AddTab(L"A", std::make_unique<Button>());
+    tc.AddTab(L"B", std::make_unique<Button>());
+    tc.AttachToContext(MakeCtx(host));
+    tc.Measure(500, 400);
+    tc.Arrange(RectDip{0, 0, 500, 400});
+
+    for (int i = 0; i < 200 && tc.WantsAnimationTick(); ++i)
+        tc.OnAnimationTick(0.016f);
+
+    // With fade on (the default) a switch restarts the fade from 0, so the control
+    // must ask to be ticked, and the fade must eventually settle.
+    tc.SetSelectedIndex(1);
+    EXPECT_TRUE(tc.WantsAnimationTick());
+
+    int ticks = 0;
+    while (tc.WantsAnimationTick() && ticks < 400) {
+        tc.OnAnimationTick(0.016f);
+        ++ticks;
+    }
+    EXPECT_FALSE(tc.WantsAnimationTick());
 }

@@ -60,8 +60,15 @@ public:
         SetBackdropKind(BackdropKind::MicaAlt);
         SetCornerRadius(12.0f);
         SetShadowEnabled(true);
+        // Draw the title INTO the caption band. OnLayout already reserves
+        // TitleBarHeightDip() unconditionally, so with this off the band was
+        // reserved but left blank and the title had to be re-drawn as the first
+        // row of the content — which is what put it visibly below the caption.
+        // A subclass authoring its own caption can still turn this back off.
+        SetStandardTitleBar(true);
         SetTitle(L"Fluent Dialog");
-        SetClientSize(420.0f, 260.0f);
+        SetClientSize(420.0f, 260.0f);  // 兜底默认值
+        SetAutoSize(true);  // 但默认自适应，用户显式调 SetClientSize 会关掉
     }
     ~DialogWindow() override = default;
 
@@ -94,6 +101,17 @@ protected:
     void RaiseClosed() override;
 
     void OnLayout() override;
+
+    // Measure the content and resize the window to fit it. Must run after Create --
+    // text measurement needs the DWrite context that Create builds.
+    void ApplyAutoSize();
+
+    // Resize so the CLIENT area is exactly this DIP size, adding back the non-client
+    // bands WM_NCCALCSIZE reserves.
+    void ResizeClientTo(float clientWDip, float clientHDip);
+
+    // Height ceiling for auto-sizing, in DIPs; 0 means unlimited.
+    float MaxAutoSizeClientHeightDip() const;
     bool OnAppMessage(UINT msg, WPARAM wp, LPARAM lp, LRESULT& result) override;
 
     // Host-layer overrides that make this a secondary window rather than the

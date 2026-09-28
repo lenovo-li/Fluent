@@ -7,8 +7,11 @@
 #include "../FluentUI/layout/ScrollPanel.h"
 #include "../FluentUI/controls/TextBlock.h"
 #include "../FluentUI/controls/TextArea.h"
+#include "../FluentUI/controls/RichTextBox.h"
 #include "../FluentUI/controls/Button.h"
 #include "../FluentUI/controls/ContentDialog.h"
+#include <unordered_set>
+#include <cwctype>
 
 namespace fluent {
 
@@ -86,7 +89,7 @@ std::unique_ptr<Panel> GalleryApp::BuildContent() {
 
 void GalleryApp::BuildAllPages() {
     static constexpr int kPageIds[] = {
-        101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111,  // 基础控件
+        101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112,  // 基础控件
         201, 208, 202, 203, 204, 205, 206, 207,   // 输入控件
         301, 302,                            // 文本控件
         401, 402, 403, 404, 405, 406, 407, 408, 409,  // 数据控件（LogViewer + RichTextBox）
@@ -149,18 +152,19 @@ std::vector<TreeViewRow> GalleryApp::BuildNavigationTree() {
     rows.push_back({408, 400, L"LogViewer", 1, false, false, true, TreeViewIcon::None});
     rows.push_back({409, 400, L"RichTextBox", 1, false, false, true, TreeViewIcon::None});
 
-    rows.push_back({500, -1, L"布局容器", 0, false, true, true, TreeViewIcon::Folder});
-    rows.push_back({501, 500, L"Grid", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({502, 500, L"StackPanel", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({503, 500, L"WrapPanel", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({504, 500, L"DockPanel", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({505, 500, L"Border", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({506, 500, L"Canvas", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({507, 500, L"ScrollViewer", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({508, 500, L"Expander", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({509, 500, L"UniformGrid", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({510, 500, L"Viewbox", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({511, 500, L"GroupBox", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({100, -1, L"基础控件", 0, false, true, true, TreeViewIcon::Folder});
+    rows.push_back({101, 100, L"Button", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({102, 100, L"CheckBox", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({103, 100, L"RadioButton", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({104, 100, L"ToggleSwitch", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({105, 100, L"Hyperlink", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({106, 100, L"Image", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({107, 100, L"RepeatButton", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({108, 100, L"Separator", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({109, 100, L"ProgressBar", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({110, 100, L"Hyperlink", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({111, 100, L"Rating", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({112, 100, L"Custom Controls", 1, false, false, true, TreeViewIcon::None});
     rows.push_back({512, 500, L"动态列表 (RemoveAt/InsertAt)", 1, false, false, true, TreeViewIcon::None});
 
     rows.push_back({600, -1, L"窗口 & 对话框", 0, false, true, true, TreeViewIcon::Folder});
@@ -232,6 +236,10 @@ std::unique_ptr<ScrollPanel> GalleryApp::CreatePageForId(int id) {
         case 106: return CreateImagePage();
         case 107: return CreateRepeatButtonPage();
         case 108: return CreateSeparatorPage();
+        case 109: return CreateProgressBarPage();
+        case 110: return CreateHyperlinkPage();
+        case 111: return CreateRatingPage();
+        case 112: return CreateCustomControlsPage();
 
         case 201: return CreateTextBoxPage();
         case 208: return CreatePasswordBoxPage();
@@ -329,15 +337,117 @@ StackPanel* GalleryApp::CreateExampleCard(Panel* parent, std::wstring title) {
     return content;
 }
 
-TextArea* GalleryApp::CreateCodeExample(Panel* parent, std::wstring code) {
-    auto* codeBlock = parent->Add(std::make_unique<TextArea>());
-    codeBlock->SetText(std::move(code));
+RichTextBox* GalleryApp::CreateCodeExample(Panel* parent, std::wstring code) {
+    auto* codeBlock = parent->Add(std::make_unique<RichTextBox>());
     codeBlock->SetReadOnly(true);
-    codeBlock->SetWrapMode(TextWrapMode::NoWrap);
+    codeBlock->SetWordWrap(false);
     codeBlock->SetHeight(200.0f);
     codeBlock->SetMargin(Thickness{0, 16.0f, 0, 0});
-    codeBlock->SetFontSize(13.0f);
+    
+    // Visual styling to distinguish code blocks
+    codeBlock->SetBackground(D2D1::ColorF(0.96f, 0.96f, 0.96f));  // Light gray background
+    codeBlock->SetBorderBrush(D2D1::ColorF(0.8f, 0.8f, 0.8f));
+    codeBlock->SetBorderThickness(1.0f);
+    codeBlock->SetCornerRadius(4.0f);
+    
+    // Apply simple C++ syntax highlighting
+    RichTextDocument doc = ApplySyntaxHighlighting(code);
+    codeBlock->SetDocument(std::move(doc));
     return codeBlock;
+}
+
+// --- Syntax Highlighting Helper ---
+
+namespace {
+    // C++ keywords for highlighting
+    const std::unordered_set<std::wstring> kCppKeywords = {
+        L"auto", L"bool", L"break", L"case", L"catch", L"char", L"class", L"const",
+        L"continue", L"default", L"delete", L"do", L"double", L"else", L"enum",
+        L"explicit", L"extern", L"false", L"float", L"for", L"friend", L"if",
+        L"inline", L"int", L"long", L"namespace", L"new", L"nullptr", L"operator",
+        L"private", L"protected", L"public", L"return", L"short", L"signed",
+        L"sizeof", L"static", L"struct", L"switch", L"template", L"this", L"throw",
+        L"true", L"try", L"typedef", L"typename", L"union", L"unsigned", L"using",
+        L"virtual", L"void", L"volatile", L"while", L"override", L"final"
+    };
+
+    const D2D1_COLOR_F kDefaultColor = D2D1::ColorF(0.2f, 0.2f, 0.2f);
+    const D2D1_COLOR_F kKeywordColor = D2D1::ColorF(0.0f, 0.0f, 0.8f);
+    const D2D1_COLOR_F kCommentColor = D2D1::ColorF(0.0f, 0.5f, 0.0f);
+    const D2D1_COLOR_F kStringColor = D2D1::ColorF(0.64f, 0.08f, 0.08f);
+}
+
+RichTextDocument GalleryApp::ApplySyntaxHighlighting(const std::wstring& code) {
+    RichTextDocument doc;
+    
+    size_t pos = 0;
+    while (pos < code.size()) {
+        // Line comment: // ...
+        if (pos + 1 < code.size() && code[pos] == L'/' && code[pos + 1] == L'/') {
+            size_t end = code.find(L'\n', pos);
+            if (end == std::wstring::npos) end = code.size();
+            
+            TextRun run;
+            run.text = code.substr(pos, end - pos);
+            run.fontSize = 13.0f;
+            run.color = kCommentColor;
+            run.weight = DWRITE_FONT_WEIGHT_NORMAL;
+            doc.AppendRun(run);
+            pos = end;
+            continue;
+        }
+        
+        // String literal: "..." or L"..."
+        if (code[pos] == L'L' && pos + 1 < code.size() && code[pos + 1] == L'"') {
+            pos++; // skip L prefix
+        }
+        if (code[pos] == L'"') {
+            size_t end = pos + 1;
+            while (end < code.size() && code[end] != L'"') {
+                if (code[end] == L'\\' && end + 1 < code.size()) end += 2;
+                else end++;
+            }
+            if (end < code.size()) end++; // include closing quote
+            
+            TextRun run;
+            run.text = code.substr(pos, end - pos);
+            run.fontSize = 13.0f;
+            run.color = kStringColor;
+            run.weight = DWRITE_FONT_WEIGHT_NORMAL;
+            doc.AppendRun(run);
+            pos = end;
+            continue;
+        }
+        
+        // Identifier or keyword
+        if (std::iswalpha(code[pos]) || code[pos] == L'_') {
+            size_t end = pos;
+            while (end < code.size() && (std::iswalnum(code[end]) || code[end] == L'_')) {
+                end++;
+            }
+            
+            std::wstring word = code.substr(pos, end - pos);
+            TextRun run;
+            run.text = word;
+            run.fontSize = 13.0f;
+            run.color = kCppKeywords.count(word) ? kKeywordColor : kDefaultColor;
+            run.weight = DWRITE_FONT_WEIGHT_NORMAL;
+            doc.AppendRun(run);
+            pos = end;
+            continue;
+        }
+        
+        // Default: single character (whitespace, operators, etc.)
+        TextRun run;
+        run.text = code.substr(pos, 1);
+        run.fontSize = 13.0f;
+        run.color = kDefaultColor;
+        run.weight = DWRITE_FONT_WEIGHT_NORMAL;
+        doc.AppendRun(run);
+        pos++;
+    }
+    
+    return doc;
 }
 
 } // namespace fluent

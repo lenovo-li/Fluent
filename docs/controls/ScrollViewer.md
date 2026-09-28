@@ -209,7 +209,9 @@ sub_ = sv->ScrollChanged().Subscribe(this,
 
 ```cpp
 // 在拥有者控件的 OnMouseWheel 里
-void MyList::OnMouseWheel(int delta, bool shiftKey) {
+void MyList::OnPointerWheelChanged(PointerEventArgs& e) {
+    int delta = e.wheelDelta;
+    bool shiftKey = e.shiftKey;
     if (shiftKey) {
         scrollViewer_->AnimateBy(-delta * 0.5f);  // 水平（delta 方向相反）
     } else {
@@ -282,6 +284,5 @@ demo 中 **ScrollViewer 本身没有单独的演示页**，但它被 TreeView、
 
 ## 相关控件
 
-- [TreeView](TreeView.md) — 使用 ScrollViewer 管理垂直滚动
+- `TreeView`（文档待写，`controls/TreeView.h`）— 使用 ScrollViewer 管理垂直滚动
 - [TextArea](TextArea.md) — 在无换行模式下双向滚动
-- [ScrollContentHost](ScrollContentHost.md) — compositor overscan 引擎（TextArea/TreeView 用）

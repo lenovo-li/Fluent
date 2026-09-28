@@ -8,6 +8,7 @@
 #include "../styling/FocusVisual.h"
 #include "../core/ScrollMath.h"
 #include "../graphics/ResourceCache.h"
+#include "../layout/ScrollViewer.h"
 #include <algorithm>
 
 namespace fluent {
@@ -16,6 +17,7 @@ namespace {
 const char* kTag = "ComboBox";
 constexpr float kCornerRadius = 4.0f;  // DIP
 constexpr float kChevronSize = 8.0f;   // DIP, chevron glyph width
+constexpr float kScrollGutter = 16.0f; // DIP, right gutter so items clear the scrollbar
 
 // The header's focus ring: one spec shared by the paint (Render) and the dirty rect
 // (CollectDirtyBounds), so the reported region can never drift from what is drawn.
@@ -28,13 +30,41 @@ FocusRingSpec HeaderFocusRing() {
 // Private list view element for the popup content. Renders items with hover
 // and selected states, handles pointer and keyboard navigation, and fires a
 // callback when an item is clicked or Enter is pressed.
+//
+// Now uses ScrollViewer for the scrollbar (WinUI-style auto-fade overlay), replacing
+// the invisible manual scroll that had no visual affordance.
 class ComboListView : public Control {
 public:
-    ComboListView() { SetClickable(true); }
+    ComboListView() { 
+        SetClickable(true);
+        scroll_.SetKeepVisibleWhenOverflow(true);  // Auto mode: bar visible when needed
+    }
+    
+    // Scroll to the selected item immediately (no animation) and wake the scrollbar.
+    // Called when the dropdown opens so the user sees their current selection, not
+    // a random position in the list.
+    void ScrollToSelection() {
+        if (selectedIndex_ < 0 || selectedIndex_ >= Count()) return;
+        // Must update scroll content height FIRST, or EnsureVisible is a no-op.
+        // PopupHost calls SetContent before Open, so Measure has already run and
+        // bounds_ is valid. The list height is items.size() * itemH.
+        float itemH = 32.0f;
+        scroll_.SetContentHeight(Count() * itemH);
+        EnsureVisible(selectedIndex_);
+        scroll_.Wake();  // fade the scrollbar in immediately
+        // Force immediate repaint so the first frame shows the correct scroll position.
+        // Without this, the first render uses offset=0, then a second render corrects it
+        // after the mouse moves over the popup (triggering OnPointerMoved -> Invalidate).
+        Invalidate();
+    }
     // Bind to the ComboBox's shared items vector (not owned) — eliminates the
     // WP-05 double storage. The pointer stays valid for the ComboBox's life
     // (the list view is owned by, and destroyed with, the ComboBox).
-    void SetItemsRef(const std::vector<std::wstring>* items) { items_ = items; Invalidate(); }
+    void SetItemsRef(const std::vector<std::wstring>* items) { 
+        items_ = items; 
+        UpdateScrollExtent();
+        Invalidate(); 
+    }
     void SetSelectedIndex(int idx) { selectedIndex_ = idx; Invalidate(); }
     void SetOnSelect(std::function<void(int)> cb) { onSelect_ = std::move(cb); }
 
@@ -45,10 +75,24 @@ public:
     void Measure(float availW, float availH) override {
         UNREFERENCED_PARAMETER(availH);
         float itemH = 32.0f;
-        float maxH = itemH * 8.0f;  // cap at 8 items visible
+        float maxH = itemH * maxVisibleItems_;
         float w = IsAuto(width_) ? std::min(availW, 300.0f) : width_;
         float h = std::min(itemH * Count(), maxH);
         SetDesired({w, h});
+    }
+    
+    void OnBoundsChanged() override {
+        scroll_.SetBounds(bounds_);
+        UpdateScrollExtent();
+    }
+    
+    void OnAttachedToTree() override {
+        // ScrollViewer needs the theme for scrollbar colors (same as ListBox).
+        scroll_.AttachToContext(Context());
+    }
+    
+    void OnDetachedFromTree() override {
+        scroll_.DetachFromContext();
     }
 
     void OnKeyDownRouted(KeyEventArgs& e) override {
@@ -89,14 +133,34 @@ public:
     }
 
     void OnPointerWheelChanged(PointerEventArgs& e) override {
-        if (Count() == 0) return;
-        // Scroll by WheelScrollLines() items per wheel notch (system setting).
-        float itemH = 32.0f;
+        if (scroll_.MaxOffset() <= 0.0f) return;  // nothing to scroll
         float lines = e.WheelScrollLines();
-        scrollOffset_ += lines * itemH;
-        scrollOffset_ = std::clamp(scrollOffset_, 0.0f, MaxScroll());
+        // Smooth scroll now that PopupHost shares the parent window's AnimationRegistry.
+        scroll_.AnimateBy(lines * 32.0f);  // 32.0f = itemH
+        scroll_.Wake();
         Invalidate();
         e.handled = true;
+    }
+    
+    // Animation tick for smooth scrolling + scrollbar fade/expand (same as ScrollPanel).
+    bool WantsAnimationTick() const override { return scroll_.NeedsTick(); }
+    void OnAnimationTick(float dtSec) override {
+        scroll_.Tick(dtSec);
+        
+        // Update hover during smooth scrolling: the content moves under the pointer,
+        // which didn't move. Without this, the old hoveredIndex_ points to an item that
+        // scrolled away, leaving the actual item under the pointer without highlight.
+        if (pointerInside_) {
+            int newHover = HitItem(lastPointerPos_.y);
+            if (newHover != hoveredIndex_) {
+                hoveredIndex_ = newHover;
+            }
+        }
+        
+        // scroll_ is a member, not a tree node: its Invalidate() has no callback,
+        // so the scrollbar's animations never reach the frame scheduler. Report the
+        // repaint from here where it does reach the tree (same issue as ScrollPanel).
+        Invalidate();
     }
 
     void Render(const DrawingContext& dc) override {
@@ -113,12 +177,16 @@ public:
             D2D1::RectF(bounds_.x, bounds_.y, bounds_.right(), bounds_.bottom()));
 
         float itemH = 32.0f;
-        int first = static_cast<int>(scrollOffset_ / itemH);
+        float scrollOffset = scroll_.Offset();
+        int first = static_cast<int>(scrollOffset / itemH);
         int visible = static_cast<int>(bounds_.h / itemH) + 2;
-        float y = bounds_.y - (scrollOffset_ - first * itemH);
+        float y = bounds_.y - (scrollOffset - first * itemH);
 
         for (int i = first; i < static_cast<int>(items.size()) && i < first + visible; ++i) {
-            D2D1_RECT_F itemRect = D2D1::RectF(bounds_.x + 4.0f, y, bounds_.right() - 4.0f, y + itemH);
+            // Reserve kScrollGutter on the right for the scrollbar, so items don't sit
+            // directly against the rail (easy mis-click). Left pad 4 + right gutter 16.
+            D2D1_RECT_F itemRect = D2D1::RectF(bounds_.x + 4.0f, y, 
+                                               bounds_.right() - kScrollGutter, y + itemH);
 
             if (i == hoveredIndex_) {
                 dc.FillRoundedRect(D2D1::RoundedRect(itemRect, Theme().spacing.cornerRadiusSmall, Theme().spacing.cornerRadiusSmall),
@@ -143,11 +211,88 @@ public:
             }
             y += itemH;
         }
+        
+        // Draw the scrollbar overlay (ScrollViewer renders its own rail).
+        scroll_.Render(dc);
     }
 
     void OnPointerMoved(PointerEventArgs& e) override {
-        int idx = HitItem(e.position.y);
-        if (idx != hoveredIndex_) { hoveredIndex_ = idx; Invalidate(); }
+        float dipX = e.position.x, dipY = e.position.y;
+        lastPointerPos_ = e.position;
+        pointerInside_ = true;
+        
+        // Scrollbar drag: track the thumb.
+        if (scroll_.IsDragging()) {
+            scroll_.DragTo(dipY);
+            Invalidate();
+            e.handled = true;
+            return;
+        }
+        
+        // Scrollbar hover: wake + update hover state.
+        bool overBar = scroll_.HitBarRegion(dipX, dipY);
+        scroll_.Wake();
+        scroll_.SetBarHover(overBar);
+        // Expand/fade animate via OnAnimationTick (parent window's clock).
+        
+        // Item hover: only when NOT over the scrollbar.
+        if (!overBar) {
+            int idx = HitItem(dipY);
+            if (idx != hoveredIndex_) { hoveredIndex_ = idx; Invalidate(); }
+        } else if (hoveredIndex_ >= 0) {
+            // Clear item hover when entering the scrollbar region.
+            hoveredIndex_ = -1;
+            Invalidate();
+        }
+    }
+    
+    void OnPointerLeft() override {
+        pointerInside_ = false;
+        // Clear hover states when pointer leaves the popup entirely.
+        scroll_.SetBarHover(false);  // collapse animates via OnAnimationTick
+        if (hoveredIndex_ >= 0) {
+            hoveredIndex_ = -1;
+            Invalidate();
+        }
+    }
+    
+    void OnPointerPressed(PointerEventArgs& e) override {
+        if (e.button != PointerButton::Left) return;
+        float dipX = e.position.x, dipY = e.position.y;
+        
+        // Scrollbar: click-to-jump + drag (same as ListBox).
+        if (scroll_.HitBarRegion(dipX, dipY)) {
+            if (!scroll_.HitThumb(dipX, dipY)) {
+                const RectDip thumb = scroll_.ThumbRect();
+                const float trackRange = std::max(1.0f, bounds_.h - thumb.h);
+                const float wantTop = (dipY - thumb.h * 0.5f) - bounds_.y;
+                scroll_.SetOffset(wantTop / trackRange * scroll_.MaxOffset());
+            }
+            scroll_.BeginDrag(dipY);
+            if (Context().input)
+                Context().input->CapturePointer(this);
+            Invalidate();
+            e.handled = true;
+            return;
+        }
+        
+        // NOT on scrollbar: let the base handle click gesture (capture + set pointerDown_).
+        // The base sets e.handled, which is correct — we ARE handling the press.
+        Control::OnPointerPressed(e);
+    }
+    
+    void OnPointerReleased(PointerEventArgs& e) override {
+        if (e.button != PointerButton::Left) return;
+        if (scroll_.IsDragging()) {
+            scroll_.EndDrag();
+            Invalidate();
+        }
+        if (Context().input && Context().input->Captured() == this)
+            Context().input->ReleaseCapture(this);
+        
+        // Let the base handle the release->click logic. It checks pointerDown_ (set by
+        // the base's OnPointerPressed), tests inside bounds, and calls OnClickRouted.
+        Control::OnPointerReleased(e);
     }
 
     void OnClickRouted(PointerEventArgs& e) override {
@@ -158,7 +303,7 @@ public:
 private:
     int HitItem(float dipY) const {
         float itemH = 32.0f;
-        float y = dipY - bounds_.y + scrollOffset_;
+        float y = dipY - bounds_.y + scroll_.Offset();
         int idx = static_cast<int>(y / itemH);
         return (idx >= 0 && idx < Count()) ? idx : -1;
     }
@@ -166,20 +311,31 @@ private:
     void EnsureVisible(int idx) {
         if (idx < 0 || idx >= Count()) return;
         float itemH = 32.0f;
-        scrollOffset_ = EnsureVisibleOffset(idx * itemH, itemH, scrollOffset_, bounds_.h);
-        scrollOffset_ = std::clamp(scrollOffset_, 0.0f, MaxScroll());
+        float itemTop = idx * itemH;
+        float itemBot = itemTop + itemH;
+        float viewTop = scroll_.Offset();
+        float viewBot = viewTop + bounds_.h;
+        if (itemTop < viewTop)
+            scroll_.SetOffset(itemTop);
+        else if (itemBot > viewBot)
+            scroll_.SetOffset(itemBot - bounds_.h);
     }
-
-    float MaxScroll() const {
+    
+    void UpdateScrollExtent() {
         float itemH = 32.0f;
-        return std::max(0.0f, itemH * Count() - bounds_.h);
+        scroll_.SetContentHeight(itemH * Count());
     }
 
     const std::vector<std::wstring>* items_ = nullptr;  // non-owning; points to Selector::items_
     int selectedIndex_ = -1;
     int hoveredIndex_ = -1;
-    float scrollOffset_ = 0.0f;
+    ScrollViewer scroll_;
+    int maxVisibleItems_ = 8;  // default cap; exposed via SetMaxDropDownItems if needed
     std::function<void(int)> onSelect_;
+    // Last known pointer position and whether it's inside the dropdown, for updating
+    // hover during smooth scrolling (the content moves under a stationary pointer).
+    Point lastPointerPos_;
+    bool pointerInside_ = false;
 };
 
 } // namespace
@@ -215,6 +371,10 @@ void ComboBox::OnAttachedToTree() {
         popup_.reset();
         return;
     }
+    // Hook the dropdown content onto the parent window's animation clock (smooth
+    // wheel scroll, scrollbar fade/expand). Must precede SetContent below, which
+    // injects the registry into the list view's context.
+    popup_->SetParentAnimationClock(window_, Context().animations);
     // Share the tree's resource caches with the dropdown content (§13.3).
     popup_->SetResourceCache(Context().resourceCache);
     // Apply any opacity set before attach (see SetPopupOpacity).
@@ -257,6 +417,16 @@ void ComboBox::OnItemsChanged() {
     if (auto* list = dynamic_cast<ComboListView*>(listView_.get()))
         list->SetSelectedIndex(selectedIndex_);
     Invalidate();
+}
+
+void ComboBox::OnBoundsChanged() {
+    // If the popup is open and our bounds changed (e.g. parent ScrollPanel scrolled,
+    // moving our header), close the popup. The alternative — repositioning it every
+    // frame — is complex and feels janky. WinUI/WPF close on scroll; we do the same.
+    // Arrange returns early on an unchanged rect, so this only fires on a real move.
+    if (popupOpen_) {
+        ClosePopup();
+    }
 }
 
 void ComboBox::SetSelectedIndex(int index) {
@@ -434,9 +604,15 @@ HCURSOR ComboBox::Cursor() const {
 }
 
 RECT ComboBox::HeaderScreenRect() const {
-    RECT rcWindow;
-    GetWindowRect(window_->Hwnd(), &rcWindow);
-    return AnchorScreenRect(rcWindow.left, rcWindow.top,
+    // bounds_ is in CLIENT DIPs, so the origin must be the client area's screen
+    // position — not GetWindowRect. NativeWindowHost's WM_NCCALCSIZE keeps a resize
+    // band on the left/right/bottom (ResizeGripOuterPx, 8 DIP), so the window rect's
+    // left edge sits one band to the left of the client origin; using it shifted the
+    // dropdown 8 DIP left of the header. ClientToScreen reads the real client origin
+    // and stays correct if the NC layout changes (or is 0 when maximized).
+    POINT origin = {0, 0};
+    ClientToScreen(window_->Hwnd(), &origin);
+    return AnchorScreenRect(origin.x, origin.y,
                             bounds_.x, bounds_.y, bounds_.w, bounds_.h,
                             window_->DpiScale());
 }
@@ -462,6 +638,12 @@ void ComboBox::OpenPopup() {
 
     if (SUCCEEDED(popup_->Open(anchor, popupW, popupH))) {
         popupOpen_ = true;
+        
+        // Scroll to the selected item and wake the scrollbar so the user sees
+        // their current selection, not a random position in the list.
+        if (auto* list = dynamic_cast<ComboListView*>(listView_.get()))
+            list->ScrollToSelection();
+        
         if (window_) {
             dismissSub_ = window_->RegisterActivePopupDismiss([this](PopupDismissReason reason, HWND otherHwnd, int screenX, int screenY) {
                 // For deactivate, check if the other HWND is our popup. If so, ignore.
@@ -480,9 +662,23 @@ void ComboBox::OpenPopup() {
                     if (window_ && HeaderContainsScreenPoint(screenX, screenY))
                         return false;  // let the header toggle handle it
                 }
-                // For other reasons (deactivate/move/resize) or clicks outside, dismiss.
+                // For Move/Resize: close the popup (anchor moved, popup would detach).
+                // For other clicks outside: dismiss normally.
                 ClosePopup();
                 return true;  // dismissed
+            });
+            
+            // Register wheel forwarding: check if the wheel landed inside the popup,
+            // and if so route it to the popup's content. This is what makes the
+            // dropdown scrollable via mouse wheel despite WS_EX_NOACTIVATE.
+            wheelSub_ = window_->RegisterActivePopupWheelHandler([this](int screenX, int screenY, int delta) {
+                if (!popup_ || !popupOpen_) return false;
+                if (!popup_->ContainsScreenPoint(screenX, screenY)) return false;
+                // Convert screen coords to client coords inside the popup, then route.
+                POINT pt = {screenX, screenY};
+                ScreenToClient(popup_->Hwnd(), &pt);
+                popup_->RouteMouseWheel(pt.x, pt.y, delta);
+                return true;  // consumed
             });
         }
         TraceMsg(kTag, "OpenPopup: popup shown");
@@ -503,6 +699,7 @@ void ComboBox::ClosePopup() {
     popup_->Close();
     popupOpen_ = false;
     dismissSub_.reset();  // unregister the window's dismiss hook
+    wheelSub_.reset();    // unregister the window's wheel-forwarding hook
     Invalidate();
 
     RoutedEventArgs args;

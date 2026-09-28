@@ -136,6 +136,12 @@ public:
     void SetDoubleClickTogglesExpansion(bool enable) { doubleClickTogglesExpansion_ = enable; }
     bool DoubleClickTogglesExpansion() const { return doubleClickTogglesExpansion_; }
 
+    // The ROW index the pointer is currently over, or -1 when the pointer is
+    // outside the control / not over a row. Read-only: hover is owned by the
+    // pointer handlers. Exposed because the hover fill is otherwise unobservable
+    // from a headless test (same reason as TabControl::IsContentAttached).
+    int HoveredRowIndex() const { return hoverRowIndex_; }
+
     void ScrollBy(float deltaDip) { scroll_.ScrollBy(deltaDip); Invalidate(); }
     void OnKeyDownRouted(KeyEventArgs& e) override;
     void OnTextInput(wchar_t ch) override;
@@ -228,6 +234,13 @@ private:
     
     // Multi-select state (selectionMode_ / selectedIndices_ / selectionAnchor_)
     // lives in the Selector base — see primitives/Selector.h for the invariants.
+    
+    // Hover tracking: which row the pointer is currently over, or -1.
+    int hoverRowIndex_ = -1;
+    // Last known pointer position and whether it's inside the control, for updating
+    // hover during smooth scrolling (the content moves under a stationary pointer).
+    Point lastPointerPos_;
+    bool pointerInside_ = false;
 };
 
 } // namespace fluent

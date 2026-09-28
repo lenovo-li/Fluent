@@ -214,10 +214,12 @@ slider->SetHAlign(HAlign::Left);
 
 | Token | 用途 |
 | --- | --- |
-| `accent` | 已填充轨道与旋钮描边(未设 AccentColor 时) |
-| `controlFillDefault` | 未填充轨道槽 |
-| `controlStrokeDefault` | 旋钮描边 |
-| `focusStroke` | 焦点环 |
+| `accent` | 已填充轨道、旋钮描边（EffectiveBorderBrush 回退值）、焦点环（自绘，不走 DrawFocusRing） |
+
+**说明**：
+- 未填充轨道槽使用硬编码回退值（`Slider.cpp:196`：dark = rgba(255,255,255,0.18), light = rgba(0,0,0,0.12)），不是主题 token
+- 旋钮描边通过 `EffectiveBorderBrush(pal.accent)` 获取，回退是 accent 不是 controlStrokeDefault
+- 焦点环在 `:224` 自己画（用 accent @ 0.6 alpha），不走 `FocusVisual.h::DrawFocusRing`，所以不读 focusStroke token
 
 ### 演示页
 

@@ -176,63 +176,21 @@ void Button::OnAnimationTick(float dtSec) {
 }
 
 void Button::Render(const DrawingContext& dc) {
-    const ThemeSnapshot& th = Theme();
-    const ColorTokens& c = th.colors;
-    const float corner = EffectiveCornerRadius();
+    // Orchestration only. Each piece of the paint is a protected virtual hook
+    // (Button.h, "Extension points") so a subclass can replace one without
+    // re-implementing the others. The split is exact: base fill + tint, border,
+    // label, focus ring — the same order and the same calls as before the split.
+    RenderBackground(dc);
+    RenderBorder(dc);
+    RenderContent(dc);
 
-    D2D1_ROUNDED_RECT rr = D2D1::RoundedRect(
-        D2D1::RectF(bounds_.x, bounds_.y, bounds_.right(), bounds_.bottom()),
-        corner, corner);
-
-    // Base fill — delegate the color resolution to the testable pure function.
-    ButtonAppearance appearance{
-        HasBackground() ? std::optional(EffectiveBackground()) : std::nullopt,
-        HasForeground() ? std::optional(EffectiveForeground()) : std::nullopt,
-        HasAccentColor() ? std::optional(EffectiveAccentColor()) : std::nullopt,
-        BackgroundHover(), BackgroundPressed(),
-        AccentColorHover(), AccentColorPressed()
-    };
-    D2D1_COLOR_F fill = ButtonFillColor(kind_, State(), appearance, c);
-
-    if (fill.a > 0.0f)
-        dc.FillRoundedRect(rr, fill);
-
-    // Animated highlight tint on top of the base fill (was a DComp overlay; now a
-    // UI-thread fade). Light themes darken slightly; dark themes lighten.
-    float tint01 = std::clamp(static_cast<float>(tintOpacity_), 0.0f, 1.0f);
-    if (tint01 > 0.0f) {
-        D2D1_COLOR_F tint = th.dark ? D2D1::ColorF(1, 1, 1, 0.10f)
-                                    : D2D1::ColorF(0, 0, 0, 0.06f);
-        tint.a *= tint01;
-        dc.FillRoundedRect(rr, tint);
-    }
-
-    // Border (subtle for accent, visible for standard, absent for Subtle).
-    if (ButtonDrawsBorder(kind_))
-        dc.DrawRoundedRect(rr, EffectiveBorderBrush(), EffectiveBorderThickness());
-
-    // Label. Win11: only the Accent button carries SemiBold; Standard and
-    // Subtle use Normal weight. Foreground color delegated to the pure function.
-    DWriteContext* dwrite = Dwrite();
-    if (!text_.empty() && dwrite) {
-        D2D1_COLOR_F textColor = ButtonTextColor(kind_, State(), appearance, c);
-        const DWRITE_FONT_WEIGHT weight = EffectiveFontWeight(
-            (kind_ == Kind::Accent) ? DWRITE_FONT_WEIGHT_SEMI_BOLD : DWRITE_FONT_WEIGHT_NORMAL
-        );
-        const float fontSize = EffectiveFontSize();
-        if (auto* fmt = dwrite->Format(fontSize, weight)) {
-            dc.DrawText(text_.c_str(), static_cast<UINT32>(text_.size()), fmt,
-                        D2D1::RectF(bounds_.x, bounds_.y, bounds_.right(),
-                                    bounds_.bottom()),
-                        textColor);
-        }
-    }
-
-    // Focus ring: an accent outline just outside the button when focused.
+    // Focus ring: an accent outline just outside the button when focused. Not a
+    // hook: VisualOverflowDip() declares its pad, so a subclass that moved it
+    // could paint outside the declared dirty region (CLAUDE.md, partial redraw).
     if (IsFocused()) {
         FocusRingSpec spec;
-        spec.cornerRadius = corner;  // inset/stroke keep the historical defaults
-        DrawFocusRing(dc, bounds_, c, spec);
+        spec.cornerRadius = EffectiveCornerRadius();  // inset/stroke keep the defaults
+        DrawFocusRing(dc, bounds_, Theme().colors, spec);
     }
 }
 
@@ -279,13 +237,78 @@ void Button::OpenFlyout() {
     // ShowBelow (a rect) — a point is enough here and keeps the core interface
     // from growing a second positioning virtual. The concrete flyout still flips
     // and clamps to the work area itself.
-    RECT rcWindow;
-    GetWindowRect(win->Hwnd(), &rcWindow);
+    // Client origin, not GetWindowRect: bounds_ are client DIPs and the window
+    // keeps an NC resize band on the left (see ComboBox::HeaderScreenRect).
+    POINT rcWindow = {0, 0};
+    ClientToScreen(win->Hwnd(), &rcWindow);
     const RECT anchor =
-        AnchorScreenRect(rcWindow.left, rcWindow.top, bounds_.x,
+        AnchorScreenRect(rcWindow.x, rcWindow.y, bounds_.x,
                          bounds_.y + bounds_.h, bounds_.w, kFlyoutGapDip,
                          win->DpiScale());
     flyout_->ShowAt(static_cast<int>(anchor.left), static_cast<int>(anchor.bottom));
+}
+
+// --- Extension-point implementations (protected virtual) ---------------------
+
+ButtonAppearance Button::AppearanceForRender() const {
+    return ButtonAppearance{
+        HasBackground() ? std::optional(EffectiveBackground()) : std::nullopt,
+        HasForeground() ? std::optional(EffectiveForeground()) : std::nullopt,
+        HasAccentColor() ? std::optional(EffectiveAccentColor()) : std::nullopt,
+        BackgroundHover(), BackgroundPressed(),
+        AccentColorHover(), AccentColorPressed()
+    };
+}
+
+void Button::RenderBackground(const DrawingContext& dc) {
+    const ThemeSnapshot& th = Theme();
+    const float corner = EffectiveCornerRadius();
+    D2D1_ROUNDED_RECT rr = D2D1::RoundedRect(
+        D2D1::RectF(bounds_.x, bounds_.y, bounds_.right(), bounds_.bottom()),
+        corner, corner);
+
+    // Base fill — color resolution delegated to the testable pure function.
+    D2D1_COLOR_F fill = ButtonFillColor(kind_, State(), AppearanceForRender(), th.colors);
+    if (fill.a > 0.0f)
+        dc.FillRoundedRect(rr, fill);
+
+    // Animated highlight tint on top of the base fill (was a DComp overlay; now a
+    // UI-thread fade). Light themes darken slightly; dark themes lighten.
+    float tint01 = std::clamp(static_cast<float>(tintOpacity_), 0.0f, 1.0f);
+    if (tint01 > 0.0f) {
+        D2D1_COLOR_F tint = th.dark ? D2D1::ColorF(1, 1, 1, 0.10f)
+                                    : D2D1::ColorF(0, 0, 0, 0.06f);
+        tint.a *= tint01;
+        dc.FillRoundedRect(rr, tint);
+    }
+}
+
+void Button::RenderBorder(const DrawingContext& dc) {
+    // Subtle for accent, visible for standard, absent for Subtle.
+    if (!ButtonDrawsBorder(kind_)) return;
+    const float corner = EffectiveCornerRadius();
+    D2D1_ROUNDED_RECT rr = D2D1::RoundedRect(
+        D2D1::RectF(bounds_.x, bounds_.y, bounds_.right(), bounds_.bottom()),
+        corner, corner);
+    dc.DrawRoundedRect(rr, EffectiveBorderBrush(), EffectiveBorderThickness());
+}
+
+void Button::RenderContent(const DrawingContext& dc) {
+    // Label. Win11: only the Accent button carries SemiBold; Standard and Subtle
+    // use Normal weight. Must stay in sync with Measure, which measures at the
+    // same weight — a subclass that changes the weight here must also override
+    // Measure, or the label can overflow the width Measure asked for.
+    DWriteContext* dwrite = Dwrite();
+    if (text_.empty() || !dwrite) return;
+    D2D1_COLOR_F textColor =
+        ButtonTextColor(kind_, State(), AppearanceForRender(), Theme().colors);
+    const DWRITE_FONT_WEIGHT weight = EffectiveFontWeight(
+        (kind_ == Kind::Accent) ? DWRITE_FONT_WEIGHT_SEMI_BOLD : DWRITE_FONT_WEIGHT_NORMAL);
+    if (auto* fmt = dwrite->Format(EffectiveFontSize(), weight)) {
+        dc.DrawText(text_.c_str(), static_cast<UINT32>(text_.size()), fmt,
+                    D2D1::RectF(bounds_.x, bounds_.y, bounds_.right(), bounds_.bottom()),
+                    textColor);
+    }
 }
 
 } // namespace fluent

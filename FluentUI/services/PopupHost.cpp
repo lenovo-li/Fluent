@@ -1,6 +1,7 @@
 // PopupHost.cpp
 
 #include "PopupHost.h"
+#include "../window/WindowServices.h"
 #include "../styling/ThemeManager.h"
 #include <dwmapi.h>
 #include <windowsx.h>
@@ -161,6 +162,13 @@ HRESULT PopupHost::Open(const RECT& anchorScreenRect, float wDip, float hDip) {
         content_->Arrange(area);
     }
 
+    // Register the content as an auxiliary animation root so the parent window's
+    // UpdateAnimationTimer collects it alongside elements_. This lets popup content
+    // (ComboListView scrollbar) use smooth scrolling, fade-in/out, and expand
+    // animations without the popup needing its own timer.
+    if (content_ && parentWindow_)
+        auxAnimSub_ = parentWindow_->RegisterAuxAnimationRoot(content_);
+
     // Mark open before Render(): the first frame is drawn while the HWND is still
     // hidden, then DwmFlush waits for DWM before ShowWindow (DComp pitfall #6).
     // Opening -> Open: Render() checks IsOpen(), so settle the state first.
@@ -190,6 +198,11 @@ void PopupHost::Close() {
     // a no-op (state != Open) and a reentrant Open() is rejected (CanOpen is
     // false in Closing). IsOpen() also reads false throughout onClose_.
     state_ = PopupState::Closing;
+    
+    // Unregister the auxiliary animation root so the parent window stops collecting
+    // this popup's content during UpdateAnimationTimer.
+    auxAnimSub_.reset();
+    
     ShowWindow(hwnd_, SW_HIDE);
     if (onClose_) onClose_();
     state_ = PopupState::Closed;
@@ -213,9 +226,10 @@ void PopupHost::SetContent(UIElement* content) {
     content_ = content;
     // Inject the popup's service context so tree-attached content (e.g. a tooltip
     // TextBlock) reads DWrite through Context() instead of a manual SetDWrite
-    // (roadmap §6.2). The popup shares the parent's device-level DWrite; it has no
-    // animation registry of its own (popup content is redrawn on invalidate), so
-    // that stays null. window is null too — a popup is not a WindowServices host.
+    // (roadmap §6.2). The popup shares the parent's device-level DWrite AND, if
+    // parentWindow_ is set, the parent's AnimationRegistry — so popup content can
+    // use smooth scrolling, scrollbar fade, and other UIElement animations without
+    // this lightweight window needing its own FrameHost.
     roots_.clear();
     if (content_) {
         UIContext ctx;
@@ -225,6 +239,15 @@ void PopupHost::SetContent(UIElement* content) {
         ctx.input = &input_;  // content grabs capture through the popup's router
         ctx.resourceCache = resourceCache_;  // share the parent's caches (§13.3)
         ctx.theme = theme_;                  // share the parent's stable snapshot (§11)
+        // Share the parent window's AnimationRegistry. The parent collects content_
+        // as an auxiliary root while the popup is open (RegisterAuxAnimationRoot in
+        // Open) and ticks it on its own clock; a tick's Invalidate() lands in
+        // InvalidateThunk and repaints this popup's surface. Exposing the registry
+        // here also lets UIElement::DetachFromContext drop the content from the
+        // active set. ctx.window stays null on purpose: a popup is not a
+        // WindowServices host, and content must not grab the parent's active-popup
+        // dismiss/key/wheel slots through it.
+        ctx.animations = parentWindow_ ? parentWindow_->Anims() : nullptr;
         content_->AttachToContext(ctx);
         roots_.push_back(content_);
     }
@@ -338,10 +361,6 @@ LRESULT PopupHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
                 OnSize(LOWORD(lp), HIWORD(lp));
             return 0;
 
-        case WM_MOUSEMOVE:
-            RouteMouseMove(GET_X_LPARAM(lp), GET_Y_LPARAM(lp));
-            return 0;
-
         case WM_LBUTTONDOWN:
             RouteMouseDown(GET_X_LPARAM(lp), GET_Y_LPARAM(lp));
             return 0;
@@ -356,6 +375,19 @@ LRESULT PopupHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
             RouteMouseWheel(pt.x, pt.y, GET_WHEEL_DELTA_WPARAM(wp));
             return 0;
         }
+
+        case WM_MOUSEMOVE: {
+            // Track mouse so we get WM_MOUSELEAVE when it exits.
+            TRACKMOUSEEVENT tme = {sizeof(tme), TME_LEAVE, hwnd_, 0};
+            TrackMouseEvent(&tme);
+            RouteMouseMove(GET_X_LPARAM(lp), GET_Y_LPARAM(lp));
+            return 0;
+        }
+
+        case WM_MOUSELEAVE:
+            // Notify content that pointer left the popup entirely (clear hover states).
+            input_.PointerLeftWindow();
+            return 0;
 
         case WM_ERASEBKGND:
             return 1;  // DComp owns the content
@@ -389,6 +421,10 @@ void PopupHost::OnSize(UINT pixelW, UINT pixelH) {
 void PopupHost::RouteMouseMove(int px, int py) {
     float s = 96.0f / dpi_;
     input_.PointerMoved(Point{px * s, py * s}, ModifierKeys::None);
+    // Popup input arrives on this HWND, not the parent's, so the parent's
+    // UpdateAnimationTimer never sees it. Poke the parent to re-collect now
+    // (a hover may have started a scrollbar expand).
+    if (parentWindow_) parentWindow_->RequestAnimationUpdate();
 }
 
 void PopupHost::RouteMouseDown(int px, int py) {
@@ -429,6 +465,8 @@ void PopupHost::RouteMouseWheel(int px, int py, int delta) {
     if (SystemParametersInfoW(SPI_GETWHEELSCROLLLINES, 0, &lines, 0) && lines == WHEEL_PAGESCROLL)
         lines = 0;  // normalize 0xFFFFFFFF to 0 for the element tree
     input_.PointerWheel(Point{px * s, py * s}, delta, ModifierKeys::None, lines);
+    // A wheel may have started smooth scrolling; poke the parent to collect now.
+    if (parentWindow_) parentWindow_->RequestAnimationUpdate();
 }
 
 } // namespace fluent

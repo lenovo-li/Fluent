@@ -128,6 +128,10 @@ protected:
 
     // ItemsControl hook: re-clamp selection after items change + sync list view.
     void OnItemsChanged() override;
+    // The header moved (an ancestor ScrollPanel scrolled, a relayout): the popup is
+    // positioned in screen pixels at open time and would be left floating, detached
+    // from the header, so an open dropdown closes. Same policy as WinUI/WPF.
+    void OnBoundsChanged() override;
     // Selector hook: fires the SelectionChanged event.
     void OnSelectionChanged(int /*old*/, int newIdx) override;
 
@@ -181,9 +185,11 @@ private:
     // editable. Exists so HeaderText() can return a reference in all paths.
     static const std::wstring emptyString_;
 
-    // Owns the window's active-popup-dismiss registration while the dropdown is
-    // open. Reset on close (and by ~ComboBox), so the window never holds a
-    // dangling [this] dismiss callback after this ComboBox is destroyed.
+    // Register a wheel-forwarding handler when the popup opens, and tie its lifetime
+    // to the dismiss subscription so both get cleared together on close. The handler
+    // checks if the wheel landed inside the popup window and routes it there.
+    Subscription wheelSub_;
+    
     Subscription dismissSub_;
 
     Event<ComboBox, int> selectionChanged_;

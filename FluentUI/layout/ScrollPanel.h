@@ -66,8 +66,19 @@ public:
     void SetPadding(float all) { SetPadding(Thickness(all)); }
     Thickness Padding() const { return padding_; }
 
+    // Wheel scroll step (DIPs per line). Defaults to 32.0 (matches ListBox item height).
+    // At the system default of 3 lines per wheel notch, one notch scrolls 96 DIPs.
+    // Adjust this for content density: dense forms may want smaller steps (20-24),
+    // large card lists may want bigger (40-48). The step applies to both axes
+    // (vertical wheel and Shift+wheel horizontal scrolling).
+    void SetWheelStep(float dip) { wheelStep_ = std::max(1.0f, dip); }  // Enforce min 1 DIP
+    float WheelStep() const { return wheelStep_; }
+
     // Current vertical scroll offset (DIPs from top of content).
     float VerticalOffset() const { return scroll_.Offset(); }
+    // Target vertical offset (where the animation is heading, if animating).
+    // Equals VerticalOffset() when not animating.
+    float TargetVerticalOffset() const { return scroll_.TargetOffset(); }
     // Moving the offset re-Arranges rather than merely repainting: the offset is
     // baked into the children's bounds, so stale bounds would leave both the
     // compositor visuals and hit-testing at the old position.
@@ -235,6 +246,13 @@ private:
     ScrollViewer scroll_;
     float spacing_ = 0.0f;
     Thickness padding_;           // content inset on all four sides
+    // DIPs per wheel "line". A ScrollPanel holds heterogeneous content, so unlike
+    // ListBox (itemHeight_) or TreeView (rowHeight_) there is no intrinsic row height
+    // to multiply the system's lines-per-notch by. 32 matches ListBox's default item
+    // height, which puts one notch at 96 DIP — the same felt distance as scrolling a
+    // list. The previous value (16, marked "arbitrary line height" in its own comment)
+    // scrolled half that and read as sluggish.
+    float wheelStep_ = 32.0f;
     float contentHeight_ = 0.0f;  // total height of all children + spacing
     // The width constraint children were last measured with. Arrange compares each
     // child's Desired width against it: only a child wider than its constraint has a

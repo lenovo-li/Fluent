@@ -216,6 +216,17 @@ void TextBlock::OnKeyDownRouted(KeyEventArgs& e)
 {
     if (!selectable_) return;
     UpdateMetrics();
+    
+    // Ctrl+C: copy selection to clipboard (same binding as editable controls)
+    const bool ctrl = (e.modifiers & ModifierKeys::Ctrl) == ModifierKeys::Ctrl;
+    if (ctrl && e.vk == 'C') {
+        if (CopySelectionToClipboard(Context().hwnd)) {
+            e.handled = true;
+            return;
+        }
+    }
+    
+    // Scroll keys (Up/Down/PageUp/PageDown/Home/End)
     float line = ResolveTypographySize() * 1.4f;
     float page = std::max(line, bounds_.h - line);
     switch (e.vk) {
@@ -231,7 +242,32 @@ void TextBlock::OnKeyDownRouted(KeyEventArgs& e)
 
 HCURSOR TextBlock::Cursor() const
 {
-    return selectable_ ? LoadCursor(nullptr, IDC_IBEAM) : nullptr;
+    // Selectable TextBlock shows I-beam only over actual text, not over blank space
+    // (matching read-only web text). Editable controls (TextBox/TextArea) show I-beam
+    // over the entire content area because clicking blank space places the caret there.
+    if (!selectable_ || draggingThumb_) return nullptr;
+    static HCURSOR ibeam = LoadCursor(nullptr, IDC_IBEAM);
+    return (selecting_ || pointerOverText_) ? ibeam : nullptr;
+}
+
+bool TextBlock::IsPointOverText(float dipX, float dipY) const
+{
+    if (!bounds_.contains(dipX, dipY)) return false;
+    ComPtr<IDWriteTextLayout> layout = CreateLayout();
+    if (!layout) return false;
+    BOOL isTrailing = FALSE, isInside = FALSE;
+    DWRITE_HIT_TEST_METRICS m{};
+    // Unclamped: isInside is false right of a short line and below the last line,
+    // which is exactly the blank space that should keep the arrow.
+    const float x = dipX - bounds_.x;
+    const float y = dipY - bounds_.y + scrollOffset_;
+    if (FAILED(layout->HitTestPoint(x, y, &isTrailing, &isInside, &m))) return false;
+    return isInside != FALSE;
+}
+
+void TextBlock::OnPointerLeft()
+{
+    pointerOverText_ = false;
 }
 
 RectDip TextBlock::ThumbRect() const
@@ -253,6 +289,13 @@ bool TextBlock::HitThumb(float dipX, float dipY) const
 void TextBlock::OnPointerMoved(PointerEventArgs& e)
 {
     float dipX = e.position.x, dipY = e.position.y;
+
+    // Cursor() gets no coordinates, so record here whether the pointer is over glyphs.
+    // Only when idle: during a selection drag the I-beam stays (Cursor() checks
+    // selecting_), and during a thumb drag the arrow stays.
+    if (selectable_ && !selecting_ && !draggingThumb_)
+        pointerOverText_ = !HitThumb(dipX, dipY) && IsPointOverText(dipX, dipY);
+
     if (selecting_) {
         if (dipY < bounds_.y)
             ScrollBy(std::max(-48.0f, dipY - bounds_.y));
@@ -285,7 +328,16 @@ void TextBlock::OnPointerPressed(PointerEventArgs& e)
         return;
     }
     bool trailing = false;
-    selectionAnchor_ = selectionCaret_ = HitTextPosition(dipX, dipY, &trailing);
+    UINT32 hitPos = HitTextPosition(dipX, dipY, &trailing);
+    const bool shift = (e.modifiers & ModifierKeys::Shift) == ModifierKeys::Shift;
+
+    // Shift+click extends from the anchor to the clicked position (keeps anchor).
+    // Single clicks on a bare caret (anchor = caret) also extend — standard editor.
+    if (shift && e.clickCount <= 1) {
+        selectionCaret_ = hitPos;
+    } else {
+        selectionAnchor_ = selectionCaret_ = hitPos;
+    }
     selecting_ = true;
     if (Context().input) Context().input->CapturePointer(this);
     Invalidate();

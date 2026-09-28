@@ -163,6 +163,36 @@ public:
             if (keyGen_ == gen) { popupKey_ = nullptr; ++keyGen_; }
         });
     }
+    Subscription RegisterActivePopupWheelHandler(
+        std::function<bool(int, int, int)> cb) override {
+        popupWheel_ = std::move(cb);
+        unsigned gen = ++wheelGen_;
+        return Subscription([this, gen] {
+            if (wheelGen_ == gen) { popupWheel_ = nullptr; ++wheelGen_; }
+        });
+    }
+    // Unlike the three single-slot hooks above, aux roots are a LIST (a menu
+    // cascade can have several popups open), so there is no generation guard:
+    // each Subscription erases exactly its own entry. A generation guard here
+    // would turn every older popup's unregister into a no-op and leave a
+    // dangling root in the list.
+    Subscription RegisterAuxAnimationRoot(UIElement* root) override {
+        if (!root) return Subscription();
+        auxAnimRoots_.push_back(root);
+        return Subscription([this, root] {
+            auto it = std::find(auxAnimRoots_.begin(), auxAnimRoots_.end(), root);
+            if (it != auxAnimRoots_.end()) auxAnimRoots_.erase(it);
+            frame_.Anims().Remove(root);  // never tick a closed popup's content
+        });
+    }
+
+    // Expose the animation registry for popup content injection (roadmap §6.2,
+    // WP-02 Step 3). PopupHost sets ctx.animations to this so UIElement can
+    // remove itself on detach. Non-owning pointer; stable for the host's life.
+    AnimationRegistry* Anims() override { return &frame_.Anims(); }
+    // Popup input arrives on the popup's own WndProc, bypassing this window's
+    // message handlers (which are what normally re-collect the animation set).
+    void RequestAnimationUpdate() override { UpdateAnimationTimer(); }
 
     // Re-apply theme (tokens + dark title bar) and repaint.
     void ApplyTheme();
@@ -817,12 +847,15 @@ private:
 
     std::function<bool(PopupDismissReason, HWND, int, int)> popupDismiss_;  // callback to dismiss active popup
     std::function<bool(UINT)> popupKey_;  // active popup consumes keys first
-    // Generation counters for the two slots above. Register* bumps the counter
+    std::function<bool(int, int, int)> popupWheel_;  // forward wheel to active popup (screen x/y, delta)
+    std::vector<UIElement*> auxAnimRoots_;  // auxiliary animation roots (e.g. PopupHost content)
+    // Generation counters for the three slots above. Register* bumps the counter
     // and captures the new value; the returned Subscription only clears the slot
     // if the counter still matches — so a stale subscription's destructor never
     // wipes a newer registration that replaced it.
     unsigned dismissGen_ = 0;
     unsigned keyGen_ = 0;
+    unsigned wheelGen_ = 0;
 
     // Tooltip service (created lazily on first hover with a tooltip). tooltipHot_
     // is the element the hover timer is currently counting down for.

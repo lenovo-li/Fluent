@@ -186,9 +186,11 @@ void ToolBar::ShowOverflowMenu() {
     // The old code multiplied by the DPI scale and stopped there — never adding the
     // window's own screen position — so the menu opened near the top-left of the
     // MONITOR instead of under the "...". Same conversion ComboBox uses.
-    RECT rcWindow;
-    GetWindowRect(win->Hwnd(), &rcWindow);
-    RECT anchor = AnchorScreenRect(rcWindow.left, rcWindow.top,
+    // Client origin, not GetWindowRect: bounds_ are client DIPs and the window
+    // keeps an NC resize band on the left (see ComboBox::HeaderScreenRect).
+    POINT rcWindow = {0, 0};
+    ClientToScreen(win->Hwnd(), &rcWindow);
+    RECT anchor = AnchorScreenRect(rcWindow.x, rcWindow.y,
                                    overflowBtnRect_.x,
                                    overflowBtnRect_.y + overflowBtnRect_.h,
                                    overflowBtnRect_.w, 4.0f,

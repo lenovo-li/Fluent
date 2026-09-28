@@ -82,9 +82,12 @@ public:
     void SetClientSize(float widthDip, float heightDip) {
         widthDip_ = widthDip;
         heightDip_ = heightDip;
+        autoSize_ = false;  // 用户显式设置尺寸，关闭自适应
     }
     float ClientWidth() const { return widthDip_; }
     float ClientHeight() const { return heightDip_; }
+    void SetAutoSize(bool enabled) { autoSize_ = enabled; }
+    bool AutoSize() const { return autoSize_; }
     bool IsInitialized() const { return initialized_; }
 
     Event<Window, WindowEventArgs>& Loaded() { return loaded_; }
@@ -212,6 +215,7 @@ private:
     std::wstring title_ = L"FluentUI";
     float widthDip_ = 800.0f;
     float heightDip_ = 600.0f;
+    bool autoSize_ = false;
     bool initialized_ = false;
     bool closing_ = false;
     bool loadedRaised_ = false;

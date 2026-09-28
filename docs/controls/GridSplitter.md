@@ -195,14 +195,26 @@ sub_ = splitter->DragCompleted().Subscribe(this,
 
 ## 备注
 
-### 拖动后 Star 轨道变成 Pixel
+### 拖动按原单位写回，网格保持弹性
 
-第一次拖动之后，相邻两条轨道**永久变成 `Pixel` 定义**（尺寸冻结）。窗口再缩放时这两条
-轨道不再按比例重新分配。
+拖动**不会**把 `Star` 轨道变成 `Pixel`。写回逻辑（`GridSplitter.cpp:161-181` 的
+`writeBack`）按三条规则保留原单位：
 
-这是刻意的，WPF 的 GridSplitter 行为一致：`Star` 轨道的尺寸是「剩余空间的一个比例」，
-给它赋一个 DIP 值在语义上讲不通。想拖完还保持比例，只能由应用自己在 `DragCompleted`
-里换算回 `Star`。
+| 两条轨道的单位 | 写回后 |
+|---|---|
+| Star ↔ Star | 都仍是 `Star`，重新分配星权重，**权重和守恒** |
+| Star ↔ Pixel/Auto | `Star` 侧仍是 `Star`，Pixel 侧仍是 `Pixel` |
+| Auto | 唯一被钉成 `Pixel` 的情况 |
+
+`Auto` 是例外因为它的尺寸由内容决定，没有可写回的参数——要让拖动生效只能把它固化成
+具体 DIP 值。
+
+**这与 WPF 不同。** WPF 的 GridSplitter 会把两侧都冻结成 Pixel；本实现刻意保持弹性，
+否则窗口缩放时被冻结的轨道会与 Star 轨道之间出现缝隙。
+
+正确性前提是定义快照（`defBeforeStart_` / `defAfterStart_`，`GridSplitter.h:120-124`）：
+拖动开始时记下两条轨道的原始 `GridLength`，每次移动都基于它决定写回形式，而不是读
+当前值（那样会在连续拖动中逐步丢失单位信息）。
 
 ### 零和调整与 1 DIP 下限
 

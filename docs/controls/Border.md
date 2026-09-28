@@ -83,23 +83,29 @@ card->SetBorderThickness(1.5f);
 
 ## 备注
 
-### ⚠️ 单子元素容器忽略子元素的 Margin
+### 子元素的 Margin：Border 尊重，Viewbox / Expander 忽略
 
-`Border`、`GroupBox`、`Viewbox`、`Expander` **一致忽略**其子元素的 `Margin` —— 这是本框架
-的约定,不是 bug。
+`Border` 与 `GroupBox` **尊重**子元素的 `Margin` —— 两者的 Arrange 都走
+`FrameworkElement::ComputeArrangeRect`（`Border.cpp:45`、`GroupBox.cpp:122`），
+该函数第一步就是 `slot - child->Margin()`。
 
 ```cpp
 auto* child = border->SetChild(std::make_unique<TextBlock>());
-child->SetMargin(Thickness{20.0f});   // 无效！Border 不看它
-border->SetPadding(Thickness{20.0f}); // ✓ 用容器自己的 Padding
+child->SetMargin(Thickness{20.0f});   // ✓ Border 会照做
+border->SetPadding(Thickness{20.0f}); // ✓ 也可以用容器自己的 Padding
+// 两者会叠加：内容距 Border 边界 40 DIP
 ```
 
-理由:两者会叠加成难以推理的间距,而单子元素容器已经有 `Padding` 表达同一件事。
+真正忽略子元素 Margin 的只有 `Viewbox`（`Viewbox.cpp:91` 直接 Arrange natural size）
+与 `Expander`（`Expander.cpp:166` 直接 `content_->Arrange(contentRect)`）。给这两个
+容器的子元素设 Margin 不会有任何效果，要留白就用容器的 `Padding`。
 
 ### 性能特征
 
 - **Render**:一个圆角矩形填充 + 一个圆角矩形描边。
-- 未调用 `SetBackground` / `SetBorderColor` 时走主题默认值,没有额外开销。
+- 未调用 `SetBackground` / `SetBorderColor` 时**什么都不画**（完全透明）。
+  `Border.h:107-110` 的 `hasBg_` / `hasBorder_` 默认为 false，Render 直接跳过填充与
+  描边（`Border.cpp:53,63`）；`borderThickness_` 与 `cornerRadius_` 默认也都是 0。
 - `SetBorderThickness(0)` 会**跳过**描边绘制,不是画一条 0 宽的线。
 
 ### 使用注意事项
@@ -112,12 +118,20 @@ border->SetPadding(Thickness{20.0f}); // ✓ 用容器自己的 Padding
 
 ### 主题 Token
 
-| Token | 用途 |
-| --- | --- |
-| `cardFill` | 默认背景(未设 Background 时) |
-| `controlStrokeDefault` | 默认边框色 |
-| `spacing.borderWidth` | 默认边框粗细 |
-| `spacing.cornerRadiusNormal` | 常用圆角 |
+**Border 不读任何主题 token。** `Border.cpp` 中一次 `Theme()` 调用都没有——颜色、
+粗细、圆角完全由调用方通过 `SetBackground` / `SetBorderColor` /
+`SetBorderThickness` / `SetCornerRadius` 提供，未提供即透明/为 0。
+
+要让 Border 跟随主题，调用方自己从 `Theme()` 取值传进来：
+
+```cpp
+const auto& th = Theme();
+border->SetBackground(th.colors.cardFill);
+border->SetBorderColor(th.colors.controlStrokeDefault);
+border->SetCornerRadius(th.spacing.cornerRadiusNormal);
+```
+
+这是刻意的：Border 是纯粹的绘制原语，主题决策留给使用它的控件。
 
 ### 演示页
 
