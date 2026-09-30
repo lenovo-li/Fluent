@@ -98,11 +98,17 @@ time "$MSBUILD" Fluent.slnx -p:Configuration=Release -p:Platform=x64 -verbosity:
 
 预期 Release 25 秒，Debug 9 秒（实测于 2026-08-31，机器配置未记录，推测 8 核 CPU）。
 
-## 历史
+## 注意：这些设置可能在分支分化时丢失
 
-- **2026-08-29**：在 `feature/build-and-cache-optimization` 分支首次引入（commit bf30c94）
-- **2026-08-31**：发现当前分支（`feature/listbox-itemheight-guard`）构建时间退化到 74 秒，原因是两分支在 51edf0a 之后分化，PCH 提交未合并
-- **2026-08-31**：cherry-pick bf30c94，只保留构建配置部分（移除了 ResourceCache 运行时优化，避免功能混杂）
+/MP 和 PCH 都只是 `.vcxproj` / `CMakeLists.txt` 里的几行配置，曾经因为分支分化没被合并，
+导致构建时间悄悄退回到约 74 秒。如果构建突然变慢，先确认配置还在：
+
+```bash
+grep -c "MultiProcessorCompilation\|PrecompiledHeader" FluentUI/FluentUI.vcxproj   # 应 > 0
+ls FluentUI/pch.h FluentUI/pch.cpp                                                  # 应存在
+```
+
+恢复时只恢复构建配置本身，不要连带其他运行时改动一起搬回来。
 
 ## 参考
 

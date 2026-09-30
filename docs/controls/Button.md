@@ -130,27 +130,36 @@ clickSub_ = button->Click().Subscribe<&MyPage::OnSave>(this);
 
 using namespace fluent;
 
-int main() {
-    Application app;
+class MainWindow final : public Window {
+public:
+    MainWindow() {
+        SetTitle(L"Button Example");
+        SetClientSize(480.0f, 240.0f);
+    }
 
-    auto window = std::make_unique<Window>();
-    window->SetTitle(L"Button Example");
-    // 窗口尺寸不是一个 setter：它通过 Show() 的 WindowState 传入
-    // （见 FluentUIDemo/main.cpp）。这里省略，只关注 Button 本身。
+protected:
+    // SetRoot 是 protected，只能在 Window 子类里调用，所以控件树在这里构建。
+    void OnInitialize() override {
+        auto button = std::make_unique<Button>();
+        button->SetText(L"Click Me");
+        button->SetHAlign(HAlign::Left);
+        // Subscription 必须活到不再需要回调为止，所以存成成员。写成
+        // button->Click().Subscribe(...) 丢弃返回值，回调会在这一行结束时就被取消。
+        clickSub_ = button->Click().Subscribe(
+            nullptr, [](void*, Button& sender, RoutedEventArgs&) {
+                sender.SetText(L"Clicked!");
+            });
+        SetRoot(std::move(button));
+    }
 
-    auto button = std::make_unique<Button>();
-    button->SetText(L"Click Me");
-    // Subscription 必须活到不再需要回调为止。这里存成局部变量，它的作用域覆盖
-    // app.Run()，所以整个消息循环期间订阅有效；写成 button->Click().Subscribe(...)
-    // 丢弃返回值，回调会在这一行结束时就被取消。
-    Subscription clickSub = button->Click().Subscribe(
-        nullptr, [](void*, Button& sender, RoutedEventArgs&) {
-            sender.SetText(L"Clicked!");
-        });
+private:
+    Subscription clickSub_;
+};
 
-    window->SetRoot(std::move(button));
-    window->Show();
-
+int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
+    Application app(instance);
+    MainWindow window;
+    if (FAILED(window.Show(app))) return 1;
     return app.Run();
 }
 ```

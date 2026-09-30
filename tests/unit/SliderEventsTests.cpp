@@ -136,7 +136,7 @@ TEST(SliderEvents, ValueChangedMultipleSubscribers) {
 }
 
 // Regression: Slider too narrow (bounds.w <= 2*kPadX ~27 DIP) caused division by zero
-// in ValueFromX, producing inf/NaN. Fixed in commit a4fcbe7.
+// in ValueFromX, producing inf/NaN.
 TEST(SliderEvents, NarrowSliderDoesNotCauseDivisionByZero) {
     Slider s;
     s.SetMinimum(0.0f);

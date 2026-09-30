@@ -15,7 +15,8 @@ CLAUDE.md 末尾规定了 `.claude/TASK_STATE.md` 的维护规程。Hermes 同�
 - 断点恢复顺序：读 TASK_STATE.md → `git status --short` → 看相关 diff →
   从「Exact Next Actions」第一条继续。不要重做已完成步骤，不要在没有新
   证据时重复已记录的失败方案。
-- 设计文档在 `docs/design/`，被 TASK_STATE.md 和 CLAUDE.md 引用，进版本库可见。
+- 设计/任务文档在 `docs/design/`，是临时文档：任务完成后删除。长期文档不得引用它们，
+  也不得引用 git 历史（commit SHA、`git show` 等），见 CLAUDE.md「Documentation lifetime rule」。
 
 ## Hermes 特有的环境事实
 
@@ -67,8 +68,7 @@ NativeWindowHost 现在只保留 12 个成员（从 26 降到 12），职责清�
 「私有实现细节」——应用代码应只使用 Window/DialogWindow 的 authoring API，
 不要 dynamic_cast 到 NativeWindowHost 或访问 Host 内部。
 
-详见 `.claude/refactor_backdropwindow_plan.md`（本地文档，不在版本库）。
-重构跨 5 个阶段（Phase 0-5），每阶段保持 1611/1611 测试通过，零 API 破坏。
+重构全程零 API 破坏。不采用「组合替代继承」的理由写在 `window/Window.h` 头注释里。
 
 ## 验证约定（与 CLAUDE.md 一致，此处仅为强调）
 

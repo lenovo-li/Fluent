@@ -150,7 +150,7 @@ TEST(FocusManager, DirectionalNavigation) {
     EXPECT_EQ(fm.Focused(), static_cast<UIElement*>(&a));
 }
 
-// Regression: Reentrant SetFocus in LostFocus handler (commit a4fcbe7).
+// Regression: Reentrant SetFocus in LostFocus handler.
 // Before fix: old->SetFocused(false) fired event BEFORE focused_=e, so reentrant
 // SetFocus(other) would be overwritten by outer focused_=e.
 TEST(FocusManager, ReentrantSetFocusDoesNotCorruptState) {

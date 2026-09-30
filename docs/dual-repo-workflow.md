@@ -34,8 +34,8 @@ cd /d/project/Fluent
 git add FluentUI/controls/Button.cpp
 git commit -m "优化 Button 按下动画"
 
-# 更新开发文档
-git add .claude/TASK_STATE.md docs/design/button-animation.md
+# 更新长期文档
+git add docs/learn/button-animation.md
 git commit -m "记录 Button 动画优化方案"
 
 # 推送到私有库

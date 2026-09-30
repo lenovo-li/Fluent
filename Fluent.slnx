@@ -10,6 +10,7 @@
   </Folder>
   <Folder Name="/demos/examples/">
     <Project Path="examples/CustomControls/CustomControls.vcxproj" Id="e8c9d8a1-9b4e-4f2c-8d3e-1a2b3c4d5e6f" />
+    <Project Path="examples/InstallerControls/InstallerControls.vcxproj" Id="f8e2d9a1-3b4c-5d6e-7f8a-9b0c1d2e3f4a" />
   </Folder>
   <Project Path="FluentSettings/FluentSettings.vcxproj" Id="a5f1c3e2-7b84-4d16-9c0a-2e6f8d3b1a44" />
   <Project Path="FluentUI/FluentUI.vcxproj" Id="dcce72dd-3d48-4f95-9746-89b4ec20677e" />

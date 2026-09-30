@@ -1,4 +1,4 @@
-// GridSplitterEventsTests.cpp — GridSplitter drag events (event_completion_plan §3).
+// GridSplitterEventsTests.cpp — GridSplitter drag events.
 //
 // DragStarted / DragDelta / DragCompleted. The scenario these exist for is layout
 // persistence: an app saves the new column widths when the user finishes dragging,

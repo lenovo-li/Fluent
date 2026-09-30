@@ -79,6 +79,9 @@
     <ProjectReference Include="..\examples\CustomControls\CustomControls.vcxproj">
       <Project>{e8c9d8a1-9b4e-4f2c-8d3e-1a2b3c4d5e6f}</Project>
     </ProjectReference>
+    <ProjectReference Include="..\examples\InstallerControls\InstallerControls.vcxproj">
+      <Project>{f8e2d9a1-3b4c-5d6e-7f8a-9b0c1d2e3f4a}</Project>
+    </ProjectReference>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="GalleryMain.cpp" />
@@ -86,6 +89,7 @@
     <ClCompile Include="pages\BasicInputPages.cpp" />
     <ClCompile Include="pages\CheckRadioPages.cpp" />
     <ClCompile Include="pages\CustomControlsPage.cpp" />
+    <ClCompile Include="pages\InstallerControlsPage.cpp" />
     <ClCompile Include="pages\TextPages.cpp" />
     <ClCompile Include="pages\PasswordBoxPage.cpp" />
     <ClCompile Include="pages\TextInputPages.cpp" />

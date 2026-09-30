@@ -89,7 +89,7 @@ std::unique_ptr<Panel> GalleryApp::BuildContent() {
 
 void GalleryApp::BuildAllPages() {
     static constexpr int kPageIds[] = {
-        101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112,  // 基础控件
+        101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113,  // 基础控件
         201, 208, 202, 203, 204, 205, 206, 207,   // 输入控件
         301, 302,                            // 文本控件
         401, 402, 403, 404, 405, 406, 407, 408, 409,  // 数据控件（LogViewer + RichTextBox）
@@ -165,6 +165,7 @@ std::vector<TreeViewRow> GalleryApp::BuildNavigationTree() {
     rows.push_back({110, 100, L"Hyperlink", 1, false, false, true, TreeViewIcon::None});
     rows.push_back({111, 100, L"Rating", 1, false, false, true, TreeViewIcon::None});
     rows.push_back({112, 100, L"Custom Controls", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({113, 100, L"Installer Controls", 1, false, false, true, TreeViewIcon::None});
     rows.push_back({512, 500, L"动态列表 (RemoveAt/InsertAt)", 1, false, false, true, TreeViewIcon::None});
 
     rows.push_back({600, -1, L"窗口 & 对话框", 0, false, true, true, TreeViewIcon::Folder});
@@ -240,6 +241,7 @@ std::unique_ptr<ScrollPanel> GalleryApp::CreatePageForId(int id) {
         case 110: return CreateHyperlinkPage();
         case 111: return CreateRatingPage();
         case 112: return CreateCustomControlsPage();
+        case 113: return CreateInstallerControlsPage();
 
         case 201: return CreateTextBoxPage();
         case 208: return CreatePasswordBoxPage();

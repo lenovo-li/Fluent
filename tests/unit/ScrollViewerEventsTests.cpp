@@ -1,4 +1,4 @@
-// ScrollViewerEventsTests.cpp — ScrollViewer.ScrollChanged (event_completion_plan §2).
+// ScrollViewerEventsTests.cpp — ScrollViewer.ScrollChanged.
 //
 // Covers the direct setters, both axes, the "no event when the offset did not move"
 // case, and the animation path — which is the one with a performance cliff on it:

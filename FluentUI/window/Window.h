@@ -26,8 +26,7 @@
 // Composition was evaluated and deliberately not adopted: with Window and
 // DialogWindow as the only two subclasses in the entire codebase and fewer than
 // ten host calls between them, hand-writing 30+ forwarding methods would add
-// surface area without changing the layering. See
-// .claude/refactor_backdropwindow_plan.md ("Phase 6 取消理由").
+// surface area without changing the layering.
 //
 // LIFECYCLE HOOKS AND WHY SOME ARE final. The three framework-driven overrides
 // (OnCreated / OnDestroying / OnDestroyed) are final on purpose: each one carries

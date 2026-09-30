@@ -7,9 +7,10 @@
 API 刻意对齐 WPF/WinUI 的心智模型（Measure/Arrange、DirtyFlags、路由事件、
 token 化主题），有 XAML 经验即可平移。
 
-## 截图
+## 演示
 
-演示应用展示了各种控件的状态、样式与交互效果。
+仓库暂无截图。构建后运行 `x64/Debug/FluentUIDemo.exe`，左侧导航列出全部控件页，
+展示各控件的状态、样式与交互效果。
 
 ## 特性
 
@@ -33,7 +34,9 @@ token 化主题），有 XAML 经验即可平移。
 ## 控件
 
 基础：Button / RepeatButton / CheckBox / RadioButton / ToggleSwitch / Slider / ProgressBar /
-TextBlock / TextBox / PasswordBox / Hyperlink / Image / Separator / Tooltip
+TextBlock / TextBox / PasswordBox / Hyperlink / Image / Separator / Rating / NumericUpDown
+
+状态与数据展示：InfoBar（内联提示条）/ Metric（指标卡）/ Chart（折线/柱状/K 线）
 
 选择与导航：ComboBox（可编辑）/ ListBox（虚拟化，O(visible) 绘制）/
 TreeView（虚拟化，双击展开/折叠）/ DataGrid（虚拟化，列定义、排序、单元格编辑）/
@@ -43,21 +46,22 @@ ToolBar（命令条，溢出进 flyout）/ StatusBar
 文本与日期：TextArea（NoWrap/Wrap 两模式虚拟化，28 MB 秒开）/ RichTextBox（段落缩进）/
 LogViewer（高吞吐 log 追加）/ DatePicker / Calendar
 
-对话框：ContentDialog / MessageDialog
+对话框：ContentDialog / MessageDialog / OpenFileDialog / SaveFileDialog（系统文件对话框封装）
 
 分组：GroupBox / Expander
 
-窗口与系统集成：Window（含托盘图标支持，见 `window/TrayIcon.h` 和 `demos/TrayAppDemo`）
+窗口与系统集成：Window（含托盘图标支持，见 `window/TrayIcon.h` 和 `demos/TrayAppDemo`）；
+工具提示不是独立控件，通过 `UIElement::SetTooltip` 设置
 
-布局：StackPanel / Grid / DockPanel / Canvas / WrapPanel / Border / ScrollPanel（通用可滚动容器，不虚拟化）/ GridSplitter（可拖动分隔条）
+布局：StackPanel / Grid / DockPanel / Canvas / WrapPanel / UniformGrid / Border / Viewbox（缩放）/ ScrollPanel（通用可滚动容器，不虚拟化）/ GridSplitter（可拖动分隔条）
 
 另有一个内部零件：`layout/ScrollViewer.h` 是滚动条引擎（滚动状态、thumb 几何、
-平滑滚动动画、自动淡出/悬停展开），被 ListBox/TreeView/TextArea/ScrollPanel/ComboBox
-内嵌复用。
+平滑滚动动画、自动淡出/悬停展开），被 ListBox/TreeView/DataGrid/TextArea/RichTextBox/LogViewer/ScrollPanel
+内嵌复用（ComboBox 的下拉列表自己算滚动，不用它）。
 
 ## 构建
 
-需要 Visual Studio 2022+、Windows 10 1803+ SDK。仅 x64。
+需要 Visual Studio 2026（v18，MSVC v145 工具集；VS 2022 只带 v143，工程无法加载）、Windows 10 1803+ SDK。仅 x64。
 
 最省事的方式是在 VS 里直接打开 `Fluent.slnx`。命令行构建两条路都可以，
 用 `vswhere` 定位安装，避免把某台机器的路径写死（版本与版次因机器而异）：
@@ -82,6 +86,41 @@ CMake 构建产出静态库 `FluentUI.lib`（及可选的 `FluentSettings.lib`�
 并提供安装/`find_package` 支持；`examples/Minimal` 是最小消费示例
 （用 `-DFLUENTUI_BUILD_EXAMPLES=ON` 一并构建）。测试与 demo 只在
 MSBuild 工程里定义，跑测试请走上面的 MSBuild 路径。
+
+## 第一个窗口
+
+可编译的最小示例是 `examples/Minimal/main.cpp`（约 40 行）。要点：`Application app(instance)`
+没有默认构造；`SetRoot` 是 protected，控件树在 `Window` 子类的 `OnInitialize()` 里构建；
+`Subscribe` 返回的 `Subscription` 必须存成成员，丢弃即退订。
+
+```cpp
+#include <FluentUI/FluentUI.h>
+
+using namespace fluent;
+
+class MainWindow final : public Window {
+public:
+    MainWindow() { SetTitle(L"Hello"); SetClientSize(640.0f, 360.0f); }
+protected:
+    void OnInitialize() override {
+        auto root = std::make_unique<StackPanel>();
+        auto* button = root->Emplace<Button>();
+        button->SetText(L"Close");
+        closeSub_ = button->Click().Subscribe<&MainWindow::OnClose>(this);
+        SetRoot(std::move(root));
+    }
+private:
+    void OnClose(Button&, RoutedEventArgs&) { Close(); }
+    Subscription closeSub_;
+};
+
+int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
+    Application app(instance);
+    MainWindow window;
+    if (FAILED(window.Show(app))) return 1;
+    return app.Run();
+}
+```
 
 ## 项目
 
@@ -109,7 +148,8 @@ MSBuild 工程里定义，跑测试请走上面的 MSBuild 路径。
 
 - **无障碍功能未实现**：尚无 UI Automation 支持，屏幕阅读器无法识别界面内容。有无障碍
   合规要求的应用不应在此功能补齐前采纳 FluentUI。
-- **仅支持 x64**：Win32/x86 和 ARM64 未构建测试。
+- **仅支持 x64**：Win32/x86 和 ARM64 未构建测试。`Fluent.slnx` 里残留的 Win32 平台未维护，
+  在 VS 里请选 x64。
 - **无 RTL 布局**：从右到左语言（阿拉伯语、希伯来语）未测试。
 - **静态库，无 ABI 稳定性**：消费者需匹配 MSVC 工具集版本重新编译。
 - **视觉正确性手动验证**：无自动化截图回归测试。
@@ -117,7 +157,8 @@ MSBuild 工程里定义，跑测试请走上面的 MSBuild 路径。
 ## 参与贡献
 
 见 `CONTRIBUTING.md`。两条最容易被忽略的硬性要求：新增 `.cpp` 必须同时注册到
-`.vcxproj` 和 `CMakeLists.txt`（两边都没用 glob），以及新测试必须做变异验证
+`.vcxproj`、`.vcxproj.filters` 和 `CMakeLists.txt`（都没用 glob，`python scripts/check_all.py`
+会检查三者是否同步），以及新测试必须做变异验证
 ——把修复改回坏的样子，确认测试真的会红。
 
 ## 第三方依赖

@@ -6,16 +6,17 @@
 // source of truth). Reimplements caret, selection, typing, Backspace/Delete,
 // and clipboard for the rich-text model.
 //
-// NOW USES ONE LAYOUT for the entire document with per-range formatting, so
-// runs flow inline and wrap correctly. No virtualization (the full document is
-// in memory and rendered in one DirectWrite layout).
+// One DirectWrite layout PER PARAGRAPH (paragraphLayouts_), with per-range
+// formatting inside each, so runs flow inline and wrap correctly. Paragraph-level
+// format (alignment, spacing, indents) is a layout property, which is why it cannot
+// be a single layout for the whole document. No virtualization: the full document
+// is in memory and laid out.
 //
 // Indices are UTF-16 code-unit offsets into the document's plain text; the caret
 // sits between code units [0..length].
 //
-// NOT YET IMPLEMENTED: undo, IME composition, input filters, max-length, readonly.
-// These can be added by lifting the relevant pieces from TextEditBase once the
-// core editing loop works.
+// Implemented: snapshot undo/redo, IME composition, read-only mode.
+// NOT YET IMPLEMENTED: input filters, max-length.
 #pragma once
 
 #include "../core/Control.h"

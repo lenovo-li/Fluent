@@ -518,6 +518,5 @@ Low-priority controls were evaluated and found to prefer **composition over inhe
 ---
 
 **Related Documents**:
-- `control_inheritance_enhancement_plan.md` — design decisions, industry comparison
-- `control_inheritance_tasks.md` — implementation details, verification steps
 - Individual control docs: `Calendar.md`, `Button.md`, `Slider.md` (Inheritance sections)
+- Separate-library template: `examples/CustomControls/README.md`

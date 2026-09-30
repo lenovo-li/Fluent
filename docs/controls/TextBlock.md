@@ -70,10 +70,27 @@ TextBlock 实际仍按旧尺寸绘制。这个陷阱写在代码注释里。
 ### 滚动
 
 ```cpp
-void SetScrollOffset(float offsetDip);
+void  SetScrollOffset(float offsetDip);
+void  ScrollBy(float deltaDip);
+float ScrollOffset() const;
+float ContentHeight() const;   // 排版后的文本总高度
 ```
 
 配合 `SetSelectable(true)` 使用:开启后方向键/PageUp/PageDown 与滚轮会滚动这段文本。
+滚轮只在确有内容可滚时才被吞掉,否则继续冒泡给外层滚动容器。
+
+### 选择与复制
+
+```cpp
+bool HasSelection() const;
+void ClearSelection();
+bool CopySelectionToClipboard(HWND owner) const;
+void SelectionRange(UINT32& start, UINT32& length) const;
+bool IsPointOverText(float dipX, float dipY) const;  // 点是否落在字形上(驱动 I-beam)
+```
+
+`SetSelectable(true)` 后鼠标拖选、Ctrl+A / Ctrl+C 可用;这组方法供代码控制选区。
+指针在字形上才显示 I-beam,落在块内空白处仍是箭头。
 
 ---
 

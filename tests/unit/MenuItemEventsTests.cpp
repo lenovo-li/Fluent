@@ -1,4 +1,4 @@
-// MenuItemEventsTests.cpp — MenuItem.Invoked() (event_completion_plan §4, 方案B).
+// MenuItemEventsTests.cpp — MenuItem.Invoked().
 //
 // MenuItem went from a POD struct with a public `std::function<void()> onInvoke`
 // field to a class owning an Event<>. The interesting property is not "does the

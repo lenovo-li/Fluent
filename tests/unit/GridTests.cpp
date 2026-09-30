@@ -170,7 +170,7 @@ TEST(Grid, AutoRowsWithUnboundedHeight_DoNotCollapse) {
 }
 
 // Regression: All Star tracks with 0* weight caused them to get zero space,
-// making content disappear (commit a4fcbe7).
+// making content disappear.
 TEST(Grid, AllZeroStarWeights_DistributeEqually) {
     Grid g;
     g.SetColumns({GridLength::Star(0.0f), GridLength::Star(0.0f)});

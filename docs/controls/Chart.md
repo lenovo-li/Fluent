@@ -74,6 +74,9 @@ OHLC 用四个独立访问器而不是一个结构体：行情数据的常见形
 | `SetShowGridLines(bool)` | 网格线 | Render |
 | `SetShowYAxis(bool)` / `SetShowXAxis(bool)` | 坐标轴 | Measure |
 
+查询：`GetKind()`、`SeriesCount()`、`MinY()` / `MaxY()`（当前生效的 Y 范围，自动模式下是
+算出来的值）、`VisibleFirst()` / `VisibleCount()`。
+
 `SetKind` 是 Measure 级而不是 Render 级：K 线要用 high/low 定范围，所以同一批数据
 在自动缩放下的 Y 范围（以及标签槽宽度）与折线图不同。
 

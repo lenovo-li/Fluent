@@ -2,7 +2,7 @@
 
 ## 概述
 
-只读的虚拟化文本表格。数据应用的核心控件：数千行、数十列的行情快照或财务报表。
+虚拟化文本表格（可选的单元格编辑、多选、列宽拖动、行拖拽重排、冻结列）。数据应用的核心控件：数千行、数十列的行情快照或财务报表。
 
 **虚拟化是它存在的全部理由，而且是双向的：**
 
@@ -53,15 +53,20 @@ DataGrid();
 
 ```cpp
 enum class Align { Left, Right, Center };
+enum class SortDirection { None, Ascending, Descending };
+enum class SelectionMode { Single, Multiple };
 
 struct Column {
     std::wstring header;
-    float width = 96.0f;      // DIP，固定宽度
+    float width = 96.0f;      // DIP
     Align align = Align::Left;
+    bool resizable = true;    // 允许拖动表头分隔线改宽（需 SetColumnResizeEnabled(true)，默认即开）
+    bool frozen = false;      // 钉在左侧，不随横向滚动
 };
 
 using CellProvider     = std::function<std::wstring(int row, int col)>;
 using RowColorProvider = std::function<bool(int row, D2D1_COLOR_F& out)>;
+using CellValidator    = std::function<bool(int row, int col, const std::wstring& text)>;
 ```
 
 `Align` 存在的原因：数字列靠比较位数来读，位数必须对齐，所以数值列**必须**右对齐。
@@ -80,7 +85,22 @@ using RowColorProvider = std::function<bool(int row, D2D1_COLOR_F& out)>;
 | `SetRowHeight(float)` | 行高，最小 16 DIP | Measure |
 | `SetAlternatingRowFill(bool)` | 斑马纹，默认关 | Render |
 | `SetShowGridLines(bool)` | 网格线，默认开 | Render |
-| `SetSelectedRow(int)` | 选中行，-1 为无 | Render |
+| `SetSelectedRow(int)` | 选中行，-1 为无（Multiple 模式下操作第一个选中行） | Render |
+| `SetSelectionMode(SelectionMode)` | Single（默认）/ Multiple（Ctrl/Shift 多选） | Render |
+| `SetColumnResizeEnabled(bool)` | 表头分隔线拖动改列宽，默认开 | — |
+| `SetCopyEnabled(bool)` | Ctrl+C 复制选中行为 TSV，默认开 | — |
+| `SetRowReorderEnabled(bool)` | 拖拽选中行重排，默认关 | — |
+| `SetEditingEnabled(bool)` | F2 / 双击进入单元格编辑，默认关 | — |
+| `SetCellValidator(CellValidator)` | 提交前校验，返回 false 拒绝并保持编辑框 | — |
+| `SetSortColumn(int, SortDirection)` / `ClearSort()` | 表头排序箭头（**只画指示，不排序数据**） | Render |
+
+`RefreshCells()`：行数不变但数据变了时调用。`SetRowCount` 在行数不变时直接返回，
+不会重绘，不调它会继续显示上次拉取的文字。
+
+查询：`Columns()`、`RowCount()`、`RowHeight()`、`SortColumn()`、`GetSortDirection()`、
+`GetSelectionMode()`、`SelectedRow()`、`SelectedRows()`、`IsRowSelected(int)`，
+以及各开关对应的 `ColumnResizeEnabled()` / `CopyEnabled()` / `RowReorderEnabled()` /
+`EditingEnabled()`。`ClearSelection()` 两种模式都可用。
 
 `SetRowCount` 缩小时会把越界的选中行拉回范围内 —— 否则下一帧会向访问器请求一个
 已不存在的行。
@@ -120,6 +140,31 @@ float HorizontalOffset() const;
 void  ScrollRowIntoView(int row);
 ```
 
+### 列宽自适应
+
+```cpp
+float MeasureColumnContent(int col) const;  // 返回适配宽度，不修改列
+void  AutosizeColumn(int col);              // 测量并应用
+```
+
+只测量**视口内可见的行**加表头（全表测量是 O(rows)，会毁掉虚拟化），下限 24 DIP。
+所以结果取决于当前滚动位置，这是刻意的取舍。
+
+### 单元格编辑
+
+```cpp
+void BeginEdit(int row, int col);   // 等同于在该格按 F2
+void CancelEdit();
+bool IsEditing() const;
+int  EditingRow() const;
+int  EditingColumn() const;
+```
+
+Enter 提交（先过 `CellValidator`，被拒则编辑框保持打开），Escape 取消；编辑中点击其他行
+等于提交。编辑中的 Enter/Escape 由 DataGrid 先处理，不会落到行导航或外层对话框。
+F2 和双击目前都打开**第 0 列**（双击尚未按点击位置定位列）；要编辑其他列用
+`BeginEdit(row, col)`。
+
 `ScrollRowIntoView` 只在目标行确实不可见时移动视口 —— 已可见时移动会让方向键导航
 每次按键都抖一下。
 
@@ -133,11 +178,23 @@ void  ScrollRowIntoView(int row);
 ```cpp
 Event<DataGrid, RoutedEventArgs>& SelectionChanged();
 Event<DataGrid, RoutedEventArgs>& ColumnHeaderClicked();
-int ColumnClickedIndex() const;      // 在 ColumnHeaderClicked 处理器里读
+int ColumnClickedIndex() const;              // 在 ColumnHeaderClicked 处理器里读
+
+Event<DataGrid, RoutedEventArgs>& CellEdited();   // 校验通过、提交之后
+int EditedRow() const;
+int EditedColumn() const;
+const std::wstring& EditedText() const;
+
+Event<DataGrid, RoutedEventArgs>& RowsReordered();
+const std::vector<int>& ReorderedOldIndices() const;  // 原索引，升序
+int ReorderedNewIndex() const;                        // 第一行落点
 ```
 
-**控件不排序。** 表头点击只上报列号，排序由应用做（改自己的顺序后重新指向访问器）。
-控件对顺序没有意见。
+所有载荷都通过 sender 的访问器读取，处理器签名统一是
+`void(*)(void*, DataGrid&, RoutedEventArgs&)`。
+
+**控件不排序，也不重排数据。** 表头点击只上报列号；应用排好自己的数据后调
+`SetSortColumn` 更新箭头。`RowsReordered` 同理：应用移动自己的存储，再调 `RefreshCells()`。
 
 ⚠️ `Subscription` 必须持有，它是 RAII 的。
 
@@ -197,19 +254,23 @@ grid->SetRowColorProvider([win](int row, D2D1_COLOR_F& out) {
   Metric 有自然高度（三行文字），写死会切字；DataGrid **没有**自然高度 —— 它的
   自然高度是全部行加起来（5 万行 × 28 = 140 万 DIP）。视口大小只能由调用者决定，
   这正是显式尺寸的正当用途。
-- **列宽固定，没有自动适配。** 自动适配意味着为某列拉取并测量**每一行**的文字，
-  是 O(rows) 的测量 —— 会毁掉本控件存在的理由，并在 10 万行表上每次 resize 卡死
-  UI 线程。需要适配请自己抽样测量后设定列宽。
+- **列宽不会自动适配。** 全量适配意味着为某列测量**每一行**的文字，是 O(rows)，
+  会在 10 万行表上卡死 UI 线程。`AutosizeColumn` 只按当前视口抽样，需要时显式调用。
 - 单元格访问器在渲染路径上，**每格每帧调用一次**。要廉价，尽量不分配。
 
 ### 键盘导航
 
 | 按键 | 行为 |
 | --- | --- |
-| ↑ / ↓ | 上下移动选中行并滚入视野 |
+| ↑ / ↓ | 上下移动选中行并滚入视野（Multiple 模式下 Shift 扩展选区） |
 | PageUp / PageDown | 翻页（视口行数 - 1） |
 | Home / End | 首行 / 末行 |
+| F2 | 编辑当前行（需 `SetEditingEnabled(true)`） |
+| Enter / Escape | 编辑中：提交 / 取消 |
+| Ctrl+C | 复制选中行为 TSV（`SetCopyEnabled`，默认开） |
 | 滚轮 | 平滑滚动 3 行/档 |
+
+鼠标：点击表体会取得焦点；Multiple 模式下 Ctrl+点击切换、Shift+点击按锚点扩展。
 
 ### 主题 Token
 
@@ -228,11 +289,10 @@ grid->SetRowColorProvider([win](int row, D2D1_COLOR_F& out) {
 
 ### 尚未实现（刻意）
 
-- **编辑**：需要一整套焦点/提交/校验模型，那是另一个控件。
-- **排序 / 筛选**：只上报表头点击。
+- **数据排序 / 筛选**：控件只画排序箭头、上报表头点击，数据由应用处理。
 - **单元格内放控件**：会毁掉虚拟化。
 - **单元格换行**：行高会变成数据相关，破坏使滚动保持 O(可见) 的常数时间行索引。
-- **列宽拖动**：需要在表头做命中测试与拖拽状态。
+- **双击按列定位编辑**：双击目前总是编辑第 0 列。
 
 ### 演示页
 

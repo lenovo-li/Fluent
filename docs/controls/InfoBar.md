@@ -16,7 +16,7 @@
 - 拒绝执行的说明（「自由现金流为负，无法估值」）
 
 **它不是对话框。** `ContentDialog` 打断用户并要求一个决定；InfoBar 待在布局里陈述
-事实。这个区别决定了它是普通的 `FrameworkElement`、参与正常布局，而不像
+事实。这个区别决定了它派生自 `Control`、参与正常布局，而不像
 `MessageDialog` 那样持有一个 popup 窗口。
 
 ---
@@ -33,9 +33,6 @@ Visual
 
 **命名空间**: `fluent`
 **头文件**: `FluentUI/controls/InfoBar.h`
-
-> 注：`docs/controls/TEMPLATE.md` 与 `Button.md` 里写的 `FluentUI::Controls` 命名空间
-> **不存在**，实际代码全部在 `namespace fluent` 下。那两处文档是过期的。
 
 ---
 

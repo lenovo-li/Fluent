@@ -149,7 +149,7 @@ grid->SetHeight(58.0f);             // ✗ 猜一个字体的行高
 
 ### 性能特征
 
-- **轨道解算 O(轨道数)**,与子元素数量无关;`ResolveTracks` 是纯函数,可单独测试。
+- **轨道解算 O(轨道数)**,与子元素数量无关;`ResolveTracks` 是纯函数(private static,测试通过公开的 `ResolvedColumnSizes()` / `ResolvedRowSizes()` 间接覆盖)。
 - **不可见子元素被跳过**:`Panel` 在 Measure 与 Arrange 两处都查 `IsVisible()`,所以
   `SetVisible(false)` 的元素既不参与测量也不影响轨道尺寸,常驻成本只是内存。
 - `Auto` 轨道需要测量该轨道上的所有子元素;`Pixels` 不需要。轨道很多且都是 Auto 时,

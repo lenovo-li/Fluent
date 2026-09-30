@@ -6,7 +6,7 @@ API 仍可能变。欢迎 issue 和 PR，但请先读完本文，尤其是「新
 
 ## 环境
 
-- Visual Studio 2022+、Windows 10 1803+ SDK
+- Visual Studio 2026（v18，MSVC v145 工具集）、Windows 10 1803+ SDK
 - 仅 x64（Win32/x86、ARM64 未构建测试）
 - 无第三方依赖：不要引入 gtest / boost / fmt 之类的库，测试框架是自研的
   （`tests/framework/Test.h`，只有 `EXPECT_TRUE` / `EXPECT_FALSE` /
@@ -34,13 +34,13 @@ API 仍可能变。欢迎 issue 和 PR，但请先读完本文，尤其是「新
 - **状态完整**：禁用态（IsEnabled=false）有正确的视觉表现
 - **主题 token 化**：所有颜色、字号、圆角、间距从 `Theme()` 读取
 - **有测试**：至少覆盖基本交互和边界情况（空输入、禁用态、主题切换）
-- **注册到两个构建系统**：`.vcxproj` **和** `CMakeLists.txt` 都要加
+- **注册到两个构建系统**：`.vcxproj`（连同 `.vcxproj.filters`）**和** `CMakeLists.txt` 都要加
 
 最后一条特别容易漏：两个构建系统都没有用 glob，新增 `.cpp` 必须手工加到
 两处。只加 vcxproj 的话你本地一切正常，而只用 CMake 的人会拿到一串
 `LNK2019` 未解析外部符号。
 
-运行 `python scripts/check_all.py` 可以检查源文件列表是否同步。
+运行 `python scripts/check_all.py` 可以检查源文件列表与 Solution Explorer 目录树是否同步。
 
 ## 测试要求
 

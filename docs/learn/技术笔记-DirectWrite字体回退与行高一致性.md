@@ -2,7 +2,7 @@
 
 **日期**：2026-09-26  
 **作者**：AI Assistant  
-**关联 Commit**：2d6599e (fix/scroll-jitter)
+**关联代码**：`FluentUI/controls/TextArea.cpp`，测试 `tests/unit/TextAreaLineHeightProbe.cpp`
 
 ---
 
@@ -284,7 +284,6 @@ format->SetLineSpacing(...);  // IDWriteTextFormat 没有这个方法
 
 - [MSDN: IDWriteTextLayout::SetLineSpacing](https://docs.microsoft.com/en-us/windows/win32/api/dwrite/nf-dwrite-idwritetextlayout-setlinespacing)
 - [MSDN: DWRITE_LINE_SPACING_METHOD](https://docs.microsoft.com/en-us/windows/win32/api/dwrite/ne-dwrite-dwrite_line_spacing_method)
-- Commit 2d6599e: `fix(TextArea): eliminate font-fallback line-height jump`
 - Test: `tests/unit/TextAreaLineHeightProbe.cpp`
 
 ---

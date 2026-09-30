@@ -7,9 +7,10 @@
 API 刻意对齐 WPF/WinUI 的心智模型（Measure/Arrange、DirtyFlags、路由事件、
 token 化主题），有 XAML 经验即可平移。
 
-## 截图
+## 演示
 
-演示应用展示了各种控件的状态、样式与交互效果。
+仓库暂无截图。构建后运行 `x64/Debug/FluentUIDemo.exe`，左侧导航列出全部控件页，
+展示各控件的状态、样式与交互效果。
 
 ## 特性
 
@@ -17,7 +18,7 @@ token 化主题），有 XAML 经验即可平移。
   四层，每层只加一个关注点
 - **WPF 式两趟布局**：Measure/Arrange，带 Measure 缓存短路
 - **DirectComposition 渲染**：窗口内容绘制在 DComp virtual surface 上，
-  滚动与属性动画跑在合成器线程，UI 线程繁忙也不卡
+  属性动画跑在合成器线程（ProgressBar 不定态扫光），UI 线程繁忙也不卡
 - **文本虚拟化**：TextArea 的 NoWrap 模式精确虚拟化（28 MB / 20 万行秒开），
   Wrap 模式按段估算虚拟化；高吞吐 log 追加（AppendText O(1)，SetMaxLines 环形上限）
 - **主题 token 化**：亮/暗双主题，控件零硬编码颜色
@@ -27,27 +28,30 @@ token 化主题），有 XAML 经验即可平移。
 ## 控件
 
 基础：Button / CheckBox / RadioButton / ToggleSwitch / Slider / ProgressBar /
-TextBlock / TextBox / Hyperlink / Image
+TextBlock / TextBox / PasswordBox / Hyperlink / Image / Separator / Rating / NumericUpDown
+
+状态与数据展示：InfoBar / Metric / Chart（折线/柱状/K 线）
 
 选择与导航：ComboBox（可编辑）/ ListBox（可选虚拟化，O(visible) 绘制）/
-TreeView（固定行高虚拟化 + DComp 合成器滚动）/ TabControl / MenuBar / MenuFlyout /
+TreeView（固定行高虚拟化）/ DataGrid（虚拟化，排序、单元格编辑）/ TabControl / MenuBar / MenuFlyout /
 ToolBar（CommandBar 风格，溢出进 flyout）/ StatusBar
 
-文本与日期：TextArea（NoWrap/Wrap 两模式均虚拟化 + DComp 合成器滚动）/
+文本与日期：TextArea（NoWrap/Wrap 两模式均虚拟化）/ RichTextBox / LogViewer（高吞吐 log 追加）/
 DatePicker / Calendar
 
-对话框：ContentDialog / MessageDialog
+对话框：ContentDialog / MessageDialog / OpenFileDialog / SaveFileDialog
 
-布局：StackPanel / Grid / DockPanel / Canvas / WrapPanel / Border / ScrollPanel（通用可滚动容器，不虚拟化）/ GridSplitter（可拖动分隔条）
+分组：GroupBox / Expander
 
-另有两个内部零件：`layout/ScrollViewer.h` 是滚动条引擎（滚动状态、thumb 几何、
-平滑滚动动画、自动淡出/悬停展开），被 ListBox/TreeView/TextArea/ScrollPanel
-内嵌复用；`composition/ScrollContentHost.h` 是合成器滚动宿主，被 TextArea/TreeView
-内嵌复用。
+布局：StackPanel / Grid / DockPanel / Canvas / WrapPanel / UniformGrid / Border / Viewbox（缩放）/ ScrollPanel（通用可滚动容器，不虚拟化）/ GridSplitter（可拖动分隔条）
+
+另有一个内部零件：`layout/ScrollViewer.h` 是滚动条引擎（滚动状态、thumb 几何、
+平滑滚动动画、自动淡出/悬停展开），被 ListBox/TreeView/DataGrid/TextArea/RichTextBox/
+LogViewer/ScrollPanel 内嵌复用。
 
 ## 构建
 
-需要 Visual Studio 2022+、Windows 10 1803+ SDK。仅 x64。
+需要 Visual Studio 2026（v18，MSVC v145 工具集；VS 2022 只带 v143，工程无法加载）、Windows 10 1803+ SDK。仅 x64。
 
 ### Visual Studio 方式
 

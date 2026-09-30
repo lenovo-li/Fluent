@@ -173,6 +173,7 @@ private:
     std::unique_ptr<ScrollPanel> CreateGroupBoxPage();
     std::unique_ptr<ScrollPanel> CreateDynamicListPage();
     std::unique_ptr<ScrollPanel> CreateCustomControlsPage();
+    std::unique_ptr<ScrollPanel> CreateInstallerControlsPage();
 
     std::unique_ptr<ScrollPanel> CreateContentDialogPage();
     std::unique_ptr<ScrollPanel> CreateMessageDialogPage();

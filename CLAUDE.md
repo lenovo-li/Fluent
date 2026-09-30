@@ -106,8 +106,7 @@ FluentUIDemo.exe (links both)
 ### Documentation
 
 - **User guide**: `docs/controls/inheritance-guide.md` (when to inherit, what's exposed, extension points)
-- **Design decisions**: `docs/design/control_inheritance_enhancement_plan.md` (Phase 1-3 plan)
-- **Evaluation report**: `docs/design/phase_2_3_assessment.md` (why Phase 2-3 need no code changes)
+- **Phase 1-3 decisions** (what was exposed, and why Phase 2-3 needed no code changes): the "Phase 1" / "Phase 2" / "Phase 3" sections of `docs/controls/inheritance-guide.md`
 - **Separate library template**: `examples/CustomControls/README.md` (how to build extension library)
 
 ### Implementation Files
@@ -288,15 +287,18 @@ testable headless against `tests/framework/FakeCompositionBackend.h`.
 **Every caller must null-check and fall back to its UI-thread path** — that
 fallback is also the revert path if a migration regresses.
 
-**Compositor-driven scrolling (ScrollContentHost) was removed on 2026-08-31
-(commit 92f13bc).** The engine drew viewport-plus-margin into one DComp surface
-and let the compositor translate it, making short scrolls frame-independent. It
-was removed after sustained white-screen bugs that could not be fixed: scroll
-tweens occasionally left surfaces blank, root cause undiagnosed despite
-coordinate-system fixes and repro attempts. TextArea and TreeView now scroll on
-the UI thread only. The last working compositor version is commit c3b3c4e; its
-diff is the blueprint if the feature is re-introduced. ProgressBar still uses
-ICompositionBackend for indeterminate-mode sweeps.
+**Compositor-driven scrolling (ScrollContentHost) was removed on 2026-08-31.**
+The engine drew viewport-plus-margin into one DComp surface and let the
+compositor translate it, making short scrolls frame-independent. It was removed
+after sustained white-screen bugs that could not be fixed: scroll tweens
+occasionally left surfaces blank, root cause undiagnosed despite repro attempts.
+TextArea and TreeView now scroll on the UI thread only. If the feature is ever
+re-introduced, one failure mode is already understood: a tween bakes the surface
+origin in at submission time, so re-basing the origin while a tween runs must be
+split into two commits (freeze in the old coordinates, then re-base and start the
+new tween), or the content jumps by the origin delta. That fix alone did not
+cure the blank surfaces. ProgressBar still uses ICompositionBackend for
+indeterminate-mode sweeps.
 
 **When drawing into a DComp surface, always `GetTransform` and pre-multiply
 (`mine * base`) — never `SetTransform` outright.** `BeginDraw` hands back a tile
@@ -704,9 +706,24 @@ What actually exists under `docs/`:
 - `docs/api-surface.md` — public API conventions.
 - `docs/BUILD_OPTIMIZATION.md` — build performance notes.
 - `docs/controls/` — per-control reference pages off `TEMPLATE.md`.
-- `docs/design/` — design documents for specific features (RichTextBox, LogViewer plans).
+- `docs/design/` — design and task documents for in-flight features. **Transient**:
+  deleted once the work lands.
 - `docs/dual-repo-workflow.md` — workflow for syncing between internal and public repos.
-- `docs/learn/` — Chinese technical notes on compositor clipping and borderless-window resize.
+- `docs/learn/` — Chinese technical notes (compositor clipping, borderless-window
+  resize, DirectWrite font fallback).
+
+**Documentation lifetime rule.** Only knowledge, learning notes, and architecture
+docs are permanent (`CLAUDE.md`, `docs/api-surface.md`, `docs/BUILD_OPTIMIZATION.md`,
+`docs/controls/`, `docs/learn/`, library READMEs). Design and task documents are
+deleted when finished, so:
+
+- Permanent docs must not link to `docs/design/` or other task documents. When a
+  task finishes, move whatever is still true (the decision, the rationale, the
+  pitfall) into a permanent doc, then delete the task doc.
+- No doc may reference git history: no commit SHAs, no `git show`/`git log`
+  recipes, no "the last working version is commit X". State the knowledge itself.
+- A code comment follows the same rule: describe the behavior, not the plan
+  section it came from.
 
 Long-running task state lives in `.claude/TASK_STATE.md` (regimen at the end of this
 file). That path is **gitignored**, so it is local scratch rather than a repo

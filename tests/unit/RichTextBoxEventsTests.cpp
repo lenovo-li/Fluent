@@ -1,5 +1,4 @@
-// RichTextBoxEventsTests.cpp — RichTextBox.TextChanged / SelectionChanged
-// (event_completion_plan §1).
+// RichTextBoxEventsTests.cpp — RichTextBox.TextChanged / SelectionChanged.
 //
 // The point of these events is that an app can tell "the document was edited" from
 // "the caret moved", because the first marks the file dirty and the second must not.

@@ -123,8 +123,9 @@ Event<GridSplitter, RoutedEventArgs>& DragCompleted();
 **触发时机**: 左键释放。在清除拖动状态之后触发——处理器看到的是一个已经稳定的分割条，
 不是还标记着「正在拖动」的。
 
-**用途**: 这是持久化列宽/行高的地方。此时相邻轨道已经是 `Pixel` 定义（见下），
-可以直接从 Grid 读出 DIP 数值存盘。
+**用途**: 这是持久化列宽/行高的地方。读 `Grid::ResolvedColumnSizes()` /
+`ResolvedRowSizes()` 拿已解析的 DIP 值；不要读轨道定义——Star 轨道拖动后仍是 Star
+（见下「拖动按原单位写回」），读到的是星权重而不是 DIP。
 
 ```cpp
 // 拖完就存配置
@@ -181,7 +182,7 @@ splitter->SetOrientation(GridSplitter::Orientation::Horizontal);
 ### 持久化布局
 
 ```cpp
-// DragCompleted 时轨道已是 Pixel 定义，可以直接读出存盘
+// 读已解析的 DIP 尺寸存盘；轨道定义可能仍是 Star，读出来是权重不是 DIP
 sub_ = splitter->DragCompleted().Subscribe(this,
     [](void* owner, GridSplitter& s, RoutedEventArgs&) {
         auto* self = static_cast<MyPage*>(owner);

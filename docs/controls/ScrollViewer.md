@@ -33,13 +33,9 @@ Visual
 
 ## 公开 API
 
-### 构造函数
+### 默认状态
 
-```cpp
-ScrollViewer();
-```
-
-默认 offset 为 0、内容高度 0（无滚动）、滚动条完全淡出。
+无显式构造函数（隐式默认构造）。默认 offset 为 0、内容高度 0（无滚动）、滚动条完全淡出。
 
 ### 垂直滚动
 
@@ -104,7 +100,7 @@ void BeginHDrag(float dipX);
 void HDragTo(float dipX);
 void EndHDrag();
 bool IsHDragging() const;
-float HExpandFactor() const;            // 水平展开系数（compositor 用）
+float HExpandFactor() const;            // 水平展开系数 [0..1]
 ```
 
 **内容不超过视口时整个水平轴惰性**：`MaxOffsetX()` 为 0、`HThumbRect()` 为空、
@@ -113,8 +109,8 @@ float HExpandFactor() const;            // 水平展开系数（compositor 用�
 **`HTrackLength()` 在两条轨道都活跃时会缩短**，避免在角落重叠。
 
 **没有水平平滑滚动**：水平移动来自 Shift+滚轮、拇指拖动和插入符跟随，这些都不需要惯性。
-动画会迫使命中测试问「水平滚动此刻在哪里」，而这正是垂直轴不得不用 `EffectiveOffset()`
-解决的那类 bug —— 不要动画就消除了问题。
+动画会迫使命中测试问「水平滚动此刻在哪里」——垂直轴曾为此引入过 `EffectiveOffset()`
+（该 API 已随合成器滚动一起移除）。水平轴不做动画，这个问题就不存在。
 
 ### 自动淡出 / 悬停展开
 
@@ -128,8 +124,8 @@ float ExpandFactor() const;             // 当前展开系数 [0..1]
 
 `HitBarRegion` 是右边缘附近的**更宽命中条**（可发现性）。
 
-`Visibility` 和 `ExpandFactor` 暴露给缓存覆盖层 surface 的 compositor host ——
-只有这些值变化时才重新光栅化，避免 idle 倒计时中每帧都重画静态滚动条。
+`Visibility` 和 `ExpandFactor` 是只读状态查询，拥有者控件可据此判断滚动条是否仍在
+淡入淡出、是否需要继续请求重绘。
 
 ### 定制
 
@@ -185,10 +181,14 @@ sub_ = scrollViewer->ScrollChanged().Subscribe(this,
 ```cpp
 #include "FluentUI/layout/ScrollViewer.h"
 
-auto* sv = panel->Add(std::make_unique<ScrollViewer>());
-sv->SetBounds(RectDip{10, 10, 200, 300});
-sv->SetContentHeight(1000.0f);    // 1000 DIP 内容
-sv->SetOffset(100.0f);            // 跳到 100 DIP 处
+// ScrollViewer 通常是拥有者控件的成员（不是子元素），拥有者在自己的 bounds
+// 变化时把视口同步给它——ListBox::OnBoundsChanged 就是这么做的。
+void MyList::OnBoundsChanged() {
+    scroll_.SetBounds(bounds_);        // 视口 = 控件自身区域
+    scroll_.SetContentHeight(1000.0f); // 1000 DIP 内容
+}
+
+scroll_.SetOffset(100.0f);             // 跳到 100 DIP 处（首次 Arrange 之后才有效）
 ```
 
 ### 监听滚动到底部
@@ -208,15 +208,17 @@ sub_ = sv->ScrollChanged().Subscribe(this,
 ### 滚轮驱动平滑滚动
 
 ```cpp
-// 在拥有者控件的 OnMouseWheel 里
+// 元素级滚轮入口是 UIElement::OnPointerWheelChanged。
+// （NativeWindowHost::OnMouseWheel 是窗口级虚函数，与控件无关。）
 void MyList::OnPointerWheelChanged(PointerEventArgs& e) {
-    int delta = e.wheelDelta;
-    bool shiftKey = e.shiftKey;
-    if (shiftKey) {
-        scrollViewer_->AnimateBy(-delta * 0.5f);  // 水平（delta 方向相反）
+    const float lines = e.WheelScrollLines();   // 系统「每次滚动行数」，已带方向
+    if (HasModifier(e.modifiers, ModifierKeys::Shift)) {
+        // 水平轴没有 tween，直接瞬时设置
+        scroll_.SetOffsetX(scroll_.OffsetX() + lines * 16.0f);
     } else {
-        scrollViewer_->AnimateBy(-delta * 40.0f); // 垂直，每刻度 40 DIP
+        scroll_.AnimateBy(lines * 16.0f);       // 垂直：平滑滚动
     }
+    e.handled = true;
 }
 ```
 
@@ -273,11 +275,13 @@ sv->SetScrollbarColor(D2D1::ColorF(D2D1::ColorF::White));
 | --- | --- |
 | `textPrimary` | 滚动条墨水（默认，可用 `SetScrollbarColor` 覆盖）|
 
-半透明度根据 `visibility_` lerp：完全可见时 35% alpha，淡出时降到 0。
+拇指 alpha = 基础值 × `visibility_`。基础值 idle 为 0.32（亮色）/ 0.40（暗色），悬停
+0.55，拖动 0.65（`ScrollViewer.cpp:357,373`）。开启 `keepVisibleWhenOverflow_` 时，内容溢出的
+情况下 `visibility_` 不会低于 0.35（`.cpp:341`），否则淡出到 0。
 
 ### 演示页
 
-demo 中 **ScrollViewer 本身没有单独的演示页**，但它被 TreeView、TextArea、ListView
+demo 中 **ScrollViewer 本身没有单独的演示页**，但它被 TreeView、TextArea、ListBox
 等需要滚动的控件内部使用。
 
 ---

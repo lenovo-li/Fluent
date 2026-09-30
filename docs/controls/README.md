@@ -6,12 +6,8 @@
 > 下面清单里标注「文档待写」的条目**没有对应文件** —— 它们此前是失效链接，点了会 404，
 > 现在改成纯文本以免误导。控件本身的权威说明始终在各自的头文件注释里。
 >
-> 已有文档中的每一段代码示例都对照真实头文件核对过。此前 `Button.md` 里出现过
-> `GetKind()`、`SetContent()`、`SetSize()`、`AddChild()`、`AddItem()` 等**并不存在**的
-> API（真实名字分别是：没有 Kind getter、`Window::SetRoot`、通过 `Show()` 的
-> `WindowState` 传尺寸、`Panel::Add`、`MenuFlyout::SetItems`），已全部修正；
-> `TEMPLATE.md` 与 `Button.md` 里写的命名空间 `FluentUI::Controls` 也不存在，
-> 全库只有 `namespace fluent`，同样已修正。
+> 已有文档中的代码示例都对照真实头文件核对过；命名空间全库只有 `namespace fluent`。
+> 扩展控件（继承现有控件或从 `Control` 自建）见 [inheritance-guide.md](inheritance-guide.md)。
 
 
 ## 按类别浏览

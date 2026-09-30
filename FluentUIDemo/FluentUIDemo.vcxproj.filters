@@ -17,6 +17,9 @@
     <ClCompile Include="pages\CustomControlsPage.cpp">
       <Filter>pages</Filter>
     </ClCompile>
+    <ClCompile Include="pages\InstallerControlsPage.cpp">
+      <Filter>pages</Filter>
+    </ClCompile>
     <ClCompile Include="pages\TextPages.cpp">
       <Filter>pages</Filter>
     </ClCompile>

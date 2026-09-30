@@ -303,14 +303,34 @@ Event<RichTextBox, SelectionChangedArgs>& SelectionChanged();
 
 ### 已修复的设计坑
 
-**头部注释过时**：`RichTextBox.h:15` 说「NOT YET IMPLEMENTED: undo, readonly」，
-但 `undoStack_` / `readOnly_` 都已实现且测试覆盖。另一处说「ONE LAYOUT for the
-entire document」，但实际是 `paragraphLayouts_` 向量（每段一个）。这些注释是
-段落格式重构前留下的，代码是新的。
-
 **撤销快照必须含段落向量**：早期版本快照的是扁平 run 列表，撤销后段落格式（对齐、
 行距、缩进）全部丢失——因为 run 里没有这些字段。现在快照是 `std::vector<Paragraph>`，
 格式完整保留。
+
+### 设计决策
+
+**不继承 TextEditBase。** TextEditBase 以 `std::wstring text_` 为唯一数据源，而
+RichTextBox 的数据源是 `RichTextDocument`（段落 → run）。继承会产生两份真相，要么同步、
+要么重写基类几乎全部逻辑（光标、选区、撤销、索引计算）。所以 RichTextBox 直接派生自
+`Control`，自己实现光标、选区、输入、剪贴板和 IME，必要处参照 TextEditBase 的写法。
+也因此只读用同名的 `SetReadOnly` / `ReadOnly()`，而不是继承来的。
+
+**相邻同样式 run 自动合并。** `MergeAdjacentRuns()` 在每次 `InsertText` / `DeleteRange`
+后运行，`AppendRun` 也会并入末尾同样式 run。不合并的话，跨 run 删除会留下两段同样式的
+相邻 run（删掉 `abc**BOLD**def` 的 BOLD 后剩 `abc` + `def`），文档越编辑越碎，而 run 数
+直接决定 `SetDrawingEffect` 等范围格式调用的次数。合并是 O(run 数)，run 数本来就小。
+打字快路径不受影响：插入点落在同样式 run 内部时直接 `text.insert()`，不新建 run、不扫描
+（测试 `TypingCharacterByCharacterStaysOneRun` 锁定：逐字符打 5 个字仍只有 1 个 run）。
+代价是「两段手动设成同样式的文字」合并后无法再区分——样式相同即视觉相同，目前没有需要
+区分的场景；段落边界由独立的 `Paragraph` 结构表达，不依赖 run 边界。
+
+**光标处样式的查询规则。** `GetCurrentStyle()` 有选区时查选区起点，否则查光标偏移处
+（即光标**右侧**）的字符；光标在文末时退回最后一个字符；文档为空时返回待输入样式
+`currentStyle_`（`RichTextBox.cpp` 的 `GetCurrentStyle`）。注意这与 Word「跟随左侧字符」
+的习惯不同。
+
+**剪贴板只走纯文本。** 复制写 `CF_UNICODETEXT`，粘贴读纯文本并套用当前光标样式。样式
+序列化（HTML / RTF / 私有格式）尚未实现。
 
 ### 与 TextArea 的选择
 

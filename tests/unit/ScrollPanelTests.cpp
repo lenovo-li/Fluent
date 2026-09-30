@@ -449,8 +449,8 @@ TEST(ScrollPanel, WheelStep_ScalesScrollDistance) {
     EXPECT_EQ(wide.TargetVerticalOffset(), 144.0f);
 }
 
-// Regression: SetWheelStep(0) caused division by zero when WheelScrollLines=0
-// (commit a4fcbe7). Now enforces minimum of 1.0 DIP.
+// Regression: SetWheelStep(0) caused division by zero when WheelScrollLines=0.
+// Now enforces minimum of 1.0 DIP.
 TEST(ScrollPanel, SetWheelStepZero_IsClamped) {
     ScrollPanel panel;
     for (int i = 0; i < 10; ++i) {
