@@ -26,51 +26,59 @@ void DrawIcon(const DrawingContext& dc, TreeViewIcon icon, float x, float y,
     default: c = pal.textSecondary; break;
     }
 
+    // Snap all icon coordinates to the pixel grid so geometric shapes render crisp at
+    // any DPI. Without this, fractional coordinates cause D2D to antialias the edges,
+    // making small icons (14×14 DIP) look blurry. The base (x, y) is already snapped
+    // by the caller, but we must also snap every offset point (x+1, x+7, etc.) because
+    // at non-integer DPI (125%, 150%) those offsets yield half-pixels too.
+    const float dpiScale = dc.DpiScale();
+    auto snap = [dpiScale](float dip) { return SnapToPixel(dip, dpiScale); };
+
     if (icon == TreeViewIcon::Folder) {
-        dc.FillRoundedRect(D2D1::RoundedRect(D2D1::RectF(x + 1, y + 5, x + 13, y + 12), 1.5f, 1.5f), c);
-        dc.FillRoundedRect(D2D1::RoundedRect(D2D1::RectF(x + 2, y + 3, x + 8, y + 6), 1.0f, 1.0f), c);
+        dc.FillRoundedRect(D2D1::RoundedRect(D2D1::RectF(snap(x + 1), snap(y + 5), snap(x + 13), snap(y + 12)), 1.5f, 1.5f), c);
+        dc.FillRoundedRect(D2D1::RoundedRect(D2D1::RectF(snap(x + 2), snap(y + 3), snap(x + 8), snap(y + 6)), 1.0f, 1.0f), c);
         return;
     }
     if (icon == TreeViewIcon::Warning) {
-        dc.DrawLine(D2D1::Point2F(x + 7, y + 2), D2D1::Point2F(x + 13, y + 12), c, 1.3f);
-        dc.DrawLine(D2D1::Point2F(x + 13, y + 12), D2D1::Point2F(x + 1, y + 12), c, 1.3f);
-        dc.DrawLine(D2D1::Point2F(x + 1, y + 12), D2D1::Point2F(x + 7, y + 2), c, 1.3f);
-        dc.DrawLine(D2D1::Point2F(x + 7, y + 5), D2D1::Point2F(x + 7, y + 8), c, 1.2f);
-        dc.FillEllipse(D2D1::Ellipse(D2D1::Point2F(x + 7, y + 10.5f), 0.8f, 0.8f), c);
+        dc.DrawLine(D2D1::Point2F(snap(x + 7), snap(y + 2)), D2D1::Point2F(snap(x + 13), snap(y + 12)), c, 1.3f);
+        dc.DrawLine(D2D1::Point2F(snap(x + 13), snap(y + 12)), D2D1::Point2F(snap(x + 1), snap(y + 12)), c, 1.3f);
+        dc.DrawLine(D2D1::Point2F(snap(x + 1), snap(y + 12)), D2D1::Point2F(snap(x + 7), snap(y + 2)), c, 1.3f);
+        dc.DrawLine(D2D1::Point2F(snap(x + 7), snap(y + 5)), D2D1::Point2F(snap(x + 7), snap(y + 8)), c, 1.2f);
+        dc.FillEllipse(D2D1::Ellipse(D2D1::Point2F(snap(x + 7), snap(y + 10.5f)), 0.8f, 0.8f), c);
         return;
     }
     if (icon == TreeViewIcon::Bluetooth) {
-        dc.DrawLine(D2D1::Point2F(x + 7, y + 2), D2D1::Point2F(x + 7, y + 12), c, 1.3f);
-        dc.DrawLine(D2D1::Point2F(x + 7, y + 2), D2D1::Point2F(x + 11, y + 5), c, 1.3f);
-        dc.DrawLine(D2D1::Point2F(x + 11, y + 5), D2D1::Point2F(x + 4, y + 10), c, 1.3f);
-        dc.DrawLine(D2D1::Point2F(x + 7, y + 12), D2D1::Point2F(x + 11, y + 9), c, 1.3f);
-        dc.DrawLine(D2D1::Point2F(x + 11, y + 9), D2D1::Point2F(x + 4, y + 4), c, 1.3f);
+        dc.DrawLine(D2D1::Point2F(snap(x + 7), snap(y + 2)), D2D1::Point2F(snap(x + 7), snap(y + 12)), c, 1.3f);
+        dc.DrawLine(D2D1::Point2F(snap(x + 7), snap(y + 2)), D2D1::Point2F(snap(x + 11), snap(y + 5)), c, 1.3f);
+        dc.DrawLine(D2D1::Point2F(snap(x + 11), snap(y + 5)), D2D1::Point2F(snap(x + 4), snap(y + 10)), c, 1.3f);
+        dc.DrawLine(D2D1::Point2F(snap(x + 7), snap(y + 12)), D2D1::Point2F(snap(x + 11), snap(y + 9)), c, 1.3f);
+        dc.DrawLine(D2D1::Point2F(snap(x + 11), snap(y + 9)), D2D1::Point2F(snap(x + 4), snap(y + 4)), c, 1.3f);
         return;
     }
     if (icon == TreeViewIcon::Disk) {
-        dc.FillRoundedRect(D2D1::RoundedRect(D2D1::RectF(x + 2, y + 3, x + 12, y + 11), 2.0f, 2.0f), c);
-        dc.FillEllipse(D2D1::Ellipse(D2D1::Point2F(x + 7, y + 7), 2.0f, 2.0f), pal.cardFill);
+        dc.FillRoundedRect(D2D1::RoundedRect(D2D1::RectF(snap(x + 2), snap(y + 3), snap(x + 12), snap(y + 11)), 2.0f, 2.0f), c);
+        dc.FillEllipse(D2D1::Ellipse(D2D1::Point2F(snap(x + 7), snap(y + 7)), 2.0f, 2.0f), pal.cardFill);
         return;
     }
 
     if (icon == TreeViewIcon::Computer) {
         // Monitor body
-        dc.DrawRoundedRect(D2D1::RoundedRect(D2D1::RectF(x + 1, y + 2, x + 13, y + 10), 1.5f, 1.5f), c, 1.2f);
+        dc.DrawRoundedRect(D2D1::RoundedRect(D2D1::RectF(snap(x + 1), snap(y + 2), snap(x + 13), snap(y + 10)), 1.5f, 1.5f), c, 1.2f);
         // Stand foot
-        dc.DrawLine(D2D1::Point2F(x + 4, y + 10), D2D1::Point2F(x + 4, y + 12), c, 1.2f);
-        dc.DrawLine(D2D1::Point2F(x + 10, y + 10), D2D1::Point2F(x + 10, y + 12), c, 1.2f);
-        dc.DrawLine(D2D1::Point2F(x + 3, y + 12), D2D1::Point2F(x + 11, y + 12), c, 1.2f);
+        dc.DrawLine(D2D1::Point2F(snap(x + 4), snap(y + 10)), D2D1::Point2F(snap(x + 4), snap(y + 12)), c, 1.2f);
+        dc.DrawLine(D2D1::Point2F(snap(x + 10), snap(y + 10)), D2D1::Point2F(snap(x + 10), snap(y + 12)), c, 1.2f);
+        dc.DrawLine(D2D1::Point2F(snap(x + 3), snap(y + 12)), D2D1::Point2F(snap(x + 11), snap(y + 12)), c, 1.2f);
     } else {
         // Generic device — IC chip: filled body with pin lines on both sides.
-        dc.FillRoundedRect(D2D1::RoundedRect(D2D1::RectF(x + 4, y + 3, x + 10, y + 11), 1.5f, 1.5f), c);
+        dc.FillRoundedRect(D2D1::RoundedRect(D2D1::RectF(snap(x + 4), snap(y + 3), snap(x + 10), snap(y + 11)), 1.5f, 1.5f), c);
         // Left pins
-        dc.DrawLine(D2D1::Point2F(x + 2, y + 5), D2D1::Point2F(x + 4, y + 5), c, 1.2f);
-        dc.DrawLine(D2D1::Point2F(x + 2, y + 7), D2D1::Point2F(x + 4, y + 7), c, 1.2f);
-        dc.DrawLine(D2D1::Point2F(x + 2, y + 9), D2D1::Point2F(x + 4, y + 9), c, 1.2f);
+        dc.DrawLine(D2D1::Point2F(snap(x + 2), snap(y + 5)), D2D1::Point2F(snap(x + 4), snap(y + 5)), c, 1.2f);
+        dc.DrawLine(D2D1::Point2F(snap(x + 2), snap(y + 7)), D2D1::Point2F(snap(x + 4), snap(y + 7)), c, 1.2f);
+        dc.DrawLine(D2D1::Point2F(snap(x + 2), snap(y + 9)), D2D1::Point2F(snap(x + 4), snap(y + 9)), c, 1.2f);
         // Right pins
-        dc.DrawLine(D2D1::Point2F(x + 10, y + 5), D2D1::Point2F(x + 12, y + 5), c, 1.2f);
-        dc.DrawLine(D2D1::Point2F(x + 10, y + 7), D2D1::Point2F(x + 12, y + 7), c, 1.2f);
-        dc.DrawLine(D2D1::Point2F(x + 10, y + 9), D2D1::Point2F(x + 12, y + 9), c, 1.2f);
+        dc.DrawLine(D2D1::Point2F(snap(x + 10), snap(y + 5)), D2D1::Point2F(snap(x + 12), snap(y + 5)), c, 1.2f);
+        dc.DrawLine(D2D1::Point2F(snap(x + 10), snap(y + 7)), D2D1::Point2F(snap(x + 12), snap(y + 7)), c, 1.2f);
+        dc.DrawLine(D2D1::Point2F(snap(x + 10), snap(y + 9)), D2D1::Point2F(snap(x + 12), snap(y + 9)), c, 1.2f);
     }
 }
 
@@ -803,7 +811,12 @@ void TreeView::DrawRow(const DrawingContext& dc, IDWriteTextFormat* fmt,
                             nullptr, nullptr);
         }
     } else {
-        DrawIcon(dc, row.icon, leftX + indent + 16.0f, y + 7.0f, pal);
+        // Snap icon position to the pixel grid so geometric shapes render crisp.
+        // Without this, fractional coordinates cause D2D to antialias the edges,
+        // making small icons (14×14 DIP) look blurry, especially at 100% DPI.
+        const float iconX = SnapToPixel(leftX + indent + 16.0f, dc.DpiScale());
+        const float iconY = SnapToPixel(y + 7.0f, dc.DpiScale());
+        DrawIcon(dc, row.icon, iconX, iconY, pal);
     }
 
     // Row text is the neutral text color, not the icon's accent. Selected rows use
