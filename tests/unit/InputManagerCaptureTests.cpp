@@ -7,6 +7,7 @@
 #include "../../FluentUI/input/InputManager.h"
 #include "../../FluentUI/input/FocusManager.h"
 #include "../../FluentUI/core/UIElement.h"
+#include "../../FluentUI/layout/StackPanel.h"
 
 #include <vector>
 
@@ -150,4 +151,59 @@ TEST(InputManagerCapture, DetachClearsCapture) {
     EXPECT_EQ(im.Hot(), static_cast<UIElement*>(nullptr));
 
     el.DetachFromContext();
+}
+
+// Detaching the captor mid-press delivers a canceling release, the same way
+// window deactivation and a stolen capture do: the element leaves Pressed and
+// no click is registered. Before this, OnElementDetached only nulled the
+// pointer, so the element kept rendering as pressed.
+TEST(InputManagerCapture, DetachMidPressCancelsWithoutClick) {
+    InputManager im;
+    ClickEl el;
+    el.SetBounds({0, 0, 20, 20});
+    WireInput(el, &im);
+    std::vector<UIElement*> roots{&el};
+    im.SetRoots(&roots);
+
+    im.PointerPressed(Point{5, 5}, PointerButton::Left, ModifierKeys::None);
+    EXPECT_TRUE(el.IsPressedState());
+
+    im.OnElementDetached(&el);
+    EXPECT_FALSE(el.IsPressedState());
+    EXPECT_EQ(el.releases, 1);
+    EXPECT_EQ(el.clicks, 0);
+
+    el.DetachFromContext();
+}
+
+// The path that actually matters in an app: a captured element nested inside a
+// panel is removed with the panel's child API, not via the host's WM_DESTROY
+// loop. DetachFromContext must notify the input manager itself, or captured_
+// is left pointing at an element that is about to be destroyed.
+namespace {
+// Panel children must be FrameworkElements, so ClickEl (a bare UIElement) cannot
+// be added to one. Same base click gesture, one layer up.
+struct PanelClickEl : FrameworkElement {
+    PanelClickEl() { SetClickable(true); }
+    void Render(const DrawingContext&) override {}
+};
+}  // namespace
+
+TEST(InputManagerCapture, RemovingCapturedChildFromPanelClearsCapture) {
+    InputManager im;
+    StackPanel panel;
+    auto* el = panel.Emplace<PanelClickEl>();
+    el->SetBounds({0, 0, 20, 20});
+    panel.SetBounds({0, 0, 20, 20});
+    WireInput(panel, &im);
+    std::vector<UIElement*> roots{&panel};
+    im.SetRoots(&roots);
+
+    im.PointerPressed(Point{5, 5}, PointerButton::Left, ModifierKeys::None);
+    EXPECT_EQ(im.Captured(), static_cast<UIElement*>(el));
+
+    panel.RemoveAt(0);  // destroys el
+    EXPECT_EQ(im.Captured(), static_cast<UIElement*>(nullptr));
+
+    panel.DetachFromContext();
 }

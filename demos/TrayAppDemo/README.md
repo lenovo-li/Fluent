@@ -141,7 +141,7 @@ AppendMenuW(hMenu, MF_STRING, ID_EXIT, L"退出(&X)");
 
 ## 参考项目
 
-完整的生产级实现见 `D:\project\FKeyUsageMonitor` 项目：
+完整的生产级实现见独立的 FKeyUsageMonitor 项目：
 - 双窗口设计（消息窗口 + FluentUI 窗口）
 - Raw Input 键盘监听
 - DataGrid 实时数据展示

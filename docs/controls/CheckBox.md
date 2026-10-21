@@ -54,8 +54,9 @@ void SetChecked(bool v);      // 继承自 ToggleButton
 bool IsChecked() const;
 ```
 
-**说明**: CheckBox 继承自 ToggleButton。`Toggle()` 在 `ToggleButton.h:44` 是 **protected** 方法，
-应用代码无法直接调用。公开的状态操作只有 `SetChecked(bool)` / `IsChecked()`。
+**说明**: CheckBox 继承自 ToggleButton。`Toggle()` 是 **protected** 方法（由点击 / Space
+触发的 `OnActivate` 调用），应用代码无法直接调用。公开的状态操作只有 `SetChecked(bool)` /
+`IsChecked()`。
 
 `SetChecked` 在值未变时是**静默的** —— 不触发事件、不重绘、不排帧,所以一次冗余的设置
 不会白白安排一帧。

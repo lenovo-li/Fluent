@@ -58,7 +58,7 @@ protected:
     // wrong spec.
     float MeasureLabelWidth(float fontSize, float maxWidth, float boxHeight,
                             DWRITE_FONT_WEIGHT weight = DWRITE_FONT_WEIGHT_NORMAL) const {
-        UNREFERENCED_PARAMETER(boxHeight);   // never clip tall glyphs — see below
+        UNREFERENCED_PARAMETER(boxHeight);   // unused: MeasureLabelSize lays out in an unbounded box (kBoxH) so tall glyphs never clip
         return MeasureLabelSize(fontSize, maxWidth, DWRITE_TEXT_ALIGNMENT_LEADING,
                                 DWRITE_PARAGRAPH_ALIGNMENT_CENTER, weight).w;
     }

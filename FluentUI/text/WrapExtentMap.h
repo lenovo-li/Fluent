@@ -17,8 +17,7 @@
 //   * lay out in the background    -> the extent converges while the CPU burns, and
 //                                     touching a not-yet-measured region blocks until
 //                                     it catches up. This is Scintilla's "idle
-//                                     wrapping"; see the two upstream bugs cited in
-//                                     .claude/plans/text-virtualization-and-log-view.md.
+//                                     wrapping"; two upstream bugs demonstrate the problem.
 //   * ESTIMATE, correct on contact -> the extent is approximate at first and becomes
 //                                     exact where the user has actually been. No stall,
 //                                     no background CPU, no worst case.

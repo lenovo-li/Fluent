@@ -23,6 +23,7 @@
     <ClCompile Include="unit\SubscriptionTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\EventTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\RoutedEventTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\RoutedEventDispatchTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\FocusManagerTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\InputManagerCaptureTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ContextMenuTests.cpp"><Filter>unit</Filter></ClCompile>
@@ -73,6 +74,7 @@
     <ClCompile Include="unit\MenuFlyoutEventsTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ResizeGripOuterTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\MinTrackSizeTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\WindowIconTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ControlPropertyTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ToggleVisualsTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\DialogApiTests.cpp"><Filter>unit</Filter></ClCompile>

@@ -47,12 +47,14 @@ TEST(Invalidation, NestedLeafPropagatesToRootCallback) {
     StackPanel root;
     root.SetInvalidateCallback(&CountingInvalidate, nullptr);
 
-    auto* mid = root.Emplace<StackPanel>();     // no callback
-    auto* leaf = mid->Emplace<InvalidatingLeaf>();  // no callback
+    auto* mid = root.Emplace<StackPanel>();     // Add invalidates once
+    auto* leaf = mid->Emplace<InvalidatingLeaf>();  // Add invalidates again
 
     EXPECT_TRUE(leaf->Parent() == mid);
     EXPECT_TRUE(mid->Parent() == &root);
 
+    // Two Adds above triggered invalidation; reset before testing propagation.
+    g_invalidateCount = 0;
     leaf->Poke();
     EXPECT_EQ(g_invalidateCount, 1);  // reached the root's callback
 }
@@ -70,8 +72,12 @@ TEST(Invalidation, ChildCallbackWinsOverParent) {
     StackPanel root;
     root.SetInvalidateCallback(&CountingInvalidate, nullptr);
 
-    auto* leaf = root.Emplace<InvalidatingLeaf>();
+    auto* leaf = root.Emplace<InvalidatingLeaf>();  // Add invalidates to root
     leaf->SetInvalidateCallback(&CountChildInvalidate, nullptr);
+
+    // Reset counters after Add triggered root's callback.
+    g_invalidateCount = 0;
+    g_childInvalidateCount = 0;
 
     leaf->Poke();
     EXPECT_EQ(g_childInvalidateCount, 1);

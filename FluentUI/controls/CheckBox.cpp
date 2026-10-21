@@ -20,7 +20,11 @@ bool CheckBox::WantsAnimationTick() const {
 
 void CheckBox::OnAnimationTick(float dtSec) {
     checkAnim_.Approach(IsChecked() ? 1.0f : 0.0f, dtSec, Theme().motion.fadeTau);
-    // Host renders once after ticking all elements; no self-invalidate.
+    // Mark our own bounds dirty each tick. Without it the frame is a full redraw only
+    // when nothing else is dirty; if another element (e.g. a TextArea fading its
+    // scrollbar) invalidated, the host does a partial redraw of that element's rect
+    // only and this check mark is clipped out -- the animation skips frames.
+    Invalidate();
 }
 
 void CheckBox::Measure(float availW, float availH) {

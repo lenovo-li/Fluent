@@ -56,6 +56,13 @@ void UIElement::AttachToContext(const UIContext& ctx) {
 void UIElement::DetachFromContext() {
     if (!attached_) return;
 
+    // Notify input/focus managers FIRST, while context is still valid, so they
+    // can clear any references to this element (captured_, hot_, focused_). This
+    // prevents dangling pointers when a subtree is removed via Panel::RemoveAt or
+    // Clear — NativeWindowHost only calls OnElementDetached for roots on WM_DESTROY,
+    // so nested elements need this notification to happen during DetachFromContext.
+    if (context_.input) context_.input->OnElementDetached(this);
+
     // §6.3 detach order (reverse of attach): children first, then self, then
     // release this element's own registrations and drop it from the animation set,
     // finally clear the context so Context() reads empty while detached.

@@ -40,6 +40,10 @@ public:
             }
         }
         children_.push_back(std::move(child));
+        // The panel's desired size is a function of its children, so adding one can
+        // grow it. Must invalidate Measure to keep the cache correct (see RemoveAt
+        // and InsertAt, which do the same).
+        InvalidateDirty(DirtyFlags::Measure);
         return raw;
     }
 
@@ -50,12 +54,16 @@ public:
     }
 
     void Clear() {
+        if (children_.empty()) return;  // Nothing to clear, skip invalidation
         for (auto& c : children_) {
             if (!c) continue;
             if (c->IsAttached()) c->DetachFromContext();
             c->SetParent(nullptr);
         }
         children_.clear();
+        // The panel's desired size may shrink to zero after clearing children.
+        // Must invalidate Measure to keep the cache correct (see RemoveAt).
+        InvalidateDirty(DirtyFlags::Measure);
     }
     size_t ChildCount() const { return children_.size(); }
 
@@ -98,7 +106,7 @@ public:
         raw->SetParent(this);
 
         // 3. If the panel is attached, attach the new child immediately (matching Add's
-        //    late-addition behavior — see Panel.h:30-33).
+        //    late-addition behavior, see the comment on Add).
         if (IsAttached()) {
             raw->AttachToContext(Context());
             static_cast<Visual*>(raw)->OnAncestorVisibilityChanged();

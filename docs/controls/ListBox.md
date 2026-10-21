@@ -167,8 +167,8 @@ list->SetSelectionMode(SelectionMode::Multiple);
 
 | Token | 用途 |
 | --- | --- |
-| `accent` | 选中项背景（@ 0.15 alpha）与焦点环（@ 0.7 alpha，`.cpp:462`） |
-| `textPrimary` | 行文字（含悬停 @ 0.05 alpha 背景，`.cpp:427-443`） |
+| `accent` | 选中项背景（@ 0.15 alpha）与焦点环（@ 0.7 alpha） |
+| `textPrimary` | 行文字（含悬停 @ 0.05 alpha 背景） |
 
 ### 演示页
 

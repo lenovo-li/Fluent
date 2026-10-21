@@ -19,11 +19,11 @@
 // one visual line, i.e. NoWrap. Under soft wrap a single logical line becomes N
 // visual lines, N depends on the wrap width, and every N changes when the window
 // resizes — which is the whole reason soft-wrap virtualization is a separate,
-// harder problem (see .claude/plans/text-virtualization-and-log-view.md, phase
-// 3). Callers that speak in "visual lines" may use this class directly *while in
-// NoWrap mode*, where the two coincide; nothing in this type should grow a
-// wrap-width parameter. When soft wrap arrives it wants a different index
-// layered above this one, not a mutation of it.
+// harder problem (solved by WrapExtentMap, layered above this index). Callers
+// that speak in "visual lines" may use this class directly *while in NoWrap
+// mode*, where the two coincide; nothing in this type should grow a wrap-width
+// parameter. Soft wrap uses a different index layered above this one
+// (WrapExtentMap), not a mutation of it.
 //
 // The buffer is expected to have newlines already normalized to '\n' — TextArea's
 // SanitizeInput does that on every input path, so a lone '\r' cannot reach here.

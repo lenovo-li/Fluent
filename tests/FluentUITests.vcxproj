@@ -88,6 +88,7 @@
     <ClCompile Include="unit\SubscriptionTests.cpp" />
     <ClCompile Include="unit\EventTests.cpp" />
     <ClCompile Include="unit\RoutedEventTests.cpp" />
+    <ClCompile Include="unit\RoutedEventDispatchTests.cpp" />
     <ClCompile Include="unit\FocusManagerTests.cpp" />
     <ClCompile Include="unit\InputManagerCaptureTests.cpp" />
     <ClCompile Include="unit\ContextMenuTests.cpp" />
@@ -179,6 +180,7 @@
     <ClCompile Include="unit\MenuBarLayoutTests.cpp" />
     <ClCompile Include="unit\ResizeGripOuterTests.cpp" />
     <ClCompile Include="unit\MinTrackSizeTests.cpp" />
+    <ClCompile Include="unit\WindowIconTests.cpp" />
     <ClCompile Include="unit\ControlPropertyTests.cpp" />
     <ClCompile Include="unit\ToggleVisualsTests.cpp" />
     <ClCompile Include="unit\PanelViewportCullingTests.cpp" />

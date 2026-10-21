@@ -86,4 +86,31 @@ inline bool MinTrackSizePx(float minWDip, float minHDip, UINT dpi, POINT& outPx)
     return any;
 }
 
+// Window icon pixel sizes at a given DPI. Base sizes in DIPs that standard
+// Windows UI expects: 16 DIP for the title bar / small icon (ICON_SMALL,
+// taskbar, system tray), 32 DIP for the big icon (ICON_BIG, Alt+Tab).
+// Rounds to nearest integer so the loaded icon frame matches 1:1 rendering.
+constexpr float kSmallIconDip = 16.0f;
+constexpr float kBigIconDip = 32.0f;
+
+inline int WindowIconPx(float sizeDip, UINT dpi) {
+    if (dpi == 0) dpi = 96;
+    return static_cast<int>(sizeDip * static_cast<float>(dpi) / 96.0f + 0.5f);
+}
+
+// Top-left PHYSICAL pixel of the title-bar icon: `leftDip` from the window edge,
+// vertically centered in a `titleBarHeightDip` band, both snapped to whole
+// pixels. A 1:1 icon bitmap drawn at a fractional pixel offset is resampled by
+// D2D (blurred) even though no scaling happens, so the origin must be integral.
+inline POINT TitleIconOriginPx(float leftDip, float titleBarHeightDip, int iconPx, UINT dpi) {
+    if (dpi == 0) dpi = 96;
+    const float s = static_cast<float>(dpi) / 96.0f;
+    const int bandPx = static_cast<int>(titleBarHeightDip * s + 0.5f);
+    POINT p;
+    p.x = static_cast<LONG>(leftDip * s + 0.5f);
+    p.y = static_cast<LONG>((bandPx - iconPx) / 2);
+    if (p.y < 0) p.y = 0;
+    return p;
+}
+
 } // namespace fluent

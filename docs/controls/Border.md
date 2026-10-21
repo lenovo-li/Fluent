@@ -86,7 +86,7 @@ card->SetBorderThickness(1.5f);
 ### 子元素的 Margin：Border 尊重，Viewbox / Expander 忽略
 
 `Border` 与 `GroupBox` **尊重**子元素的 `Margin` —— 两者的 Arrange 都走
-`FrameworkElement::ComputeArrangeRect`（`Border.cpp:45`、`GroupBox.cpp:122`），
+`FrameworkElement::ComputeArrangeRect`，
 该函数第一步就是 `slot - child->Margin()`。
 
 ```cpp
@@ -96,16 +96,16 @@ border->SetPadding(Thickness{20.0f}); // ✓ 也可以用容器自己的 Padding
 // 两者会叠加：内容距 Border 边界 40 DIP
 ```
 
-真正忽略子元素 Margin 的只有 `Viewbox`（`Viewbox.cpp:91` 直接 Arrange natural size）
-与 `Expander`（`Expander.cpp:166` 直接 `content_->Arrange(contentRect)`）。给这两个
+真正忽略子元素 Margin 的只有 `Viewbox`
+与 `Expander`。给这两个
 容器的子元素设 Margin 不会有任何效果，要留白就用容器的 `Padding`。
 
 ### 性能特征
 
 - **Render**:一个圆角矩形填充 + 一个圆角矩形描边。
 - 未调用 `SetBackground` / `SetBorderColor` 时**什么都不画**（完全透明）。
-  `Border.h:107-110` 的 `hasBg_` / `hasBorder_` 默认为 false，Render 直接跳过填充与
-  描边（`Border.cpp:53,63`）；`borderThickness_` 与 `cornerRadius_` 默认也都是 0。
+  `hasBg_` / `hasBorder_` 默认为 false，Render 直接跳过填充与描边；
+  `borderThickness_` 与 `cornerRadius_` 默认也都是 0。
 - `SetBorderThickness(0)` 会**跳过**描边绘制,不是画一条 0 宽的线。
 
 ### 使用注意事项

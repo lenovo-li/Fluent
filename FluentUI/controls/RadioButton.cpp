@@ -30,7 +30,9 @@ bool RadioButton::WantsAnimationTick() const {
 
 void RadioButton::OnAnimationTick(float dtSec) {
     dotAnim_.Approach(IsSelected() ? 1.0f : 0.0f, dtSec, Theme().motion.fadeTau);
-    // Host renders once after ticking all elements; no self-invalidate.
+    // Mark our own bounds dirty each tick (see CheckBox::OnAnimationTick): otherwise a
+    // partial redraw driven by another element's invalidation clips this dot out.
+    Invalidate();
 }
 
 void RadioButton::Measure(float availW, float availH) {

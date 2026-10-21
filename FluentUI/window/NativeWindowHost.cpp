@@ -91,6 +91,9 @@ NativeWindowHost::~NativeWindowHost() {
         hwnd_ = nullptr;   // so the nested WM_DESTROY sees no window to tear down
         DestroyWindow(doomed);
     }
+    // Last: the window (destroyed above, or earlier via WM_DESTROY) no longer
+    // references the icons, so they can be freed without a dangling WM_SETICON.
+    ReleaseWindowIcons();
 }
 
 void NativeWindowHost::Close() {
@@ -2030,6 +2033,9 @@ void NativeWindowHost::OnDpiChanged(UINT newDpi, const RECT* suggested) {
         e->UpdateContextDpi(DpiScale());
         e->OnDpiChanged(DpiScale());
     }
+    // The icon frames were picked for the old DPI; reload so the title bar keeps
+    // drawing 1:1 and the shell gets the matching small/big sizes.
+    RecreateWindowIcon();
     // WM_DPICHANGED runs in a system modal path; paint synchronously and consume
     // any coalesced request so the on-demand loop doesn't repaint a stale frame.
     // Phase 1A: the SetWindowPos above fired a synchronous WM_SIZE that only set
@@ -2147,18 +2153,30 @@ void NativeWindowHost::RecreateWindowIcon() {
         return;
     }
 
-    HICON icon = nullptr;
+    // Load separate small (16px) and big (32px) icons at the current DPI so they
+    // are crisp at any scale. LR_DEFAULTSIZE would pick only one size (usually 32px),
+    // forcing the system to downscale it for the taskbar and forcing D2D to downscale
+    // it again for the title bar — both with quality loss.
+    HICON iconSmall = nullptr, iconBig = nullptr;
     if (iconResourceId_) {
-        HRSRC resource = FindResourceW(hInst_, MAKEINTRESOURCEW(iconResourceId_), RT_GROUP_ICON);
-        FL_TRACEF(kTag, "icon resource id=%u found=%d", iconResourceId_, resource ? 1 : 0);
-        SetLastError(ERROR_SUCCESS);
-        icon = static_cast<HICON>(LoadImageW(
-            hInst_, MAKEINTRESOURCEW(iconResourceId_), IMAGE_ICON, 0, 0,
-            LR_DEFAULTSIZE | LR_SHARED));
-        FL_TRACEF(kTag, "LoadImageW icon=%p error=%lu", icon, GetLastError());
+        const int smallPx = WindowIconPx(kSmallIconDip, dpi_);
+        const int bigPx = WindowIconPx(kBigIconDip, dpi_);
+        iconSmall = static_cast<HICON>(LoadImageW(
+            hInst_, MAKEINTRESOURCEW(iconResourceId_), IMAGE_ICON,
+            smallPx, smallPx, LR_DEFAULTCOLOR));
+        iconBig = static_cast<HICON>(LoadImageW(
+            hInst_, MAKEINTRESOURCEW(iconResourceId_), IMAGE_ICON,
+            bigPx, bigPx, LR_DEFAULTCOLOR));
+        FL_TRACEF(kTag, "icon id=%u dpi=%u small=%dpx(%p) big=%dpx(%p) err=%lu",
+                  iconResourceId_, dpi_, smallPx, iconSmall, bigPx, iconBig, GetLastError());
     }
-    SendMessageW(hwnd_, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(icon));
-    SendMessageW(hwnd_, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(icon));
+    SendMessageW(hwnd_, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(iconBig));
+    SendMessageW(hwnd_, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(iconSmall));
+    // The window no longer references the previous pair; free it.
+    ReleaseWindowIcons();
+    iconSmall_ = iconSmall;
+    iconBig_ = iconBig;
+    HICON icon = iconSmall;  // the title bar draws the 16 DIP frame 1:1
     if (!icon || !graphics_.D2D().DC()) {
         TraceMsg(kTag, "icon bitmap skipped: icon or D2D context unavailable");
         return;
@@ -2199,10 +2217,27 @@ void NativeWindowHost::RecreateWindowIcon() {
 
 void NativeWindowHost::DrawWindowIcon(ID2D1DeviceContext* dc) {
     if (!titleIconBitmap_ || !dc) return;
-    constexpr float size = 16.0f;
-    const float top = (TitleBarHeightDip() - size) * 0.5f;
-    dc->DrawBitmap(titleIconBitmap_.Get(), D2D1::RectF(10.0f, top, 10.0f + size, top + size),
-                   1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
+    // Draw the bitmap 1:1: its pixel size was chosen for the current DPI in
+    // RecreateWindowIcon, and the origin is snapped to whole pixels, so D2D maps
+    // each source pixel onto exactly one device pixel. NEAREST_NEIGHBOR then
+    // guarantees no filtering even if a rounding edge case leaves a sub-pixel
+    // remainder (a blur there is what made thin strokes disappear).
+    const D2D1_SIZE_U px = titleIconBitmap_->GetPixelSize();
+    const float s = DpiScale();
+    const POINT o = TitleIconOriginPx(kTitleIconLeftDip, TitleBarHeightDip(),
+                                      static_cast<int>(px.height), dpi_);
+    const float x = o.x / s;
+    const float y = o.y / s;
+    dc->DrawBitmap(titleIconBitmap_.Get(),
+                   D2D1::RectF(x, y, x + px.width / s, y + px.height / s),
+                   1.0f, D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR);
+}
+
+void NativeWindowHost::ReleaseWindowIcons() {
+    if (iconSmall_) DestroyIcon(iconSmall_);
+    if (iconBig_) DestroyIcon(iconBig_);
+    iconSmall_ = nullptr;
+    iconBig_ = nullptr;
 }
 
 void NativeWindowHost::DrawStandardTitle(ID2D1DeviceContext* dc) {

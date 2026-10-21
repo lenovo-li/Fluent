@@ -176,8 +176,8 @@ protected:
 private:
     // The scroll offset currently shown. Kept as a named accessor (rather than
     // inlining scroll_.Offset()) because hit-testing and EnsureVisible both need
-    // "the offset on screen right now" and reading it through one function is what
-    // kept them consistent back when a compositor tween could own it.
+    // "the offset on screen right now" and reading it through one function keeps the
+    // two consistent.
     float CurrentOffset() const { return scroll_.Offset(); }
     // Shared single-row draw. `rowTopY` is the row's top in the target's DIP space.
     void DrawRow(const DrawingContext& dc, IDWriteTextFormat* fmt, int rowIndex,

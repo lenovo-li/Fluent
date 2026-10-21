@@ -80,7 +80,7 @@ void InputManager::PointerMoved(Point p, ModifierKeys mods) {
         // Captured: all moves go to the capturing element regardless of position.
         args.source = captured_;
         args.originalSource = captured_;
-        captured_->OnPointerMoved(args);
+        captured_->DispatchPointerMoved(args);
         RequestInvalidate();
         return;
     }
@@ -90,7 +90,7 @@ void InputManager::PointerMoved(Point p, ModifierKeys mods) {
         std::vector<UIElement*> route;
         BuildRoute(hot_, route);
         args.originalSource = hot_;
-        RoutePointer(route, args, nullptr, &UIElement::OnPointerMoved);
+        RoutePointer(route, args, nullptr, &UIElement::DispatchPointerMoved);
     }
     RequestInvalidate();
 }
@@ -152,7 +152,7 @@ void InputManager::PointerWheel(Point p, int delta, ModifierKeys mods,
         // The window reads SPI_GETWHEELSCROLLLINES and passes it down; the element
         // tree has no access to the HWND-level setting. 0 = page-per-notch request.
         args.wheelScrollLines = wheelScrollLines;
-        RoutePointer(route, args, nullptr, &UIElement::OnPointerWheelChanged);
+        RoutePointer(route, args, nullptr, &UIElement::DispatchPointerWheelChanged);
     }
     RequestInvalidate();
 }
@@ -175,12 +175,12 @@ bool InputManager::KeyDown(unsigned vk, ModifierKeys mods) {
         // Tunnel Preview root->target.
         for (auto it = route.rbegin(); it != route.rend() && !args.handled; ++it) {
             args.source = *it;
-            (*it)->OnPreviewKeyDown(args);
+            (*it)->DispatchPreviewKeyDown(args);
         }
         // Bubble main target->root.
         for (auto it = route.begin(); it != route.end() && !args.handled; ++it) {
             args.source = *it;
-            (*it)->OnKeyDownRouted(args);
+            (*it)->DispatchKeyDown(args);
         }
         if (args.handled) { RequestInvalidate(); return true; }
     }
@@ -213,7 +213,7 @@ bool InputManager::KeyDown(unsigned vk, ModifierKeys mods) {
 
 void InputManager::TextInput(wchar_t ch) {
     UIElement* f = focus_ ? focus_->Focused() : nullptr;
-    if (f) { f->OnTextInput(ch); RequestInvalidate(); }
+    if (f) { f->DispatchTextInput(ch); RequestInvalidate(); }
 }
 
 void InputManager::CapturePointer(UIElement* e) {
@@ -275,7 +275,23 @@ void InputManager::OnCaptureStolen() {
 }
 
 void InputManager::OnElementDetached(UIElement* e) {
-    if (captured_ == e) captured_ = nullptr;
+    // Deliver a canceling release if the element holds capture, matching the
+    // behavior of OnWindowDeactivated and OnCaptureStolen. Without this, an
+    // element detached mid-drag stays in its Pressed visual state.
+    if (captured_ == e) {
+        UIElement* c = captured_;
+        captured_ = nullptr;
+        // Release OS capture too (if we still hold it).
+        if (hwnd_ && ::GetCapture() == hwnd_) ::ReleaseCapture();
+        // Deliver the canceling release with position (-1,-1) so the element
+        // clears its pressed state without registering a click.
+        PointerEventArgs args;
+        args.position = Point{-1.0f, -1.0f};
+        args.button = PointerButton::Left;
+        args.source = c;
+        args.originalSource = c;
+        c->OnPointerReleased(args);
+    }
     if (hot_ == e) hot_ = nullptr;
     if (focus_) focus_->OnElementDetached(e);
 }

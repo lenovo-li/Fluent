@@ -61,7 +61,16 @@ LogViewer（高吞吐 log 追加）/ DatePicker / Calendar
 
 ## 构建
 
-需要 Visual Studio 2026（v18，MSVC v145 工具集；VS 2022 只带 v143，工程无法加载）、Windows 10 1803+ SDK。仅 x64。
+### 要求
+
+- **工具集**：Visual Studio 2026（v18，MSVC v145）。VS 2022 只带 v143，工程无法加载；
+  库是静态库、无 ABI 稳定性，调用方也必须用同一工具集
+- **C++ 标准**：库本身以 C++20 编译；调用方的源文件最低 `/std:c++17`（公开头文件用到
+  `std::optional`、`template <auto>`、`inline` 变量）。`examples/Minimal/MinimalCpp17.vcxproj`
+  就是这条下限的验证工程，`MinimalCpp14.vcxproj` 预期编译失败
+- **平台**：Windows 10 1803+ SDK，仅 x64
+
+### 构建步骤
 
 最省事的方式是在 VS 里直接打开 `Fluent.slnx`。命令行构建两条路都可以，
 用 `vswhere` 定位安装，避免把某台机器的路径写死（版本与版次因机器而异）：

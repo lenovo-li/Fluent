@@ -57,7 +57,7 @@ void SetKind(Kind k);
 **脏标记**: Measure
 
 > 为什么是 Measure 而不是 Render：`Kind::Accent` 用 SemiBold 字重绘制，同一字符串比
-> Normal 更宽，desired 宽度会随 Kind 变化（见 `Button.h:39-50`）。曾经标成 Render-only
+> Normal 更宽，desired 宽度会随 Kind 变化。曾经标成 Render-only
 > 是 bug——标签会一直按旧字重的尺寸测量，直到某个无关操作触发重新测量。
 
 **风格说明**:
@@ -197,7 +197,7 @@ button->SetText(L"Options ▾");
 
 // MenuFlyout 一次性接收整个 items 向量，没有逐条 AddItem —— 菜单结构是
 // 声明式的，子菜单靠 MenuItem::submenu 嵌套，分隔符用 MenuItem::Sep()。
-// MenuItem 拷贝构造 = delete（MenuFlyout.h:71），必须逐个构造后 move：
+// MenuItem 拷贝构造 = delete，必须逐个构造后 move：
 auto menu = std::make_shared<MenuFlyout>();
 std::vector<MenuItem> items;
 MenuItem open;  open.text  = L"Open";  items.push_back(std::move(open));

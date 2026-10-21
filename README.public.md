@@ -90,19 +90,23 @@ cmake --build build
 ./build/FluentUITests.exe
 ```
 
-当前测试覆盖率：1611 个测试全部通过。
+测试数量见运行输出末行 summary。
 
 ## 架构
 
 ```
 FluentUI/
 ├── core/           # 元素树基类、属性系统、事件路由
-├── layout/         # 两趟布局引擎、Panel 基类、7 种布局容器
-├── controls/       # 27 种控件实现
-├── composition/    # DirectComposition 集成、合成器滚动
+├── layout/         # 两趟布局引擎、Panel 基类、布局容器
+├── controls/       # 控件实现
+├── composition/    # DirectComposition 集成
 ├── text/           # DirectWrite 文本布局、虚拟化引擎
+├── graphics/       # Direct2D 渲染、DComp surface
 ├── window/         # Win32 窗口、消息循环、输入路由
-└── theme/          # 主题令牌、资源字典、亮暗模式切换
+├── styling/        # 主题令牌、资源字典、亮暗模式切换
+├── input/          # 输入路由、焦点管理
+├── services/       # 弹窗、工具提示
+└── animation/      # 平滑过渡动画
 ```
 
 ## 许可证

@@ -102,6 +102,11 @@ TEST(DirtyFlags, DirtyIsLocalButFrameRequestReachesRoot) {
     root.SetInvalidateCallback(&CountFrame, nullptr);
 
     auto* leaf = root.Emplace<DirtyLeaf>();
+    // Add dirties the panel itself (its child list changed) and requests a frame;
+    // clear that so the assertions below see only the leaf's own invalidation.
+    root.ClearDirty();
+    leaf->ClearDirty();
+    g_frames = 0;
     leaf->PokeMeasure();
 
     // Leaf accumulated its own closure.

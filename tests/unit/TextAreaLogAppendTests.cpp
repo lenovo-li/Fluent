@@ -12,7 +12,7 @@
 //
 // Every one of those is a counter or an accessor that exists SPECIFICALLY because the
 // property is otherwise unobservable. This repo has shipped two bugs past a green suite
-// by testing an indirect effect instead of the decision (see .claude/plans), so the
+// by testing an indirect effect instead of the decision itself, so the
 // pattern here is: assert on the observable that the decision writes to, not on
 // something downstream that happens to correlate.
 //
@@ -629,9 +629,9 @@ TEST(TextAreaLogAppend, FollowKeepsUpAcrossManyAppends) {
 
 TEST(TextAreaLogAppend, ScrollingUpDetachesTheFollow) {
     // Through the real wheel entry point, with a real modifier set — not by poking the
-    // flag. The repo has been bitten twice by tests that bypassed the actual input path
-    // (see .claude/plans), and the wheel handler is where the target-vs-effective-offset
-    // decision lives.
+    // flag. The repo has been bitten twice by tests that bypassed the actual input path,
+    // and the wheel handler is where the target-vs-effective-offset decision lives:
+    // it judges TargetOffset (the destination) not the in-flight position.
     Fixture f;
     if (!f.Ready()) return;
     f.OpenStreaming(Lines(200));

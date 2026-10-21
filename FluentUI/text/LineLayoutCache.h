@@ -7,7 +7,7 @@
 // The shape follows from the drawing loop: NoWrap draws one line at a time, so the
 // natural cache key is the line number. A miss lays out that line's characters and
 // nothing else; a hit reuses the layout. Sized to cover the viewport plus the
-// overscan margins ScrollContentHost draws, the steady state of scrolling through a
+// rows scrolled just out of view, the steady state of scrolling through a
 // large document costs O(visible lines) of layout work per frame instead of
 // O(document) — which is the entire point of the exercise.
 //
@@ -34,8 +34,8 @@
 // checked against it.
 //
 // CAPACITY. The default covers a tall display plus generous overscan: at a ~20 DIP
-// line height a 1440p viewport is ~70 lines, and ScrollContentHost's overscan is a
-// few screens either way, so ~500 is the working set. 512 entries of
+// line height a 1440p viewport is ~70 lines, and keeping a few screens either way
+// warm for scroll-back makes ~500 the working set. 512 entries of
 // (size_t + ComPtr + list node) is on the order of 20 KB of bookkeeping; the
 // layouts themselves dominate, at roughly a few KB each for a normal-length line,
 // so a full cache is single-digit MB. That is the deliberate trade — memory for
@@ -44,8 +44,7 @@
 // NOT HANDLED HERE: a single pathologically long line. Under NoWrap there is no
 // reflow, so a 50 KB log line becomes a 50 KB layout, and DWrite's per-character
 // metrics for it are expensive no matter how few of those characters are on screen.
-// Laying out only the horizontally visible prefix is the fix — see §1.5b-3 in
-// .claude/plans. The `minCover` parameter below is the entry point: a caller that
+// Laying out only the horizontally visible prefix is the fix. The `minCover` parameter below is the entry point: a caller that
 // knows how far right it needs to see passes a character count; the cache builds or
 // promotes the cheapest entry that covers at least that many characters. Long lines
 // still produce large layouts when the full line is demanded (caret metrics, hit-test)

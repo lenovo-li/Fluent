@@ -82,7 +82,7 @@ Event<ControlName, EventArgsType>& EventName();
 ```
 
 事件一律是**私有成员 + 公开访问器方法**（全库约定，见 `Button.h:55`）。不要把 `Event`
-写成公开裸成员——`Event` 不可移动（`Event.h:43-46`），暴露成员会把这个约束泄漏到 ABI。
+写成公开裸成员——`Event` 不可移动，暴露成员会把这个约束泄漏到 ABI。
 
 **参数**: `EventArgsType`
 - `Field1` — [字段说明]
@@ -100,8 +100,8 @@ void MyWindow::OnEvent(ControlName& sender, EventArgsType& args) { }
 Subscription sub_;   // 必须作为成员持有
 ```
 
-`Subscribe` 标了 `[[nodiscard]]`（`Event.h:56`），返回的 `Subscription` 析构即退订
-（`Subscription.h:29`）。**丢弃返回值 = 回调永不触发**，这是本框架最容易踩的坑。
+`Subscribe` 标了 `[[nodiscard]]`，返回的 `Subscription` 析构即退订
+。**丢弃返回值 = 回调永不触发**，这是本框架最容易踩的坑。
 
 ---
 
@@ -126,7 +126,7 @@ public:
     }
 
 protected:
-    // SetRoot 是 protected（Window.h:170），只能在 Window 子类内部调用，
+    // SetRoot 是 protected，只能在 Window 子类内部调用，
     // 所以构建控件树必须在这里，不能在 main 里对 Window 实例调。
     void OnInitialize() override {
         auto control = std::make_unique<ControlName>();
@@ -152,10 +152,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
 
 | 写法 | 为什么不行 |
 |---|---|
-| `Application app;` | `Application.h:75` 只有 `explicit Application(HINSTANCE)`；因此入口必须是 `wWinMain` 才拿得到 `instance` |
-| `window->SetSize({800, 600})` | 无此方法，是 `SetClientSize(float, float)`（`Window.h:82`）；另有 `SetAutoSize(bool)` |
-| `window->SetContent(...)` | Window 上无此方法，是 `SetRoot`（`Window.h:170`）——且它 protected，必须派生后在 `OnInitialize()` 里调 |
-| `window->Show();` | `Window.h:66` 是 `Show(Application&, const WindowState* = nullptr)`，首参无默认值 |
+| `Application app;` | `Application` 只有 `explicit Application(HINSTANCE)`；因此入口必须是 `wWinMain` 才拿得到 `instance` |
+| `window->SetSize({800, 600})` | 无此方法，是 `SetClientSize(float, float)`；另有 `SetAutoSize(bool)` |
+| `window->SetContent(...)` | Window 上无此方法，是 `SetRoot`——且它 protected，必须派生后在 `OnInitialize()` 里调 |
+| `window->Show();` | 是 `Show(Application&, const WindowState* = nullptr)`，首参无默认值 |
 
 ### 实际应用示例
 
@@ -209,6 +209,24 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
 ---
 
 ## 写作要求
+
+### 与头文件注释的分工
+
+**头文件写**（面向维护者、未来的你）：
+- 为什么选这个算法/数据结构
+- 历史：曾经怎么做、为何改
+- 实现约束（必须这样做，否则会 X）
+- 私有成员存在的理由
+
+**控件文档写**（面向用户、API 消费者）：
+- 公开 API 参考（签名、参数、默认值）
+- 可编译示例
+- 使用陷阱（"必须给高度"、"订阅必须持有"）
+- 性能结论（"O(visible)"、"idle 零成本"），不写推导
+
+**重复判定**：如果一段话删掉后，头文件读者会问"为什么"，它属于头文件；如果控件用户会问"怎么用"，它属于文档。
+
+### API 准确性
 
 - **API 签名从头文件复制**，不要凭印象写；标注了 `private`/`protected` 的成员不要列进公开 API
 - **脏标记等级查 `SetProperty(...)` 的第三个参数**；若走的是裸 `Invalidate()` / `InvalidateMeasure()`，

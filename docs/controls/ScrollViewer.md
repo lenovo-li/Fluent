@@ -276,8 +276,8 @@ sv->SetScrollbarColor(D2D1::ColorF(D2D1::ColorF::White));
 | `textPrimary` | 滚动条墨水（默认，可用 `SetScrollbarColor` 覆盖）|
 
 拇指 alpha = 基础值 × `visibility_`。基础值 idle 为 0.32（亮色）/ 0.40（暗色），悬停
-0.55，拖动 0.65（`ScrollViewer.cpp:357,373`）。开启 `keepVisibleWhenOverflow_` 时，内容溢出的
-情况下 `visibility_` 不会低于 0.35（`.cpp:341`），否则淡出到 0。
+0.55，拖动 0.65。开启 `keepVisibleWhenOverflow_` 时，内容溢出的情况下
+`visibility_` 不会低于 0.35，否则淡出到 0。
 
 ### 演示页
 

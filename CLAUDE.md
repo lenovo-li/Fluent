@@ -4,12 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Agent usage policy
 
-For complex or multi-step tasks in this repository, you are authorized to use the
-Agent tool to spawn specialized sub-agents (architect, implementer, test-runner,
-reviewer, visual-reviewer) as defined in `.claude/agents/`. Judge task complexity
-yourself: simple bug fixes and small changes can be done directly; architectural
-changes, multi-file refactors, or tasks requiring specialized analysis should use
-agents. Ultracode/workflows are also permitted when appropriate for the task scale.
+For complex or multi-step tasks you may use the Agent tool to spawn sub-agents
+(general-purpose, or forks). Simple bug fixes and small changes are done directly;
+architectural changes, multi-file refactors, or tasks needing independent analysis
+may use agents. Ultracode/workflows are permitted when the task scale warrants it.
 
 ## What this is
 
@@ -34,6 +32,25 @@ MSBUILD="C:/Program Files/Microsoft Visual Studio/18/Community/MSBuild/Current/B
 
 Both configurations must build clean before reporting a change complete.
 
+**Alternative build path**: The repo maintains CMake (`CMakeLists.txt`) as a
+backup for CLion / VS Code CMake Tools / pure command-line environments:
+
+```bash
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
+cmake --build build
+```
+
+CMake produces the static libraries (`FluentUI.lib`, `FluentSettings.lib`) with
+install/`find_package` support; `examples/Minimal` is the minimal consumer example
+(built with `-DFLUENTUI_BUILD_EXAMPLES=ON`). Tests and demos are MSBuild-only.
+
+**Dual source lists**: New `.cpp` files must be registered in **both** build systems:
+- `FluentUI/FluentUI.vcxproj` (`<ClCompile>` entries)
+- `CMakeLists.txt` (`FLUENTUI_SOURCES` list)
+
+Run `python scripts/check_all.py` to verify source list sync and Solution Explorer
+tree consistency. This is fast, read-only, and does not require compilation.
+
 Tests are a zero-dependency custom runner (`tests/framework/Test.h`), not gtest:
 
 ```bash
@@ -42,7 +59,7 @@ Tests are a zero-dependency custom runner (`tests/framework/Test.h`), not gtest:
 ./x64/Debug/FluentUIBench.exe             # perf harness; GPU scenes print stubs
 ```
 
-Three gotchas:
+Four gotchas:
 
 - **Two test binaries exist.** Building the whole solution produces
   `x64/Debug/FluentUITests.exe` (repo root) — that's the one to run. Building only
@@ -63,8 +80,8 @@ Three gotchas:
   (`fl_common.h`) gets no `<Filter>` element at all. Every nested directory also
   needs its own `<Filter Include="...">` declaration with a fresh
   `UniqueIdentifier` GUID; MSBuild does not create intermediate filters
-  implicitly. This holds with zero exceptions across all 281 registered entries
-  today, so keep it that way: Solution Explorer is how this codebase is browsed,
+  implicitly. This holds with zero exceptions across every registered entry,
+  so keep it that way: Solution Explorer is how this codebase is browsed,
   and a filter that disagrees with the path makes `graphics/DCompHost.h` show up
   somewhere other than `graphics`. When a file moves on disk, update its
   `Include=` path *and* its `<Filter>` in the same edit.
@@ -73,46 +90,20 @@ Tests are headless by design — no window, no GPU. Anything touching a real dev
 (`ServiceModalFrame`, actual pixel output, visual smoothness) is not covered and
 needs the user to verify on real hardware. Say so rather than implying otherwise.
 
-## Control Inheritance (2026-09-27)
+## Extending FluentUI: inherit in a separate library
 
-**How users extend FluentUI**: by inheriting controls in a **separate library**, not by modifying FluentUI source.
+Custom controls are built by inheriting FluentUI controls in a **separate
+library** that links `FluentUI.lib` — never by adding them to the FluentUI source
+tree. `examples/CustomControls/` (LunarCalendar, BigButton, LogSlider) and
+`examples/InstallerControls/` are the working templates; the demo links them.
+This keeps the core stable and shows users the real integration path. What each
+control exposes as `protected`, and why, is in
+`docs/controls/inheritance-guide.md`. `examples/InheritanceExamples.h` is a
+header-only variant kept only so `tests/unit/InheritanceExamplesTest.cpp` can
+compile-check the extension points.
 
-### Phase 1-3 Status
-
-| Phase | Controls | Status | Notes |
-|-------|----------|--------|-------|
-| **Phase 1** | Calendar, Button, Slider | ✅ Implemented | Added `protected` APIs (read-only accessors + geometry helpers + split rendering) |
-| **Phase 2** | ComboBox, TextBox, TextArea | ✅ Evaluated, skipped | ComboBox public API sufficient; TextEditBase already fully inheritable |
-| **Phase 3** | CheckBox, ToggleSwitch, ProgressBar, Rating, DataGrid, TreeView | ✅ Evaluated, skipped | Base classes (ToggleButton, RangeBase) already expose `protected` members |
-
-### Architecture: Separate-Library Pattern
-
-**Don't** put custom controls in FluentUI source tree. Instead:
-
-```
-FluentUI.lib (framework, unchanged)
-    ↓ links
-examples/CustomControls/ (user extension library: LunarCalendar, BigButton, LogSlider)
-    ↓ links
-FluentUIDemo.exe (links both)
-```
-
-**Why:**
-- ✅ Clear boundary: FluentUI = stable core, CustomControls = user code
-- ✅ Demonstrates real integration path (users fork CustomControls, not FluentUI)
-- ✅ FluentUI.lib doesn't bloat with examples
-- ❌ Old pattern (`examples/InheritanceExamples.h` in source tree) kept for tests only
-
-### Documentation
-
-- **User guide**: `docs/controls/inheritance-guide.md` (when to inherit, what's exposed, extension points)
-- **Phase 1-3 decisions** (what was exposed, and why Phase 2-3 needed no code changes): the "Phase 1" / "Phase 2" / "Phase 3" sections of `docs/controls/inheritance-guide.md`
-- **Separate library template**: `examples/CustomControls/README.md` (how to build extension library)
-
-### Implementation Files
-
-- **Separate library** (recommended for users): `examples/CustomControls/*.{h,cpp}` — LunarCalendar, BigButton, LogSlider
-- **Header-only test** (kept): `examples/InheritanceExamples.h` — compile-checked by `tests/unit/InheritanceExamplesTest.cpp`
+When a control's internals are made `protected` for subclassing, they become API:
+renaming or changing them breaks downstream libraries.
 
 ## Projects
 
@@ -277,36 +268,14 @@ pixels partial coverage, leaving a faint 1px seam tracing the dirty rect.
 ### Compositor offload
 
 Animations that must survive a busy UI thread run on the DirectComposition
-compositor thread. Controls reach it through `ICompositionBackend`
-(`composition/ICompositionBackend.h`) — obtained from `WindowServices::Composition()`,
-never by naming a DComp type. Two payoffs: an embedded member that isn't a tree
-node (a TreeView's scroll model) can still animate, and composition behavior is
-testable headless against `tests/framework/FakeCompositionBackend.h`.
-
-`Composition()` returns null on a host without composition or mid device-loss.
-**Every caller must null-check and fall back to its UI-thread path** — that
-fallback is also the revert path if a migration regresses.
-
-**Compositor-driven scrolling (ScrollContentHost) was removed on 2026-08-31.**
-The engine drew viewport-plus-margin into one DComp surface and let the
-compositor translate it, making short scrolls frame-independent. It was removed
-after sustained white-screen bugs that could not be fixed: scroll tweens
-occasionally left surfaces blank, root cause undiagnosed despite repro attempts.
-TextArea and TreeView now scroll on the UI thread only. If the feature is ever
-re-introduced, one failure mode is already understood: a tween bakes the surface
-origin in at submission time, so re-basing the origin while a tween runs must be
-split into two commits (freeze in the old coordinates, then re-base and start the
-new tween), or the content jumps by the origin delta. That fix alone did not
-cure the blank surfaces. ProgressBar still uses ICompositionBackend for
-indeterminate-mode sweeps.
-
-**When drawing into a DComp surface, always `GetTransform` and pre-multiply
-(`mine * base`) — never `SetTransform` outright.** `BeginDraw` hands back a tile
-in a shared atlas and the tile origin changes between draws; overwriting the
-transform puts drawing outside the tile, which flickers as tiles get reassigned.
-Use `SurfaceTransformFromWindowDip()` for window-DIP→tile mapping. The fake
-backend passes a null dc and zero offsets, so unit tests cannot catch this class
-of bug on their own.
+compositor thread. Controls reach it through `ICompositionBackend` (obtained from
+`WindowServices::Composition()`), never by naming a DComp type. `Composition()`
+returns null on a host without composition or mid device-loss — **every caller
+must null-check and fall back to its UI-thread path**. ProgressBar's
+indeterminate sweep is the current example. See `composition/ICompositionBackend.h`
+for usage rules (coordinate space, transform premultiply, surface drawing) and
+`docs/learn/` for compositor integration patterns and ScrollContentHost removal
+history.
 
 ### Theming
 
@@ -334,11 +303,12 @@ Three levels, and picking the wrong one is a real bug:
 - `Visual::SetOpacity` + `RenderWithOpacity` — what containers call on children
   (`Panel::Render` uses `RenderWithOpacity`, not `Render`). Opacity 1.0 takes the
   original path at zero cost; 0.0 skips `Render` entirely.
-- `EffectiveOpacity()` (multiplies the ancestor chain) — **only** for composited
-  controls. TreeView/TextArea in composited mode `return` from `Render()`, so
-  host-context opacity never reaches their pixels; they must recompute and push
-  to `ScrollContentHost::SetOpacity` (which lands on `viewport_`, so the
-  scrollbar and focus ring fade too).
+- `EffectiveOpacity()` (multiplies the ancestor chain) — **only** for pixels drawn
+  through a composition visual instead of the parent's `DrawingContext`. Ancestor
+  opacity folded into that context never reaches such a visual, so the owner must
+  push `EffectiveOpacity()` to `ICompositionVisual::SetOpacity` itself. No control
+  does this today (ProgressBar's sweep visual ignores ancestor opacity); a new
+  composition-visual user should.
 
 Opacity is appearance-only: layout and hit-testing are unaffected (use
 `SetVisible(false)` to remove from layout). It carries a Render-only dirty flag —
@@ -406,109 +376,12 @@ cannot work before the window is shown. `NativeWindowHost` registers in
 `WM_CREATE` and revokes in `WM_DESTROY`. A control can assume drop routing works
 once `OnAttachedToTree` has fired.
 
-### Text capacity: both modes virtualized, by different means
+### Text virtualization
 
-**There is no document-wide `IDWriteTextLayout` anywhere any more.** `EnsureLayout`
-is gone. Both `TextWrapMode`s draw and hit-test O(visible), and the only
-O(document) work left on either path is the newline scan in `EnsureLineIndex`.
-
-**NoWrap is virtualized exactly.** Line count is the newline count, line height is
-constant, and a resize changes no line breaks — those three facts are what make
-"which lines are visible" arithmetic instead of a layout query. `text/LineIndex.h`
-maps offset↔line in O(log n), `text/LineLayoutCache.h` holds layouts for only the
-visible rows, `text/VisibleLines.h` is the visible-range arithmetic as a pure
-function, and `DrawLinesToSurface` draws just the band that intersects the
-viewport. Caret and hit-testing go through `NoWrapCaretMetrics` / `NoWrapHitIndex`.
-This is the mode that reaches tens of MB, and the one a log view wants.
-
-**Wrap is virtualized by estimation.** Soft wrap breaks all three premises above:
-a paragraph's visual line count depends on where glyphs break at this exact width,
-so the document height is unknowable without wrapping all of it, and every height
-changes on resize. `text/WrapExtentMap.h` resolves that by *estimating* the height
-of paragraphs nobody has looked at and replacing each estimate with a real
-measurement when the paragraph is drawn. Layouts are per paragraph, through the
-same `LineLayoutCache` (its layout box is the wrap width, and changing it flushes —
-a layout built at 400 DIP has the wrong line breaks at 300).
-
-The consequence, which was accepted deliberately and is not a defect to fix: **the
-scrollbar adjusts slightly while scrolling through never-visited regions**, then
-settles. The alternatives are worse — laying out everything up front is a
-multi-second stall on open (3.7 s on 28 MB, measured), and laying out in the
-background burns CPU *and* stalls on contact with an unmeasured region (Scintilla's
-idle wrapping; two upstream bugs are cited in the plan). VS Code and Sublime make
-the same trade.
-
-Both of Wrap's old hard ceilings are gone with the whole-document layout: content
-past `maxHeight = 100000` DIP is no longer clipped away invisibly, and a resize is
-now O(paragraphs) of integer arithmetic (`WrapExtentMap::Reset`) instead of
-re-wrapping the entire buffer every frame. If a change here seems to need a
-document-wide layout again, it is reintroducing both.
-
-Things to know before touching either path:
-
-- **Drawing is measuring, under Wrap.** `DrawParagraphsToSurface` measures the band
-  before it paints, which means a draw path mutates layout state. That is why the
-  extent map is `mutable` and why `MeasureParagraphsInBand` exists as a public
-  method: headless, the draw callback gets a null DC and returns before its own
-  logic, so the walk had to be reachable some other way. Deleting the `SetMeasured`
-  call inside it left all 806 tests green — estimates are plausible heights, and
-  nothing else could tell.
-- **The measuring walk cannot trust its own up-front span.** A paragraph estimated
-  at 2 visual lines that measures 9 pushes everything below it down; one estimated
-  too tall means the band needs *more* paragraphs than the span named. Both the
-  loop and `MeasureParagraphsInBand` re-read each paragraph's top as they advance.
-- **An estimate must never overwrite a measurement.** That invariant is what makes
-  the extent monotonically more accurate instead of oscillating;
-  `ReEstimateUnmeasured` skips measured paragraphs for exactly this reason.
-
-Two guards keep the small-input path cheap: `TextArea::LayoutWidthKnown()` defers
-everything until Arrange supplies a real width (wrapping at `ContentWidth()`'s 1 DIP
-clamp floor puts one visual line per character — the most expensive wrap possible),
-and `DisplayText(scratch)` returns a **reference**, so the common no-IME case copies
-nothing. Prefer `DisplayLength()` / `DisplayEmpty()` when only the size or emptiness
-is needed.
-
-### High-throughput log append
-
-`TextArea::AppendText` is the log path, and it exists because `SetText` is
-O(document): at log rates (the target is 10 k lines/s) anything proportional to the
-buffer is a permanent stall. It rebuilds nothing — `LineIndex::Append` scans only the
-new characters and leaves every existing line's *number* intact, which is what lets a
-layout cache keyed by line number survive an append untouched. The one entry that must
-go is the old last line's (appending to `"a\nb"` makes line 1 `"bc"`), and
-`LineLayoutCache::Erase` is the narrowest correct invalidation for it.
-
-Four things it deliberately does not do, each of which would put the O(document) cost
-back: no index rebuild, no cache flush, no caret move (a reader scrolled back through
-history must not be yanked to the end), and no horizontal high-water-mark reset (an
-append can only lengthen lines, so resetting would shrink the scroll range and jerk the
-thumb backwards every batch). `TextChanged` fires only when something is subscribed —
-its payload is the whole buffer by value.
-
-`SetMaxLines(n)` caps the buffer as a ring, and the trim is the asymmetric case: it
-renumbers every remaining line, so the layout cache *must* be flushed. Appends are
-O(1)-ish and frequent; trims are O(visible) and happen once per `n` lines. Under NoWrap
-the scroll offset is compensated exactly (`k` lines dropped == `k * lineHeight` gone) so
-a reader sees the text hold still; under Wrap no exact compensation exists and the view
-can jump — NoWrap is the log mode.
-
-`text/LogSink.h` is the producer side: a mutex-guarded staging buffer for data arriving
-off-thread (UI is single-threaded here, so a producer must never touch `text_`). Its two
-non-obvious properties are **at most one unconsumed wakeup** — same reasoning as
-`ModalFrameHeartbeat`, since posting per line queues one message per line and the
-backlog outlives the burst — and **the wakeup is injected**, not a `PostMessage`, which
-is what makes it testable with no window (the app passes `Application::Post`). `Drain`
-re-arms the wakeup *inside* the lock, atomically with taking the data; doing it after
-unlocking strands whatever a producer appended in between, and the symptom is a log that
-stops updating until some unrelated later write arrives.
-
-Tail following (`SetAutoScrollToTail`) has one rule worth stating because getting it
-backwards is silent: **`AppendText` reads the follow flag, it never recomputes it.** An
-append grows the extent, so recomputing "is the view at the bottom" there always
-concludes the user scrolled away and switches following off on the first batch. Only
-user-driven scrolls (wheel, thumb drag, keyboard, tick) recompute it — and the wheel
-judges the *target* offset, not the current one, since a tween has not moved yet on the
-frame the notch arrives.
+TextArea virtualizes both NoWrap (exact, via arithmetic) and Wrap (estimated, via
+measure-on-demand). See `controls/TextArea.h` (both modes), `text/WrapExtentMap.h`
+(estimation strategy), `text/LineLayoutCache.h` (per-line layouts),
+`text/LogSink.h` (off-thread append), and `docs/controls/TextArea.md` for usage.
 
 ## Non-negotiables for every new control
 
@@ -527,23 +400,21 @@ that answers "which lines are visible" in O(log n), a cache holding only the
 visible rows' layouts, and the visible-range arithmetic extracted as a pure
 function so it's testable headless.
 
-Know which of your dimensions is actually virtualizable before promising it. The
-reason `TextArea` virtualizes NoWrap but not Wrap is spelled out in
-`controls/TextArea.h`: virtualization needs an O(1) item count, a constant item
-height, and resize-invariant item boundaries. Soft wrap breaks all three. If a new
-control's items are variable-height or reflow on resize, say so and design for it
-(measure-on-demand plus an estimated extent) rather than quietly falling back to
-"lay out everything".
+Know which of your dimensions is exactly virtualizable before promising it.
+Exact virtualization needs an O(1) item count, a constant item height, and
+resize-invariant item boundaries — TextArea's NoWrap mode has all three. Soft wrap
+breaks all three, so TextArea's Wrap mode uses measure-on-demand plus an estimated
+extent instead (see "Text virtualization" above and `controls/TextArea.h`). A new control
+whose items are variable-height or reflow on resize should do the same, rather
+than quietly falling back to "lay out everything".
 
-**Scrolling and animation must not depend on the UI thread being free.** Anything
-that scrolls or animates goes through the compositor: `ScrollContentHost` for
-scrolling, `ICompositionBackend` for property animations. The point is that a busy
-UI thread — a relayout, a large paint, a blocking call — cannot make a scroll or a
-fade hitch, because the compositor thread is already holding the frames. Two rules
-come with it, both already stated above but worth repeating because they're where
-this goes wrong: `Composition()` can return null (no-composition host, device
-loss), so every caller needs a working UI-thread fallback; and hit-testing during
-a composited scroll must read `EffectiveOffset()`, not `TargetOffset()`.
+**Animation should not depend on the UI thread being free when smooth motion
+matters.** Property animations go through `ICompositionBackend` so the compositor
+thread holds frames even when the UI thread is busy. ProgressBar's indeterminate
+sweep is the current example. Scrolling runs on the UI thread (TextArea, TreeView,
+ScrollViewer all animate via `AnimatedValue` and `OnAnimationTick`). The rule:
+`Composition()` can return null (no-composition host, device loss), so every
+compositor caller needs a working UI-thread fallback.
 
 **Nothing on the input path may block, and nothing may paint synchronously.**
 Input handlers record dirty flags and return. No file I/O, no network, no `Sleep`,

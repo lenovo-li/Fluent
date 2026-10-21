@@ -81,7 +81,7 @@ API 仍可能变。欢迎 issue 和 PR，但请先读完本文，尤其是「新
 本框架对性能有明确标准：
 
 - **Resize 流畅性**：窗口拖动 resize 全程保持 60 FPS（`x64/Release/FluentUIBench.exe --gate` 有 renderMs 上限检查）
-- **滚动平滑度**：ListBox / TreeView / TextArea 的合成器滚动在 UI 线程繁忙时也不掉帧
+- **滚动平滑度**：ListBox / TreeView / TextArea 在 UI 线程上滚动，通过虚拟化和帧调度保证平滑
 - **idle 零 CPU**：无轮询，消息循环空闲时阻塞等待
 - **启动速度**：TextArea 打开 28 MB / 20 万行文本秒开（NoWrap 模式精确虚拟化）
 

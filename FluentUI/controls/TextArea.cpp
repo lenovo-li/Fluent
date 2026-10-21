@@ -570,8 +570,8 @@ bool TextArea::LayoutWidthKnown() const {
 // ceilings — see controls/TextArea.h and text/WrapExtentMap.h for what that costs.
 
 float TextArea::LineHeight() const {
-    // Memoized: this builds a throwaway probe layout, and the compositor tick path
-    // asks for it every frame. Only the font size can change it (DWrite line spacing
+    // Memoized: this builds a throwaway probe layout. EnsureVisible and hit-testing
+    // call it every frame. Only the font size can change it (DWrite line spacing
     // is in DIPs, so DPI does not enter).
     if (lineHeightCache_ > 0.0f && lineHeightForFont_ == EffectiveFontSize())
         return lineHeightCache_;
@@ -1048,12 +1048,11 @@ void TextArea::OnBoundsChanged() {
     // whole-document layout re-wrapped the entire buffer on every resize frame.
     SyncScroll();
     // redrawText=true is NOT known to be necessary here, and measurement says it is
-    // most of the resize cost (DComp:ourDrawing was 5.5-6.5ms across a page's twelve
-    // composited surfaces, against 0.4-0.55ms for the surface allocation). A
-    // conditional second pass was tried and deleted: by the time the first
-    // reads as a working optimization. Skipping the redraw for real needs the geometry
-    // and the pixels to be separable (push viewport/clip/extent now, rasterize on
-    // WM_EXITSIZEMOVE).
+    // most of the resize cost during the old compositor path (5.5-6.5ms DComp drawing
+    // across a page's twelve surfaces, against 0.4-0.55ms surface allocation). A
+    // conditional-redraw second pass was tried and deleted; measurements showed it
+    // still hit worst-case. The geometry-pixels split that would enable a real skip
+    // (push viewport/clip/extent now, rasterize on WM_EXITSIZEMOVE) was not pursued.
 }
 
 
@@ -1243,7 +1242,8 @@ void TextArea::OnPointerWheelChanged(PointerEventArgs& e) {
     if (scroll_.MaxOffset() <= 0.0f) return;
     float lines = e.WheelScrollLines();
     scroll_.AnimateBy(lines * LineHeight());
-    // Target, not Offset, for the same reason as the composited branch above.
+    // Target, not Offset: on the frame the notch arrives the tween has not moved yet,
+    // so judging "still at the tail" against Offset() would always say yes.
     if (autoScrollEnabled_)
         followingTail_ = AtTailOffset(scroll_.TargetOffset(), scroll_.MaxOffset(),
                                      LineHeight());
@@ -1260,7 +1260,7 @@ bool TextArea::CaretRectDip(RectDip& out) const {
     CaretMetrics(caret_ + static_cast<UINT32>(composition_.size()), x, y, h);
     float cx = bounds_.x + ContentLeft() + x;
     // EFFECTIVE offset: the IME candidate window must sit at the caret the user can
-    // SEE, so mid-tween this has to be the compositor's interpolated value.
+    // SEE, so mid-tween this has to be the in-flight offset, not the target.
     float cy = bounds_.y + ContentTop() + y - CurrentOffset();
     out = {cx, cy, kCaretW, h};
     return true;
@@ -1274,9 +1274,6 @@ float TextArea::CurrentOffset() const {
     return scroll_.Offset();
 }
 
-// The horizontal offset is always read from scroll_, because there is no compositor
-// OffsetX tween — horizontal motion is baked into the content surface pixels, so
-// what scroll_ holds IS what's on screen (no interpolated position to reconcile).
 float TextArea::CurrentOffsetX() const {
     return scroll_.OffsetX();
 }
@@ -1424,9 +1421,6 @@ void TextArea::DrawLinesToSurface(DrawingContext& rc, float surfaceOriginDip,
 
     // Horizontal offset (NoWrap only, Wrap returns 0): shift all drawing left by the
     // scroll position so the content-space column at offsetX maps to pixel column 0.
-    // This is intentionally different from the vertical axis, where the compositor
-    // owns OffsetY and this function only provides per-surface-band coordinates. There
-    // is no compositor OffsetX (see the design notes), so the shift is baked here.
     const float offsetX = CurrentOffsetX();
 
     std::wstring scratch;
@@ -1784,8 +1778,8 @@ void TextArea::Render(const DrawingContext& dc) {
             }
         } else {
             // Both modes take the virtualized per-row path. The band is the visible text
-            // region; there is no overscan on the UI-thread fallback, so the band is
-            // exactly what is on screen.
+            // region with no overscan, so the band is exactly what
+            // is on screen.
             const float bandTop = snappedOffset;
             DrawingContext rc = dc;
             if (wrapMode_ == TextWrapMode::NoWrap) {
@@ -1819,6 +1813,15 @@ void TextArea::Render(const DrawingContext& dc) {
             const float cx = originX + x - CurrentOffsetX();
             const float cy = bounds_.y + ContentTop() + y - bandTopForCaret;
             dc.FillRect(D2D1::RectF(cx, cy, cx + kCaretW, cy + h), pal.textPrimary);
+        }
+    }
+
+    // Wrap 模式下段落测量可能改变内容高度，需同步到滚动条
+    if (wrapMode_ == TextWrapMode::Wrap) {
+        const float oldExtent = scroll_.MaxOffset() + bounds_.h;
+        const float newExtent = ScrollExtentDip();
+        if (std::fabs(newExtent - oldExtent) > 0.5f) {  // 避免浮点噪声触发
+            scroll_.SetContentHeight(newExtent);
         }
     }
 

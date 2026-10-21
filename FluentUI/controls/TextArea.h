@@ -6,11 +6,9 @@
 // ScrollViewer for the thumb, like TreeView), up/down + PageUp/Down + line
 // Home/End navigation, Enter inserting a newline, and 2D caret geometry.
 //
-// Fully DWrite-rendered, no child HWND. Where those pixels land depends on the mode:
-// with a composition backend the text / selection / IME underline go on a scrolled
-// overscan surface, the caret on its own visual and the scrollbar on an overlay (only
-// the rounded box stays in the window content surface); with no backend everything is
-// drawn in the window content surface and scrolled on the UI thread.
+// Fully DWrite-rendered, no child HWND. Everything (box, text, selection, IME
+// underline, caret, scrollbar) is drawn into the window content surface and scrolled
+// on the UI thread; TextArea owns no composition visual.
 // Geometry is in DIPs; indices are UTF-16 code-unit offsets. Newlines in the
 // buffer are normalized to '\n'.
 #pragma once
@@ -73,10 +71,7 @@ protected:
     // TextEditBase hooks.
     void OnTextLayoutDirty() override;
     void OnCompositionDirty() override;
-    // The selection moved but the text did not. In composited mode Render() returns
-    // after the box, so the highlight lives on the content surface and needs an explicit
-    // re-rasterize — an Invalidate() alone would repaint the window frame and leave the
-    // selection looking unchanged until something else refilled the surface.
+    // The selection moved but the text did not, so a Render-only Invalidate() is enough.
     //
     // Text is unchanged, so the line index and every cached line layout stay valid; this
     // costs one surface redraw of the visible band, not a relayout.

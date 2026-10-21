@@ -5,7 +5,7 @@
 ## 仓库划分
 
 ### 私有开发库（当前仓库）
-- 位置：`D:\project\Fluent`
+- 位置：`<repo-root>`（如 `~/project/Fluent`）
 - 远程：`lenovo-li/Fluent`（私有）
 - 内容：完整项目
   - 代码：`FluentUI/`、`tests/`、`examples/` 等
@@ -14,7 +14,7 @@
   - 开发配置：`AGENTS.md`、`CLAUDE.md`
 
 ### 公开代码库
-- 位置：`D:\project\Fluent-public`（首次同步时创建）
+- 位置：`<repo-root>-public`（首次同步时创建）
 - 远程：`lenovo-li/Fluent-public`（公开）
 - 内容：仅代码
   - 代码：`FluentUI/`、`tests/`、`examples/`
@@ -34,9 +34,9 @@ cd /d/project/Fluent
 git add FluentUI/controls/Button.cpp
 git commit -m "优化 Button 按下动画"
 
-# 更新长期文档
-git add docs/learn/button-animation.md
-git commit -m "记录 Button 动画优化方案"
+# 更新长期文档（示例）
+git add docs/controls/Button.md
+git commit -m "记录 Button API 更新"
 
 # 推送到私有库
 git push origin master
@@ -132,7 +132,7 @@ git push -u origin master
 - `.github/` —— CI 配置（可能暴露工作流）
 - `AGENTS.md`、`CLAUDE.md` —— AI 开发助手配置
 - `scripts/sync_to_public.sh` —— 同步脚本自己（会暴露双仓库架构）
-- `DISTRIBUTION_GUIDE.md`、`clean_for_distribution.bat`、`pack_cpp_project.py` —— 发布脚本
+- `pack_cpp_project.py` —— 打包脚本
 - 构建产物（`x64/`、`.vs/`、`*.obj`、`*.pdb`）
 
 🔄 **自动转换**

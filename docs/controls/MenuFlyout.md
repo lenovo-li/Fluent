@@ -71,9 +71,8 @@ void SetItemsBorrow(const std::vector<MenuItem>* items);
 - `SetItems`: 取走所有权（菜单项被移动到 flyout 内部）。每次打开都重建项时用这个
 - `SetItemsBorrow`: 借用调用方持有的向量（flyout 不拷贝，只保存指针）。MenuBar 用这个
   来复用同一份菜单多次打开，避免每次都拷贝向量。**调用方必须保证向量的存活期覆盖整个
-  借用期，而不只是「菜单打开期间」**——`Close()` 不清除 `borrowedItems_`
-  （`MenuFlyout.cpp:627-642`），指针一直留到下次 `SetItems`（`.cpp:361` 是唯一清除点）
-  或 flyout 销毁。菜单关闭后让被借用的向量先析构，下次打开就是 use-after-free
+  借用期，而不只是「菜单打开期间」**——`Close()` 不清除 `borrowedItems_`，
+  指针一直留到下次 `SetItems`（是唯一清除点）或 flyout 销毁。菜单关闭后让被借用的向量先析构，下次打开就是 use-after-free。
 
 正在打开时调用任一方法会先关闭菜单。
 
@@ -306,7 +305,7 @@ Esc 的逐层退出是刻意的：三层深的菜单里按一次 Esc 应该退�
 
 ## 右键菜单（IContextMenu）
 
-`UIElement` 有两条右键菜单入口，区别在于**谁拥有菜单**（`UIElement.h:326-338`）：
+`UIElement` 有两条右键菜单入口，区别在于**谁拥有菜单**：
 
 ```cpp
 // 1. 独占：本元素拥有这个菜单

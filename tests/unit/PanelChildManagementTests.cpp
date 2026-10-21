@@ -255,3 +255,44 @@ TEST(PanelChildManagement, MixedOperations_Add_Insert_Remove) {
         order += dynamic_cast<Button*>(panel.ChildAt(i))->Text();
     EXPECT_EQ(L"AC", order);
 }
+
+// Panel::Add() invalidates Measure so the panel re-measures after a child is added.
+// This test verifies the fix for the bug where Add() did NOT invalidate (while
+// InsertAt and RemoveAt did), causing runtime child additions to be invisible.
+TEST(PanelChildManagement, Add_InvalidatesMeasure) {
+    StackPanel panel;
+    // Simulate a serviced frame: the host clears dirty flags after layout.
+    panel.ClearDirtySubtree();
+    EXPECT_FALSE(panel.NeedsRemeasure());
+
+    // Add a CLEAN child. This is the case that actually exposed the bug: a freshly
+    // configured Button is itself Measure-dirty, and NeedsRemeasure recurses into
+    // the subtree, so a dirty child masks a missing invalidation on the panel. A
+    // child whose flags were already serviced (e.g. moved from another panel)
+    // does not — only the panel's own flag can say "my child list changed".
+    auto child = std::make_unique<Button>();
+    child->ClearDirtySubtree();
+    panel.Add(std::move(child));
+    EXPECT_TRUE(panel.NeedsRemeasure());
+}
+
+// Panel::Clear() invalidates Measure so the panel re-measures after all children
+// are removed. Verifies the same fix as Add_InvalidatesMeasure.
+TEST(PanelChildManagement, Clear_InvalidatesMeasure) {
+    ThreeChildPanel tcp;
+    tcp.panel.ClearDirtySubtree();  // serviced frame
+    EXPECT_FALSE(tcp.panel.NeedsRemeasure());
+
+    tcp.panel.Clear();
+    EXPECT_TRUE(tcp.panel.NeedsRemeasure());
+}
+
+// Clear on an empty panel is a no-op and does NOT invalidate (early return).
+TEST(PanelChildManagement, Clear_OnEmptyPanelDoesNotInvalidate) {
+    StackPanel panel;
+    panel.ClearDirtySubtree();
+    EXPECT_FALSE(panel.NeedsRemeasure());
+
+    panel.Clear();  // nothing to clear
+    EXPECT_FALSE(panel.NeedsRemeasure());
+}

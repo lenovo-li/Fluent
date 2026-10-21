@@ -237,7 +237,7 @@ void Panel::OnVisibilityChanged(bool) {
 
 void Panel::OnAncestorVisibilityChanged() {
     // An ancestor above us changed; keep carrying it down so the notification
-    // reaches composited controls at any depth.
+    // reaches composition-aware controls (ProgressBar) at any depth.
     NotifyChildrenAncestorVisibilityChanged();
 }
 

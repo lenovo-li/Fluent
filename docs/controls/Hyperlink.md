@@ -168,7 +168,7 @@ terms->SetVAlign(VAlign::Center);
 | `accentHover` / `accentPressed` | 悬停 / 按下 |
 | `focusStroke` | 焦点环 |
 
-**说明**：Hyperlink 无禁用态颜色处理（`Hyperlink.cpp:106-155` Render 方法中无禁用态配色分支）。
+**说明**：Hyperlink 无禁用态颜色处理。
 
 ### 演示页
 

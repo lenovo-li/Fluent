@@ -213,7 +213,7 @@ sub_ = splitter->DragCompleted().Subscribe(this,
 **这与 WPF 不同。** WPF 的 GridSplitter 会把两侧都冻结成 Pixel；本实现刻意保持弹性，
 否则窗口缩放时被冻结的轨道会与 Star 轨道之间出现缝隙。
 
-正确性前提是定义快照（`defBeforeStart_` / `defAfterStart_`，`GridSplitter.h:120-124`）：
+正确性前提是定义快照（`defBeforeStart_` / `defAfterStart_`）：
 拖动开始时记下两条轨道的原始 `GridLength`，每次移动都基于它决定写回形式，而不是读
 当前值（那样会在连续拖动中逐步丢失单位信息）。
 

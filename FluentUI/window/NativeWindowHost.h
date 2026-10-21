@@ -78,6 +78,14 @@ public:
 
     // Use an icon embedded in the application's module for the custom title bar,
     // taskbar and Alt+Tab. Call before Create/Show; 0 clears the icon.
+    //
+    // The window loads two sizes at its CURRENT DPI and reloads them on every
+    // WM_DPICHANGED: 16 DIP (ICON_SMALL and the title bar, drawn 1:1 with no
+    // resampling) and 32 DIP (ICON_BIG, Alt+Tab). For crisp results the .ico
+    // should contain frames for the sizes those map to at the DPIs you support —
+    // 16/20/24/32 px for the small icon (100/125/150/200%) and 32/40/48/64 px for
+    // the big one. A missing frame is resampled once by LoadImageW from the
+    // nearest one, which softens thin strokes at small sizes.
     void SetIconResource(UINT resourceId);
     UINT IconResource() const { return iconResourceId_; }
 
@@ -509,6 +517,14 @@ private:
 
     UINT iconResourceId_ = 0;
     Microsoft::WRL::ComPtr<ID2D1Bitmap> titleIconBitmap_;
+    // Per-DPI icon pair handed to WM_SETICON. Owned (loaded without LR_SHARED so
+    // each DPI gets its own size; a shared icon is cached at the first size
+    // loaded); freed when replaced or after the HWND is gone.
+    HICON iconSmall_ = nullptr;
+    HICON iconBig_ = nullptr;
+    void ReleaseWindowIcons();
+    // Title-bar icon inset from the window's left edge (DIP).
+    static constexpr float kTitleIconLeftDip = 10.0f;
 
     HRESULT InitGraphics(UINT pixelW, UINT pixelH);
     // Rebuild the GPU device stack after a loss (roadmap §17). Rebuilds d2d_ IN

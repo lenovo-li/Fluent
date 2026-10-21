@@ -207,6 +207,12 @@ public:
     // downward is deliberate: a push model (parent stamps children during Arrange)
     // silently misses anything past the first generation, which is exactly the bug
     // this replaced.
+    //
+    // Current consumers: ScrollPanel overrides this hook, and ProgressBar reads the
+    // result through WindowClippedBounds() to place its sweep visual. The composited
+    // TextArea/TreeView named above no longer exist (both scroll on the UI thread
+    // now); AncestorViewportClip() below has no in-tree caller and is kept as an
+    // extension point for controls in other libraries that own a DComp visual.
     virtual bool GetViewportClipForDescendants(RectDip& out) const {
         UNREFERENCED_PARAMETER(out);
         return false;
@@ -222,12 +228,12 @@ public:
     // space and intersect directly with no transform.
     //
     // WHY THIS RETURNS THE CLIP AND NOT A PRE-CLIPPED BOUNDS RECT: a composited
-    // control hands this to ScrollContentHost::SetAncestorClip, which must express
-    // the compositor clip RELATIVE TO THE CONTROL'S TRUE POSITION
-    // (localTop = clip.y - bounds.y). Folding the clip into the bounds destroys the
-    // information needed for that subtraction, and the clip then ends up measured
-    // from the wrong origin — which pinned composited content to the title bar and
-    // dragged it along while scrolling, in several earlier revisions.
+    // control must compute its clip RELATIVE TO ITS TRUE POSITION. For example,
+    // a TextArea at window {0,200,800,600} clipped by its ScrollPanel ancestor to
+    // {0,250,800,550} has a local top clip of 50 DIP (250 - 200). Folding the clip
+    // into the bounds (returning {0,250,800,550}) destroys the information needed
+    // for that subtraction — the control would then compute a local clip from the
+    // wrong origin, pinning content to the wrong edge while scrolling.
     bool AncestorViewportClip(RectDip& out) const {
         bool found = false;
         for (const Visual* p = Parent(); p; p = p->Parent()) {
@@ -248,8 +254,8 @@ public:
     }
 
     // bounds_ intersected with every ancestor viewport clip, in window coordinates.
-    // For a control that positions a compositor visual DIRECTLY from a rect
-    // (ProgressBar's sweep) instead of going through ScrollContentHost.
+    // Compositor-backed controls that position a visual directly from a rect can use
+    // this to compute their visible region (e.g., ProgressBar's animated sweep bar).
     //
     // Returns an EMPTY rect (w or h == 0) when the control is fully scrolled out of
     // view. Callers MUST test IsEmpty() and hide their visual rather than deriving
@@ -466,10 +472,61 @@ public:
     virtual void OnKeyDownRouted(KeyEventArgs& e) { UNREFERENCED_PARAMETER(e); }
     virtual void OnTextInput(wchar_t ch) { UNREFERENCED_PARAMETER(ch); }
 
+    // --- Dispatch entry points (called by InputManager, one element per call) --
+    // Each raises the matching public event on THIS element, then — unless a
+    // subscriber set args.handled — calls the virtual above. The InputManager
+    // walks the route and calls these instead of the virtuals directly.
+    //
+    // WHY HERE AND NOT INSIDE THE VIRTUALS: PointerPressed/Released raise from
+    // inside the base virtual, which only works because few controls override
+    // them. OnPointerMoved / OnKeyDownRouted / OnTextInput are overridden by
+    // two dozen controls, none of which chain to the base (the base is empty),
+    // so an event raised from the base virtual would silently never fire for
+    // exactly the controls people subscribe to. Raising at the dispatch point
+    // makes the event independent of what any override does.
+    //
+    // Per element, not per route: subscriber-then-virtual on each element in
+    // turn keeps bubbling order intact — a subscriber on a parent must not see
+    // an event the child's own virtual already handled.
+    void DispatchPointerMoved(PointerEventArgs& e) {
+        if (pointerMoved_.HasSubscribers()) {
+            pointerMoved_.Raise(*this, e);
+            if (e.handled) return;
+        }
+        OnPointerMoved(e);
+    }
+    void DispatchPointerWheelChanged(PointerEventArgs& e) {
+        if (pointerWheel_.HasSubscribers()) {
+            pointerWheel_.Raise(*this, e);
+            if (e.handled) return;
+        }
+        OnPointerWheelChanged(e);
+    }
+    void DispatchPreviewKeyDown(KeyEventArgs& e) {
+        if (previewKeyDown_.HasSubscribers()) {
+            previewKeyDown_.Raise(*this, e);
+            if (e.handled) return;
+        }
+        OnPreviewKeyDown(e);
+    }
+    void DispatchKeyDown(KeyEventArgs& e) {
+        if (keyDown_.HasSubscribers()) {
+            keyDown_.Raise(*this, e);
+            if (e.handled) return;
+        }
+        OnKeyDownRouted(e);
+    }
+    // TextInput carries a bare wchar_t, so there is no handled flag: subscribers
+    // observe, and the virtual always runs.
+    void DispatchTextInput(wchar_t ch) {
+        if (textInput_.HasSubscribers()) textInput_.Raise(*this, ch);
+        OnTextInput(ch);
+    }
+
     // Whether this element participates in hit-testing (roadmap §9.1). A false
     // value makes the pointer pass through to whatever is behind it, even though
-    // the element still renders. Enabled state is separate (a disabled element is
-    // still hit — it just swallows the event) — both must hold for HitTest to pass.
+    // the element still renders. Disabled state is separate (a disabled element can
+    // still be hit, it just swallows the event) — both must hold for HitTest to pass.
     bool IsHitTestVisible() const { return hitTestVisible_; }
     void SetHitTestVisible(bool v) { hitTestVisible_ = v; }
 
@@ -528,11 +585,10 @@ public:
     }
 
     // Refresh the inModalResize flag for an already attached subtree. Called by the
-    // host on WM_ENTERSIZEMOVE/WM_EXITSIZEMOVE so controls can skip expensive surface
-    // updates while the resize border is held (compositor shows stale correctly-placed
-    // pixels, avoiding BeginDraw sync points that dominated worst resize frames).
-    // Virtual so composited controls (TextArea/TreeView) can override and force a
-    // surface refresh on the falling edge, even when bounds didn't change.
+    // host on WM_ENTERSIZEMOVE/WM_EXITSIZEMOVE. No current control reads this flag;
+    // retained as stable API for composition-backed controls in other libraries.
+    // Virtual to allow container overrides (Expander, Border, GroupBox, Viewbox, Panel)
+    // to propagate the flag to children.
     virtual void UpdateContextModalResize(bool inModalResize) {
         context_.inModalResize = inModalResize;
         UpdateChildrenContextModalResize(inModalResize);

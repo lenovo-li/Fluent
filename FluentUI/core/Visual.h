@@ -31,10 +31,10 @@ public:
     // nothing) and by HitTest (so it takes no input).
     bool IsVisible() const { return visible_; }
     // Walks the ancestor chain: false if THIS element or ANY ancestor is
-    // collapsed. IsVisible() alone is not enough for a composited control,
-    // because SetVisible(false) on a containing panel (e.g. a Gallery page)
+    // collapsed. IsVisible() alone is not enough for a control that owns a composition
+    // visual, because SetVisible(false) on a containing panel (e.g. a Gallery page)
     // does not touch this element's own visible_ — only the panel's. A
-    // TextArea nested three levels inside a hidden page still reports
+    // ProgressBar nested three levels inside a hidden page still reports
     // IsVisible()==true; this is the check that actually matches "will this
     // element ever produce a visible pixel".
     bool IsEffectivelyVisible() const {
@@ -46,9 +46,9 @@ public:
         // Measure, not Render: collapsing changes what space the parent hands out,
         // so every sibling after this one may move.
         //
-        // The hook matters for composited controls (TextArea / TreeView in
-        // composition mode). Their pixels come from a DComp visual that the
-        // compositor draws on its own thread — skipping their D2D Render does NOT
+        // The hook matters for a control that owns a composition visual (today:
+        // ProgressBar's indeterminate sweep). Those pixels come from a DComp visual
+        // the compositor draws on its own thread — skipping their D2D Render does NOT
         // hide them, so they must push the state down to the compositor themselves.
         if (SetProperty(visible_, v, DirtyFlags::Measure)) OnVisibilityChanged(v);
     }
@@ -66,9 +66,9 @@ public:
     //
     // Applied by RenderWithOpacity via DrawingContext::WithOpacity, so every
     // control honors it without implementing anything. A control that renders
-    // through a composition visual instead (TreeView / TextArea in composited
-    // mode) forwards it to ICompositionVisual::SetOpacity, which gives true
-    // subtree-composite semantics on the compositor thread.
+    // through a composition visual instead must forward it to
+    // ICompositionVisual::SetOpacity itself (no in-tree control does yet; see
+    // EffectiveOpacity below).
     float Opacity() const { return opacity_; }
     void SetOpacity(float o) {
         const float v = (o < 0.0f) ? 0.0f : (o > 1.0f ? 1.0f : o);
@@ -152,8 +152,8 @@ public:
     // it reads IsEffectivelyVisible() to learn its actual state rather than being
     // handed a bool, because a sibling ancestor could independently be collapsed
     // too. This is what makes SetVisible(false) on a container page actually
-    // detach the DComp visuals of TextArea/TreeView living inside it, instead of
-    // only affecting the page's own D2D Render (which composited controls skip).
+    // detach a DComp visual (ProgressBar's sweep) living inside it, instead of
+    // only affecting the page's own D2D Render, which never reaches that visual.
     virtual void OnAncestorVisibilityChanged() {}
 
     // Notifications from the host. Default no-ops; elements that cache

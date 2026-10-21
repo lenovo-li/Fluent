@@ -171,7 +171,7 @@ for (int i = 0; i < 3; ++i) {
 
 | Token | 用途 |
 | --- | --- |
-| `accent` / `accentHover` / `accentPressed` | 开启态轨道与焦点环（自绘，不走 DrawFocusRing，`:135`） |
+| `accent` / `accentHover` / `accentPressed` | 开启态轨道与焦点环（自绘，不走 DrawFocusRing） |
 | `controlFillDefault` / `controlFillHover` | 关闭态轨道 |
 | `onAccent` | 旋钮(未设 Foreground 时) |
 | `textPrimary` | 标签 |

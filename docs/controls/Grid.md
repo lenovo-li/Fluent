@@ -139,11 +139,11 @@ grid->SetHeight(58.0f);             // ✗ 猜一个字体的行高
 
 **3. 只有 `Viewbox` 和 `Expander` 忽略子元素 Margin。**
 
-`Viewbox`（`Viewbox.cpp:91` 直接 Arrange natural size）与 `Expander`
-（`Expander.cpp:166` 直接 `content_->Arrange(contentRect)`）确实忽略子元素 Margin。
+`Viewbox` 与 `Expander` 确实忽略子元素 Margin（前者直接 Arrange 到 natural size，
+后者直接 `content_->Arrange(contentRect)` 不减 Margin）。
 
 但 `Border` 与 `GroupBox` 其实**尊重** Margin —— 两者都走 `FrameworkElement::ComputeArrangeRect`
-（`Border.cpp:45`、`GroupBox.cpp:122`），该函数第一步就是 `slot - child->Margin()`。
+，该函数第一步就是 `slot - child->Margin()`。
 给 Border 的子元素设 Margin 是有效的，它会与 Border 自己的 Padding 叠加。
 在 `Viewbox` / `Expander` 里要留白，请用容器自己的 `Padding`。
 

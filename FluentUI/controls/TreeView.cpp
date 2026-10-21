@@ -291,9 +291,7 @@ void TreeView::OnSelectionChanged(int /*oldIndex*/, int newIndex)
 
 // --- Multi-select side effects ---------------------------------------------
 // The state and the four gesture methods live in Selector now. What stays here
-// is the tree-specific consequence of a set change: the composited row surface
-// holds the selection highlight, so it has to be re-rasterized, and the typed
-// event carries a vector the tree's subscribers already expect.
+// is the tree-specific consequence of a set change: invalidation and typed event.
 void TreeView::OnSelectionSetChanged()
 {
     // Event::Raise takes Args& (non-const), so the vector must be an lvalue.
@@ -368,7 +366,7 @@ int TreeView::VisibleIndexByRow(int rowIndex) const
 
 int TreeView::HitRow(float dipY) const
 {
-    // Use the EFFECTIVE offset (mid-tween in composition mode) so a click during a
+    // Use the EFFECTIVE offset (the in-flight position, mid-tween) so a click during a
     // smooth scroll hits the row actually under the cursor (roadmap §11.10).
     float y = dipY - bounds_.y + CurrentOffset();
     int visibleIndex = static_cast<int>(y / rowHeight_);

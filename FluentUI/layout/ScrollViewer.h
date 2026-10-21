@@ -78,12 +78,10 @@ public:
     void AnimateTo(float offsetDip);
     void AnimateBy(float deltaDip) { AnimateTo(target_ + deltaDip); }
     bool IsAnimating() const { return animating_; }
-    // The smooth scroll's destination; == Offset() when settled. Mirrors
-    // ScrollContentHost::TargetOffset() so a control can ask the same question of
-    // whichever path is active. Needed by any decision about where a scroll is HEADED
-    // rather than where it is: on the frame a wheel notch arrives, Offset() has not moved
-    // yet, so judging "did the user scroll away from the bottom" against it always
-    // answers "no".
+    // The smooth scroll's destination; == Offset() when settled. Needed by any
+    // decision about where a scroll is HEADED rather than where it is: on the frame a
+    // wheel notch arrives, Offset() has not moved yet, so judging "did the user
+    // scroll away from the bottom" against it always answers "no".
     float TargetOffset() const { return animating_ ? target_ : offset_; }
     // Advance offset + fade/expand animations by dt seconds. Returns true while
     // anything is still in motion (or the idle fade countdown is running).

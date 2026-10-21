@@ -139,6 +139,11 @@ TEST(MeasureCache, ProbeCountsPartitionCallsAndHits) {
     auto* a = root.Emplace<CountingLeaf>();
     auto* b = root.Emplace<CountingLeaf>();
 
+    // Panel::Add now invalidates, so the two Emplace calls above incremented
+    // MeasureCalls. Reset counters after tree construction to isolate the test's
+    // actual cache-hit measurements.
+    LayoutCostProbe::Reset();
+
     // First pass: panel + two leaves all measure for real. The panel itself is
     // measured directly (not through MeasureCached) by this call, so only the two
     // children are counted.
@@ -147,6 +152,9 @@ TEST(MeasureCache, ProbeCountsPartitionCallsAndHits) {
     EXPECT_EQ(LayoutCostProbe::GetCount(LayoutCountKey::MeasureCacheHits), 0);
     EXPECT_TRUE(firstCalls >= 2);   // both leaves, plus the root's own cached entry
 
+    // Clear dirty flags so the second pass is a true no-op (the root's measure
+    // cache is valid and nothing is dirty).
+    root.ClearDirtySubtree();
     LayoutCostProbe::Reset();
     EXPECT_EQ(LayoutCostProbe::GetCount(LayoutCountKey::MeasureCalls), 0);
     EXPECT_EQ(LayoutCostProbe::GetCount(LayoutCountKey::MeasureCacheHits), 0);
