@@ -598,6 +598,17 @@ private:
     // one (they previously diverged — only left-click dismissed).
     void LightDismissAt(int px, int py);
 
+    // Re-ask the element tree which cursor to show, and apply it now.
+    //
+    // Exists because WM_SETCURSOR is not sent while this window holds mouse capture
+    // (Win32 assumes the capturing window manages its own cursor), and every drag
+    // gesture here captures. A cursor that should change WITHOUT a move — the pan
+    // arrow appearing on middle-press, the I-beam returning on release — therefore
+    // has to be pushed from the press/release handlers. Asks the captured element
+    // first (it owns the gesture even when the pointer has left its bounds), then
+    // the element under the pointer; null from both means the arrow.
+    void RefreshCursor();
+
     // Invalidate hook the InputManager calls after routing an event (input changes
     // visual state); forwards to Render (coalesced frame request).
     static void InvalidateThunk(void* ctx);

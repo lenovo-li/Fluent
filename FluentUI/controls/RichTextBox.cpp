@@ -869,11 +869,14 @@ void RichTextBox::Arrange(const RectDip& finalRect) {
 }
 
 bool RichTextBox::WantsAnimationTick() const {
-    return scrollViewer_->NeedsTick();
+    return scrollViewer_->NeedsTick() || scrollViewer_->IsAutoscrolling();
 }
 
 void RichTextBox::OnAnimationTick(float dtSec) {
     scrollViewer_->Tick(dtSec);
+    if (scrollViewer_->IsAutoscrolling()) {
+        scrollViewer_->TickAutoscroll(dtSec);
+    }
     Invalidate();
 }
 
@@ -1504,6 +1507,23 @@ void RichTextBox::OnPointerPressed(PointerEventArgs& e) {
 
     const float scrollY = scrollViewer_->Offset();
 
+    // Middle-button: toggle autoscroll if there's anywhere to scroll.
+    if (e.button == PointerButton::Middle) {
+        if (scrollViewer_->IsAutoscrolling()) {
+            scrollViewer_->EndAutoscroll();
+        } else if (scrollViewer_->MaxOffset() > 0.0f || scrollViewer_->MaxOffsetX() > 0.0f) {
+            scrollViewer_->BeginAutoscroll(e.position.x, e.position.y);
+        }
+        e.handled = true;
+        return;
+    }
+
+    // Left-button press while autoscrolling: cancel autoscroll first.
+    if (e.button == PointerButton::Left && scrollViewer_->IsAutoscrolling()) {
+        scrollViewer_->EndAutoscroll();
+        // Fall through to normal left-press handling.
+    }
+
     // Check if the press is on the vertical scrollbar.
     if (scrollViewer_->HitBarRegion(e.position.x, e.position.y)) {
         if (!scrollViewer_->HitThumb(e.position.x, e.position.y)) {
@@ -1576,6 +1596,12 @@ void RichTextBox::OnPointerMoved(PointerEventArgs& e) {
     pointerOverHBar_ = scrollViewer_->HitHBarRegion(e.position.x, e.position.y);
     scrollViewer_->SetBarHover(pointerOverVBar_);
     scrollViewer_->SetHBarHover(pointerOverHBar_);
+
+    if (scrollViewer_->IsAutoscrolling()) {
+        scrollViewer_->UpdateAutoscrollVelocity(e.position.x, e.position.y);
+        e.handled = true;
+        return;
+    }
 
     if (scrollViewer_->IsDragging()) {
         scrollViewer_->DragTo(e.position.y);
@@ -1684,6 +1710,19 @@ void RichTextBox::OnFocusChanged() {
 }
 
 HCURSOR RichTextBox::Cursor() const {
+    // Autoscroll: direction-indicating arrow.
+    if (scrollViewer_->IsAutoscrolling()) {
+        POINT pt;
+        if (GetCursorPos(&pt) && Context().hwnd) {
+            ScreenToClient(Context().hwnd, &pt);
+            const float dpiScale = Context().dpiScale;
+            const float dipX = pt.x / dpiScale;
+            const float dipY = pt.y / dpiScale;
+            return scrollViewer_->AutoscrollCursor(dipX, dipY);
+        }
+        static HCURSOR sizeAll = LoadCursor(nullptr, IDC_SIZEALL);
+        return sizeAll;
+    }
     // Over a scrollbar track: system default (arrow).
     if (pointerOverVBar_ || pointerOverHBar_)
         return nullptr;

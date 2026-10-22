@@ -1097,8 +1097,29 @@ bool TextArea::OnNavigationKey(UINT vk, bool shift) {
 // ---------------------------------------------------------------------------
 
 void TextArea::OnPointerPressed(PointerEventArgs& e) {
-    if (e.button != PointerButton::Left) return;
     float dipX = e.position.x, dipY = e.position.y;
+
+    // Middle-button: toggle autoscroll if there's anywhere to scroll.
+    if (e.button == PointerButton::Middle) {
+        if (scroll_.IsAutoscrolling()) {
+            // Already autoscrolling: stop it.
+            scroll_.EndAutoscroll();
+        } else if (scroll_.MaxOffset() > 0.0f || scroll_.MaxOffsetX() > 0.0f) {
+            // Start autoscroll at this anchor point. No capture needed — the pointer
+            // roams free and OnPointerMoved updates velocity based on distance.
+            scroll_.BeginAutoscroll(dipX, dipY);
+        }
+        e.handled = true;
+        return;
+    }
+
+    // Left-button press while autoscrolling: cancel autoscroll first.
+    if (e.button == PointerButton::Left && scroll_.IsAutoscrolling()) {
+        scroll_.EndAutoscroll();
+        // Fall through to normal left-press handling (selection).
+    }
+
+    if (e.button != PointerButton::Left) return;
     // Vertical thumb first (right edge), horizontal thumb second (bottom edge).
     // The two hit regions are disjoint when HTrackLength() reserves the corner, so
     // at most one branch fires.
@@ -1177,6 +1198,11 @@ void TextArea::AutoScrollForDragSelect(float dipY) {
 
 void TextArea::OnPointerMoved(PointerEventArgs& e) {
     float dipX = e.position.x, dipY = e.position.y;
+    if (scroll_.IsAutoscrolling()) {
+        scroll_.UpdateAutoscrollVelocity(dipX, dipY);
+        // No invalidate here: the tick will scroll and invalidate.
+        e.handled = true; return;
+    }
     if (scroll_.IsDragging()) {
         scroll_.DragTo(dipY);
         // A thumb drag is a user-driven scroll, so it is one of the places that decides
@@ -1282,7 +1308,7 @@ float TextArea::CurrentOffsetX() const {
 
 bool TextArea::WantsAnimationTick() const {
     if (!IsEffectivelyVisible()) return false;
-    return scroll_.NeedsTick() || dragOutsideEdge_;
+    return scroll_.NeedsTick() || scroll_.IsAutoscrolling() || dragOutsideEdge_;
 }
 
 void TextArea::OnAnimationTick(float dtSec) {
@@ -1290,6 +1316,10 @@ void TextArea::OnAnimationTick(float dtSec) {
     // Runs in PumpAnimations, OUTSIDE the window content frame — safe to refill
     // surfaces here. The host renders once after ticking, so don't self-invalidate.
     scroll_.Tick(dtSec);
+    if (scroll_.IsAutoscrolling()) {
+        scroll_.TickAutoscroll(dtSec);
+        UpdateTailFollow();
+    }
     if (dragOutsideEdge_ && selecting_) {
         // Keep pulling the view while the pointer sits outside the text region. Goes
         // through ExtendDragSelection, not a bare caret_ assignment: a double-click drag
@@ -1719,6 +1749,22 @@ void TextArea::OnDpiChanged(float dpiScale) {
 }
 
 HCURSOR TextArea::Cursor() const {
+    // Autoscroll: direction-indicating arrow based on pointer position.
+    if (scroll_.IsAutoscrolling()) {
+        // Need the current pointer position to show the right direction arrow.
+        // Cursor() is const and has no coordinates, so we use GetCursorPos.
+        POINT pt;
+        if (GetCursorPos(&pt) && Context().hwnd) {
+            ScreenToClient(Context().hwnd, &pt);
+            const float dpiScale = Context().dpiScale;
+            const float dipX = pt.x / dpiScale;
+            const float dipY = pt.y / dpiScale;
+            return scroll_.AutoscrollCursor(dipX, dipY);
+        }
+        // Fallback if we can't get cursor pos: show the anchor cursor.
+        static HCURSOR sizeAll = LoadCursor(nullptr, IDC_SIZEALL);
+        return sizeAll;
+    }
     // Over a scrollbar track: system default (arrow).
     if (pointerOverScrollBar_)
         return nullptr;

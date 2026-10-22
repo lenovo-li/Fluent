@@ -101,7 +101,11 @@ void InputManager::PointerPressed(Point p, PointerButton button, ModifierKeys mo
 
     // Click-to-focus (matches the old window behavior): a focusable hit gets
     // focus; anything else (non-focusable hit or empty space) clears focus.
-    if (focus_) {
+    //
+    // Not for the middle button. A middle press is a pan — a navigation gesture, like
+    // the wheel — and panning a log view while typing in a search box must not yank
+    // focus out of the box (or clear it, if the press lands on a non-focusable panel).
+    if (focus_ && button != PointerButton::Middle) {
         if (target && target->IsFocusable()) focus_->SetFocus(target);
         else focus_->ClearFocus();
     }

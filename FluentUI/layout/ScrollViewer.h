@@ -70,6 +70,29 @@ public:
     // Horizontal expand factor, for a composited overlay's change signature.
     float HExpandFactor() const { return expandX_; }
 
+    // --- Middle-button autoscroll (browser-style: click to toggle, speed by distance) --
+    // Begin autoscroll mode: record the anchor point where the user clicked. Does NOT
+    // capture the pointer — the user can move the mouse freely, and the scroll speed
+    // depends on how far the pointer is from the anchor.
+    void BeginAutoscroll(float anchorX, float anchorY);
+    // Update velocity based on current pointer position relative to the anchor. Called
+    // from OnPointerMoved while autoscrolling. The farther the pointer from the anchor,
+    // the faster the scroll.
+    void UpdateAutoscrollVelocity(float pointerX, float pointerY);
+    // Apply the current velocity to the scroll offsets. Called from OnAnimationTick.
+    // Returns true if still autoscrolling (velocity non-zero or just started).
+    bool TickAutoscroll(float dtSec);
+    // End autoscroll mode. The scroll stops immediately.
+    void EndAutoscroll() { autoscrolling_ = false; autoscrollVelocityX_ = autoscrollVelocityY_ = 0.0f; }
+    bool IsAutoscrolling() const { return autoscrolling_; }
+    // The anchor point in window DIPs, for rendering an indicator (if desired).
+    float AutoscrollAnchorX() const { return autoscrollAnchorX_; }
+    float AutoscrollAnchorY() const { return autoscrollAnchorY_; }
+    // Get the appropriate cursor for the current autoscroll state based on pointer position.
+    // Returns the direction-indicating cursor (up/down/left/right/diagonal arrows) when
+    // outside the dead zone, or the four-way anchor cursor when in the dead zone.
+    HCURSOR AutoscrollCursor(float pointerX, float pointerY) const;
+
     // --- Smooth (animated) scrolling --------------------------------------
     // Animate toward an absolute offset / by a delta. Successive AnimateBy calls
     // accumulate against the pending target, so spinning the wheel keeps building
@@ -165,6 +188,13 @@ private:
     float expandX_ = 0.0f;
     float expandXTarget_ = 0.0f;
     bool barHoverX_ = false;
+
+    // Middle-button autoscroll state (browser-style: click to toggle, speed by distance).
+    bool autoscrolling_ = false;
+    float autoscrollAnchorX_ = 0.0f;
+    float autoscrollAnchorY_ = 0.0f;
+    float autoscrollVelocityX_ = 0.0f;  // DIP/sec
+    float autoscrollVelocityY_ = 0.0f;  // DIP/sec
 
     // Fade + expand state (0..1). visibility_ = opacity; expand_ = thin->pill.
     float visibility_ = 0.0f;

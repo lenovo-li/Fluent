@@ -383,8 +383,26 @@ void LogViewer::OnPointerWheelChanged(PointerEventArgs& e) {
 }
 
 void LogViewer::OnPointerPressed(PointerEventArgs& e) {
-    if (e.button != PointerButton::Left) return;
     const float dipX = e.position.x, dipY = e.position.y;
+
+    // Middle-button: toggle autoscroll if there's anywhere to scroll.
+    if (e.button == PointerButton::Middle) {
+        if (scroll_.IsAutoscrolling()) {
+            scroll_.EndAutoscroll();
+        } else if (scroll_.MaxOffset() > 0.0f) {
+            scroll_.BeginAutoscroll(dipX, dipY);
+        }
+        e.handled = true;
+        return;
+    }
+
+    // Left-button press while autoscrolling: cancel autoscroll first.
+    if (e.button == PointerButton::Left && scroll_.IsAutoscrolling()) {
+        scroll_.EndAutoscroll();
+        // Fall through to normal left-press handling.
+    }
+
+    if (e.button != PointerButton::Left) return;
 
     // Press anywhere in the hover strip, not just on the visible thumb: the rail is
     // a few DIP wide and a control that lights up on hover but ignores clicks
@@ -437,6 +455,12 @@ void LogViewer::OnPointerPressed(PointerEventArgs& e) {
 
 void LogViewer::OnPointerMoved(PointerEventArgs& e) {
     const float dipX = e.position.x, dipY = e.position.y;
+
+    if (scroll_.IsAutoscrolling()) {
+        scroll_.UpdateAutoscrollVelocity(dipX, dipY);
+        e.handled = true;
+        return;
+    }
 
     if (scroll_.IsDragging()) {
         scroll_.DragTo(dipY);
@@ -508,6 +532,19 @@ void LogViewer::OnPointerLeft() {
 }
 
 HCURSOR LogViewer::Cursor() const {
+    // Autoscroll: direction-indicating arrow.
+    if (scroll_.IsAutoscrolling()) {
+        POINT pt;
+        if (GetCursorPos(&pt) && Context().hwnd) {
+            ScreenToClient(Context().hwnd, &pt);
+            const float dpiScale = Context().dpiScale;
+            const float dipX = pt.x / dpiScale;
+            const float dipY = pt.y / dpiScale;
+            return scroll_.AutoscrollCursor(dipX, dipY);
+        }
+        static HCURSOR sizeAll = LoadCursor(nullptr, IDC_SIZEALL);
+        return sizeAll;
+    }
     // I-beam over the text, arrow over the scrollbar rail — the pointer is the only
     // affordance saying "this text is selectable", which is why TextEditBase does the
     // same thing.
@@ -528,11 +565,15 @@ HCURSOR LogViewer::Cursor() const {
 // ---------------------------------------------------------------------------
 
 bool LogViewer::WantsAnimationTick() const {
-    return scroll_.NeedsTick();
+    return scroll_.NeedsTick() || scroll_.IsAutoscrolling();
 }
 
 void LogViewer::OnAnimationTick(float dtSec) {
     scroll_.Tick(dtSec);
+    if (scroll_.IsAutoscrolling()) {
+        scroll_.TickAutoscroll(dtSec);
+        autoScrollToTail_ = scroll_.TargetOffset() >= scroll_.MaxOffset() - 1.0f;
+    }
     // scroll_ is a member, not a tree node: the Invalidate() inside its Tick has no
     // path to the frame scheduler, so its fade/expand steps would only appear on
     // frames some other element happened to dirty.

@@ -1461,6 +1461,24 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
             }
             return 0;
         }
+        case WM_MBUTTONDOWN:
+        case WM_MBUTTONDBLCLK: {
+            HideTooltip();  // dismiss tooltip like any other click
+            int px = GET_X_LPARAM(lp), py = GET_Y_LPARAM(lp);
+            // Light-dismiss any open popup (same as left/right click), but do NOT
+            // break the click streak — middle-click is a pan gesture, not a selection,
+            // and should not interfere with double/triple-click tracking.
+            LightDismissAt(px, py);
+            // Route as a middle-button press. Unlike left-click, middle-click does NOT
+            // change keyboard focus — it is a navigation gesture, not an editing one.
+            // Also does NOT capture: autoscroll is a toggle, not a press-and-hold drag.
+            input_.Input().PointerPressed(ToDip(px, py), PointerButton::Middle, CurrentModifiers(),
+                                          1);  // clickCount 1: no multi-click for middle button
+            // Cursor updates immediately on WM_MOUSEMOVE once autoscroll starts, so no
+            // explicit RefreshCursor call needed here (unlike the old pan mode).
+            UpdateAnimationTimer();
+            return 0;
+        }
         case WM_LBUTTONUP: {
             int px = GET_X_LPARAM(lp), py = GET_Y_LPARAM(lp);
             float s = 96.0f / dpi_;
@@ -1496,6 +1514,16 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
                 OnClientClick(px * s, py * s);
             if (destroying_) return 0;  // OnClientClick could also close the window
             UpdateAnimationTimer();  // drag-end starts the idle fade countdown
+            return 0;
+        }
+        case WM_MBUTTONUP: {
+            int px = GET_X_LPARAM(lp), py = GET_Y_LPARAM(lp);
+            input_.Input().PointerReleased(ToDip(px, py), PointerButton::Middle,
+                                           CurrentModifiers());
+            if (destroying_) return 0;
+            // Autoscroll is a toggle: middle-up doesn't necessarily end it (only if
+            // the user clicked again to stop). Cursor updates via WM_SETCURSOR naturally.
+            UpdateAnimationTimer();
             return 0;
         }
         case WM_MOUSEWHEEL: {
@@ -1560,6 +1588,15 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
                 POINT pt;
                 GetCursorPos(&pt);
                 ScreenToClient(hwnd_, &pt);
+                // A captured element owns the cursor for its whole gesture, even when
+                // the pointer is outside it (a pan that dragged off the control must
+                // keep the pan arrow).
+                if (UIElement* cap = input_.Input().Captured()) {
+                    if (HCURSOR c = cap->Cursor()) {
+                        SetCursor(c);
+                        return TRUE;
+                    }
+                }
                 if (UIElement* e = input_.Input().HitTest(ToDip(pt.x, pt.y))) {
                     if (HCURSOR c = e->Cursor()) {
                         SetCursor(c);
@@ -2325,6 +2362,19 @@ void NativeWindowHost::LightDismissAt(int px, int py) {
     ClientToScreen(hwnd_, &pt);
     if (popupDismiss_(PopupDismissReason::Click, nullptr, pt.x, pt.y))
         popupDismiss_ = nullptr;
+}
+
+void NativeWindowHost::RefreshCursor() {
+    POINT pt;
+    if (!GetCursorPos(&pt)) return;
+    ScreenToClient(hwnd_, &pt);
+    HCURSOR c = nullptr;
+    if (UIElement* cap = input_.Input().Captured()) c = cap->Cursor();
+    if (!c) {
+        if (UIElement* e = input_.Input().HitTest(ToDip(pt.x, pt.y))) c = e->Cursor();
+    }
+    static HCURSOR arrow = LoadCursor(nullptr, IDC_ARROW);
+    SetCursor(c ? c : arrow);
 }
 
 void NativeWindowHost::UpdateImePosition() {
