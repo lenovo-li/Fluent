@@ -1,6 +1,6 @@
 // InheritanceExamplesTest.cpp — the inheritance examples must compile AND behave.
 //
-// examples/InheritanceExamples.h is the code docs/controls/inheritance-guide.md points
+// tests/unit/InheritanceExamples.h is the code docs/controls/inheritance-guide.md points
 // readers at. A doc example nobody compiles rots (see the docs audit: every
 // from-memory example in docs/controls was broken), so this file is what keeps it
 // honest: if a protected hook is renamed or its signature changes, the build breaks
@@ -11,7 +11,7 @@
 // hit-test, the Measure override taking effect, and CoerceValue/IsDragging semantics.
 
 #include "../framework/Test.h"
-#include "../../examples/InheritanceExamples.h"
+#include "InheritanceExamples.h"
 
 using namespace fluent;
 

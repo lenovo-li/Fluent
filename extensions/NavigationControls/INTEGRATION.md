@@ -13,7 +13,7 @@ Add both projects to your solution, then reference them from the app's `.vcxproj
   <ProjectReference Include="..\..\Fluent\FluentUI\FluentUI.vcxproj">
     <Project>{dcce72dd-3d48-4f95-9746-89b4ec20677e}</Project>
   </ProjectReference>
-  <ProjectReference Include="..\..\Fluent\examples\NavigationControls\NavigationControls.vcxproj">
+  <ProjectReference Include="..\..\Fluent\extensions\NavigationControls\NavigationControls.vcxproj">
     <Project>{f9e3d8b2-4c5e-6f7a-8b9c-0d1e2f3a4b5c}</Project>
   </ProjectReference>
 </ItemGroup>
@@ -28,7 +28,7 @@ Match the libraries, or the link fails on CRT / ABI mismatches:
 
 | Setting | Value |
 |---|---|
-| Include directories | Fluent repo root (so `FluentUI/...` and `examples/...` resolve) |
+| Include directories | Fluent repo root (so `FluentUI/...` and `extensions/...` resolve) |
 | Language standard | C++20 (`stdcpp20`), same as the libraries |
 | Runtime library | `/MTd` Debug, `/MT` Release (static CRT) |
 | Extra options | `/utf-8` |
@@ -53,7 +53,7 @@ All control geometry is in DIPs; FluentUI scales per window and handles
 
 ```cpp
 #include <FluentUI/FluentUI.h>
-#include "examples/NavigationControls/NavigationControls.h"
+#include "extensions/NavigationControls/NavigationControls.h"
 ```
 
 Usage, event subscription rules and behavior notes are in `README.md`.

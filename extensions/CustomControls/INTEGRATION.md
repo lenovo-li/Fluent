@@ -6,7 +6,7 @@
 
 ## What This Is
 
-`examples/CustomControls/` is a **separate library** demonstrating how end users should extend FluentUI by inheriting controls. It contains three working examples:
+`extensions/CustomControls/` is a **separate library** demonstrating how end users should extend FluentUI by inheriting controls. It contains three working examples:
 
 1. **LunarCalendar**: adds lunar dates below Gregorian days
 2. **BigButton**: 64dp tall button with icon + two-line text
@@ -39,7 +39,7 @@ FluentUIDemo.exe (demo application)
 ### Step 1: Create CustomControls.vcxproj
 
 ```xml
-<!-- examples/CustomControls/CustomControls.vcxproj -->
+<!-- extensions/CustomControls/CustomControls.vcxproj -->
 <Project DefaultTargets="Build" xmlns="...">
   <PropertyGroup>
     <ConfigurationType>StaticLibrary</ConfigurationType>
@@ -79,7 +79,7 @@ FluentUIDemo.exe (demo application)
   "solution": {
     "projects": [
       {
-        "path": "examples/CustomControls/CustomControls.vcxproj",
+        "path": "extensions/CustomControls/CustomControls.vcxproj",
         "type": "{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}"
       }
     ]
@@ -92,14 +92,14 @@ FluentUIDemo.exe (demo application)
 **Add reference**:
 ```xml
 <ItemGroup>
-  <ProjectReference Include="..\examples\CustomControls\CustomControls.vcxproj" />
+  <ProjectReference Include="..\extensions\CustomControls\CustomControls.vcxproj" />
 </ItemGroup>
 ```
 
 **Include header**:
 ```cpp
 // FluentUIDemo/Demo.cpp
-#include "../examples/CustomControls/CustomControls.h"
+#include "../extensions/CustomControls/CustomControls.h"
 
 using namespace fluent::custom;
 
@@ -124,7 +124,7 @@ panel->Add(logSlider);
 ## CMake Integration (TODO)
 
 ```cmake
-# examples/CustomControls/CMakeLists.txt
+# extensions/CustomControls/CMakeLists.txt
 add_library(CustomControls STATIC
     CustomControls.h
     LunarCalendar.cpp
@@ -146,7 +146,7 @@ target_compile_features(CustomControls PUBLIC cxx_std_20)
 Update root `CMakeLists.txt`:
 ```cmake
 if(FLUENTUI_BUILD_EXAMPLES)
-    add_subdirectory(examples/CustomControls)
+    add_subdirectory(extensions/CustomControls)
 endif()
 ```
 
@@ -163,7 +163,7 @@ target_link_libraries(FluentUIDemo PRIVATE
 
 ## Testing
 
-The examples are already compile-tested via `tests/unit/InheritanceExamplesTest.cpp`, which includes `examples/InheritanceExamples.h` (header-only versions of the same controls).
+The examples are already compile-tested via `tests/unit/InheritanceExamplesTest.cpp`, which includes `tests/unit/InheritanceExamples.h` (header-only versions of the same controls).
 
 Once `CustomControls.lib` is built, the same tests should pass with the real `.cpp` implementations.
 

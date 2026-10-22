@@ -1,8 +1,8 @@
 # NavigationControls
 
 Navigation controls for FluentUI, built as a separate static library that links
-`FluentUI.lib` (same pattern as `examples/CustomControls` and
-`examples/InstallerControls`). Namespace: `fluent`.
+`FluentUI.lib` (same pattern as `extensions/CustomControls` and
+`extensions/InstallerControls`). Namespace: `fluent`.
 
 - **NavRail**: vertical navigation rail. Optional header element (logo), icon items,
   selected item = 3 DIP accent bar + accent-tinted rounded fill, hover fill, red-dot
@@ -17,7 +17,7 @@ Navigation controls for FluentUI, built as a separate static library that links
 ## Quick start
 
 ```cpp
-#include "examples/NavigationControls/NavigationControls.h"
+#include "extensions/NavigationControls/NavigationControls.h"
 using namespace fluent;
 
 // Root grid: rail in column 0, page in column 1, overlay spanning both (added last
@@ -103,6 +103,6 @@ overlay->UpdateProgress(45, L"Writing firmware... 45%");
 
 ## Building
 
-`Fluent.slnx` includes `examples/NavigationControls/NavigationControls.vcxproj`
-(folder `/demos/examples/`). Output: `x64/<Config>/NavigationControls.lib`.
+`Fluent.slnx` includes `extensions/NavigationControls/NavigationControls.vcxproj`
+(solution folder `/extensions/`). Output: `x64/<Config>/NavigationControls.lib`.
 Consuming it from another solution: see `INTEGRATION.md`.

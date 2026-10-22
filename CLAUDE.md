@@ -94,11 +94,16 @@ needs the user to verify on real hardware. Say so rather than implying otherwise
 
 Custom controls are built by inheriting FluentUI controls in a **separate
 library** that links `FluentUI.lib` — never by adding them to the FluentUI source
-tree. `examples/CustomControls/` (LunarCalendar, BigButton, LogSlider) and
-`examples/InstallerControls/` are the working templates; the demo links them.
+tree. Those libraries live under `extensions/`: `extensions/CustomControls/`
+(LunarCalendar, BigButton, LogSlider), `extensions/InstallerControls/` and
+`extensions/NavigationControls/` are the working templates; the demo links them.
+`examples/` is kept for something different — minimal consumer programs
+(`Minimal/`, `PackageConsumer/`) that show how to *use* FluentUI, not how to
+extend it. A new reusable control library goes in `extensions/`, a new "how do I
+link this" sample goes in `examples/`.
 This keeps the core stable and shows users the real integration path. What each
 control exposes as `protected`, and why, is in
-`docs/controls/inheritance-guide.md`. `examples/InheritanceExamples.h` is a
+`docs/controls/inheritance-guide.md`. `tests/unit/InheritanceExamples.h` is a
 header-only variant kept only so `tests/unit/InheritanceExamplesTest.cpp` can
 compile-check the extension points.
 
@@ -114,7 +119,10 @@ renaming or changing them breaks downstream libraries.
 | `FluentUITests` | console | headless unit/component tests; count grows, so read it from a run rather than from here |
 | `FluentUIBench` | console | perf scenes; CPU-measurable ones run, GPU ones stub out |
 | `FluentSettings` | static lib | JSON config persistence (`nlohmann/json` vendored) |
-| `examples/CustomControls` | (template) | demonstrates user-library pattern: LunarCalendar, BigButton, LogSlider link FluentUI.lib |
+| `extensions/CustomControls` | static lib (template) | demonstrates user-library pattern: LunarCalendar, BigButton, LogSlider link FluentUI.lib |
+| `extensions/InstallerControls` | static lib | WizardControl + FolderPicker; linked by the demo and tests |
+| `extensions/NavigationControls` | static lib | NavRail, PageHost, OverlayHost |
+| `examples/Minimal`, `examples/PackageConsumer` | GUI app | minimal consumers (C++14/17/20 floor checks, CMake `find_package`) |
 
 ## Architecture
 

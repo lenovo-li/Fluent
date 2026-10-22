@@ -76,7 +76,7 @@ Inherits `Slider`, maps linear drag to logarithmic value (1, 10, 100, 1000).
 (To be added: `CMakeLists.txt`)
 
 ```bash
-cd examples/CustomControls
+cd extensions/CustomControls
 cmake -B build -G Ninja
 cmake --build build
 ```
@@ -97,7 +97,7 @@ cmake --build build
 ## File Structure
 
 ```
-examples/CustomControls/
+extensions/CustomControls/
 ├── README.md                  (this file)
 ├── CustomControls.h           (public header: exports LunarCalendar, BigButton, LogSlider)
 ├── LunarCalendar.cpp          (implementation)
@@ -114,7 +114,7 @@ examples/CustomControls/
 Once built, FluentUIDemo can showcase these controls by:
 
 1. Linking `CustomControls.lib`
-2. `#include "examples/CustomControls/CustomControls.h"`
+2. `#include "extensions/CustomControls/CustomControls.h"`
 3. Adding demo pages:
    - "Lunar Calendar" tab
    - "Big Buttons" tab
@@ -126,7 +126,7 @@ Users see **working examples** of "how to extend FluentUI without forking it".
 
 ## Status
 
-- ✅ Example implementations exist in `examples/InheritanceExamples.h` (header-only prototypes)
+- ✅ Example implementations exist in `tests/unit/InheritanceExamples.h` (header-only prototypes)
 - 🚧 **TODO**: Extract into proper `.cpp` files + build as a real library
 - 🚧 **TODO**: Add .vcxproj + CMakeLists.txt
 - 🚧 **TODO**: Update FluentUIDemo to link and showcase these controls

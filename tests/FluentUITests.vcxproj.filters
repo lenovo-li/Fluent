@@ -172,5 +172,6 @@
     <ClInclude Include="framework\PixelSurface.h"><Filter>framework</Filter></ClInclude>
     <ClInclude Include="framework\FakeCompositionBackend.h"><Filter>framework</Filter></ClInclude>
     <ClInclude Include="unit\LayoutTestHelpers.h"><Filter>unit</Filter></ClInclude>
+    <ClInclude Include="unit\InheritanceExamples.h"><Filter>unit</Filter></ClInclude>
   </ItemGroup>
 </Project>

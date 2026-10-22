@@ -22,6 +22,7 @@ INCLUDE_PATTERNS=(
     "FluentUIBench/"
     "FluentSettings/"
     "tests/"
+    "extensions/"
     "examples/"
     "scripts/"
     "cmake/"

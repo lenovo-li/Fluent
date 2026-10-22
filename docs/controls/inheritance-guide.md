@@ -34,7 +34,7 @@ YourApp.exe (links both libraries)
 - ✅ You can fork/modify CustomControls without touching FluentUI
 - ✅ Demonstrates the real integration path to end users
 
-**Example**: See `examples/CustomControls/` for a working separate-library template with LunarCalendar, BigButton, and LogSlider.
+**Example**: See `extensions/CustomControls/` for a working separate-library template with LunarCalendar, BigButton, and LogSlider.
 
 ---
 
@@ -94,7 +94,7 @@ Avoid inheriting **complex controls** where composition is simpler:
 
 ## Working Examples
 
-**Location**: `examples/CustomControls/` — a separate library demonstrating how users extend FluentUI.
+**Location**: `extensions/CustomControls/` — a separate library demonstrating how users extend FluentUI.
 
 | Control | Source | What It Does |
 |---------|--------|--------------|
@@ -102,7 +102,7 @@ Avoid inheriting **complex controls** where composition is simpler:
 | **BigButton** | `BigButton.cpp` | 64dp tall button with icon + two-line text |
 | **LogSlider** | `LogSlider.cpp` | Logarithmic snapping (1, 10, 100, 1000) |
 
-These are **real, compilable implementations** that link against `FluentUI.lib`. See `examples/CustomControls/README.md` for build instructions.
+These are **real, compilable implementations** that link against `FluentUI.lib`. See `extensions/CustomControls/README.md` for build instructions.
 
 ---
 
@@ -519,4 +519,4 @@ Low-priority controls were evaluated and found to prefer **composition over inhe
 
 **Related Documents**:
 - Individual control docs: `Calendar.md`, `Button.md`, `Slider.md` (Inheritance sections)
-- Separate-library template: `examples/CustomControls/README.md`
+- Separate-library template: `extensions/CustomControls/README.md`

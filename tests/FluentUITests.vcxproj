@@ -69,6 +69,7 @@
     <ClInclude Include="framework\PixelSurface.h" />
     <ClInclude Include="framework\FakeCompositionBackend.h" />
     <ClInclude Include="unit\LayoutTestHelpers.h" />
+    <ClInclude Include="unit\InheritanceExamples.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="framework\TestMain.cpp" />
@@ -227,7 +228,7 @@
     <ProjectReference Include="..\FluentUI\FluentUI.vcxproj">
       <Project>{dcce72dd-3d48-4f95-9746-89b4ec20677e}</Project>
     </ProjectReference>
-    <ProjectReference Include="..\examples\InstallerControls\InstallerControls.vcxproj">
+    <ProjectReference Include="..\extensions\InstallerControls\InstallerControls.vcxproj">
       <Project>{f8e2d9a1-3b4c-5d6e-7f8a-9b0c1d2e3f4a}</Project>
     </ProjectReference>
   </ItemGroup>

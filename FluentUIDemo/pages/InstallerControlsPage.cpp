@@ -1,10 +1,10 @@
-// InstallerControlsPage.cpp — examples/InstallerControls demo (nav id 113).
+// InstallerControlsPage.cpp — extensions/InstallerControls demo (nav id 113).
 //
 // A live four-page installer wizard exercising every WizardControl API, plus the
 // FolderPicker. The wizard sits in a fixed-height Border: it is a fill-the-window
 // control, and inside a ScrollPanel an Auto height would collapse the page area.
 #include "../GalleryMain.h"
-#include "../../examples/InstallerControls/InstallerControls.h"
+#include "../../extensions/InstallerControls/InstallerControls.h"
 #include "../../FluentUI/layout/StackPanel.h"
 #include "../../FluentUI/layout/Border.h"
 #include "../../FluentUI/layout/ScrollPanel.h"
@@ -90,7 +90,7 @@ std::unique_ptr<ScrollPanel> GalleryApp::CreateInstallerControlsPage() {
     s->owner = ownerWindow_;
 
     AddNote(content,
-            L"examples/InstallerControls 是独立扩展库（命名空间 fluent::wizard），链接 FluentUI.lib。"
+            L"extensions/InstallerControls 是独立扩展库（命名空间 fluent::wizard），链接 FluentUI.lib。"
             L"WizardControl = 多页向导 + Back/Next(Finish)/Cancel 按钮栏；FolderPicker = 文件夹选择对话框。");
 
     // --- The live wizard -----------------------------------------------------
@@ -242,7 +242,7 @@ std::unique_ptr<ScrollPanel> GalleryApp::CreateInstallerControlsPage() {
     }));
 
     // --- Code -----------------------------------------------------------------
-    CreateCodeExample(content, LR"(#include "examples/InstallerControls/InstallerControls.h"
+    CreateCodeExample(content, LR"(#include "extensions/InstallerControls/InstallerControls.h"
 using namespace fluent::wizard;
 
 auto* wizard = root->Emplace<WizardControl>();

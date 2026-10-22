@@ -1,9 +1,9 @@
-// WizardControlTests.cpp — headless tests for examples/InstallerControls WizardControl:
+// WizardControlTests.cpp — headless tests for extensions/InstallerControls WizardControl:
 // page management, navigation rules, validation/veto, lock, events, labels, the
 // step indicator, the fade transition, layout geometry, and focus handling.
 
 #include "../framework/Test.h"
-#include "../../examples/InstallerControls/WizardControl.h"
+#include "../../extensions/InstallerControls/WizardControl.h"
 #include "../../FluentUI/layout/StackPanel.h"
 #include "../../FluentUI/layout/Border.h"
 #include "../../FluentUI/input/FocusManager.h"

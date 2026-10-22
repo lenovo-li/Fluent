@@ -1,12 +1,14 @@
 // InheritanceExamples.h — Concrete inheritance examples for Calendar, Button, Slider
 //
 // These are WORKING, COMPILABLE examples demonstrating the Phase 1 inheritance APIs.
-// Place this file in FluentUIDemo/ or examples/ to integrate into the demo app.
+// Lives under tests/ because only tests/unit/InheritanceExamplesTest.cpp includes it;
+// the linkable, separate-library versions of these controls are in
+// extensions/CustomControls/.
 #pragma once
 
-#include "../FluentUI/controls/Calendar.h"
-#include "../FluentUI/controls/Button.h"
-#include "../FluentUI/controls/Slider.h"
+#include "../../FluentUI/controls/Calendar.h"
+#include "../../FluentUI/controls/Button.h"
+#include "../../FluentUI/controls/Slider.h"
 #include <cmath>
 
 namespace fluent {

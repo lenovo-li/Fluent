@@ -1,7 +1,7 @@
 # InstallerControls
 
 Installer wizard controls for FluentUI, built as a separate static library that
-links `FluentUI.lib` (same pattern as `examples/CustomControls`).
+links `FluentUI.lib` (same pattern as `extensions/CustomControls`).
 Namespace: `fluent::wizard` (`fluent::installer` is taken by FluentInstallerCore).
 
 - **WizardControl**: multi-page container with a Back / Next(Finish) / Cancel bar,
@@ -14,7 +14,7 @@ Headless tests: `tests/unit/WizardControlTests.cpp` (`FluentUITests.exe WizardCo
 ## Quick start
 
 ```cpp
-#include "examples/InstallerControls/InstallerControls.h"
+#include "extensions/InstallerControls/InstallerControls.h"
 using namespace fluent;
 using namespace fluent::wizard;
 
@@ -89,14 +89,14 @@ private:
 
 ## Building
 
-`Fluent.slnx` includes `examples/InstallerControls/InstallerControls.vcxproj`.
+`Fluent.slnx` includes `extensions/InstallerControls/InstallerControls.vcxproj`.
 Output: `x64/<Config>/InstallerControls.lib`. To consume it from another solution,
 reference both projects:
 
 ```xml
 <ItemGroup>
   <ProjectReference Include="..\Fluent\FluentUI\FluentUI.vcxproj" />
-  <ProjectReference Include="..\Fluent\examples\InstallerControls\InstallerControls.vcxproj" />
+  <ProjectReference Include="..\Fluent\extensions\InstallerControls\InstallerControls.vcxproj" />
 </ItemGroup>
 ```
 

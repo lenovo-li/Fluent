@@ -8,7 +8,7 @@
 - 位置：`<repo-root>`（如 `~/project/Fluent`）
 - 远程：`lenovo-li/Fluent`（私有）
 - 内容：完整项目
-  - 代码：`FluentUI/`、`tests/`、`examples/` 等
+  - 代码：`FluentUI/`、`tests/`、`extensions/`、`examples/` 等
   - 文档：`docs/`（技术笔记、设计文档、路线图）
   - 开发记录：`.claude/`（任务状态、进度报告、分析文档）
   - 开发配置：`AGENTS.md`、`CLAUDE.md`
@@ -17,7 +17,7 @@
 - 位置：`<repo-root>-public`（首次同步时创建）
 - 远程：`lenovo-li/Fluent-public`（公开）
 - 内容：仅代码
-  - 代码：`FluentUI/`、`tests/`、`examples/`
+  - 代码：`FluentUI/`、`tests/`、`extensions/`、`examples/`
   - 构建：`CMakeLists.txt`、`Fluent.slnx`、`scripts/`
   - 基础文档：`README.md`（公开版）、`LICENSE`、`CONTRIBUTING.md`
 
@@ -121,7 +121,7 @@ git push -u origin master
 ### 同步内容
 
 ✅ **包含**
-- 源代码（`FluentUI/`、`tests/`、`examples/`）
+- 源代码（`FluentUI/`、`tests/`、`extensions/`、`examples/`）
 - 构建配置（`CMakeLists.txt`、`Fluent.slnx`、`scripts/check_*.py`）
 - 开源文档（`README.public.md` → `README.md`、`CONTRIBUTING.public.md` → `CONTRIBUTING.md`、`LICENSE`）
 - 项目配置（`.editorconfig`、`.gitignore`、`.gitattributes`）

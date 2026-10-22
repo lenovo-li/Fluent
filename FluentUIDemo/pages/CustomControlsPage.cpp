@@ -1,7 +1,7 @@
 // CustomControlsPage.cpp — 用户扩展控件演示
 #include "../GalleryMain.h"
-#include "../../examples/CustomControls/CustomControls.h"
-#include "../../examples/CustomControls/SpinnerControl.h"
+#include "../../extensions/CustomControls/CustomControls.h"
+#include "../../extensions/CustomControls/SpinnerControl.h"
 #include "../../FluentUI/layout/StackPanel.h"
 #include "../../FluentUI/layout/WrapPanel.h"
 #include "../../FluentUI/layout/ScrollPanel.h"
