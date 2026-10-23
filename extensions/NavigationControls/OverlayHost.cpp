@@ -5,6 +5,7 @@
 #include "../../FluentUI/core/UIContext.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 
 namespace fluent {
 
@@ -31,7 +32,15 @@ OverlayHost::OverlayHost() {
     title_->SetWeight(DWRITE_FONT_WEIGHT_SEMI_BOLD);
     message_ = Emplace<TextBlock>();
     message_->SetWrap(true);
+    details_ = Emplace<ScrollPanel>();
+    details_->SetPadding(kDetailsPadding);
+    details_->SetVisible(false);
+    detailsText_ = details_->Emplace<TextBlock>();
+    detailsText_->SetWrap(true);
     progress_ = Emplace<ProgressBar>();
+    warning_ = Emplace<InfoBar>();
+    warning_->SetSeverity(InfoBar::Severity::Warning);
+    warning_->SetVisible(false);
     secondary_ = Emplace<Button>();
     primary_ = Emplace<Button>();
     primary_->SetKind(Button::Kind::Accent);
@@ -51,6 +60,11 @@ void OverlayHost::Show(const OverlaySpec& spec) {
     message_->SetVisible(!spec.message.empty());
     progress_->SetVisible(spec.showProgress);
     if (spec.showProgress) progress_->SetValue(0.0f);
+    detailsText_->SetText(spec.details);
+    details_->SetVisible(!spec.details.empty());
+    details_->SetVerticalOffset(0.0f);  // new text starts at the top
+    warning_->SetMessage(spec.warning);
+    warning_->SetVisible(!spec.warning.empty());
     primary_->SetText(spec.primaryText);
     primary_->SetVisible(!spec.primaryText.empty());
     secondary_->SetText(spec.secondaryText);
@@ -66,8 +80,11 @@ void OverlayHost::Show(const OverlaySpec& spec) {
     SetOpacity(fade_);
     InvalidateDirty(DirtyFlags::Measure);
     FocusSelf();
-    OutputDebugStringA(spec.showProgress ? "[NavigationControls.OverlayHost] show (progress)\n"
-                                         : "[NavigationControls.OverlayHost] show\n");
+    char buf[128];
+    sprintf_s(buf, "[NavigationControls.OverlayHost] show progress=%d details=%d warning=%d\n",
+              spec.showProgress ? 1 : 0, spec.details.empty() ? 0 : 1,
+              spec.warning.empty() ? 0 : 1);
+    OutputDebugStringA(buf);
 }
 
 void OverlayHost::UpdateProgress(int percent, const std::wstring& message) {
@@ -117,10 +134,13 @@ void OverlayHost::CycleFocus(int step) {
     if (!IsAttached()) return;
     FocusManager* fm = Context().focus;
     if (!fm) return;
-    Button* order[2];
+    // Reading order: the details box first (so the keyboard can reach and scroll
+    // it), then the buttons left to right.
+    UIElement* const stops[] = {details_, secondary_, primary_};
+    UIElement* order[3];
     int n = 0;
-    for (Button* b : {secondary_, primary_})
-        if (b->IsVisible() && b->IsFocusable()) order[n++] = b;
+    for (UIElement* t : stops)
+        if (t->IsVisible() && t->IsFocusable()) order[n++] = t;
     if (n == 0) { fm->SetFocus(this); return; }
     int cur = -1;
     for (int i = 0; i < n; ++i)
@@ -153,15 +173,14 @@ float OverlayHost::CardHeightFor(float cardW, float slotH) {
     }
     headerH_ = std::max(hasIcon ? kIconSize : 0.0f, titleH);
 
-    float bodyH = 0.0f;
-    if (message_->IsVisible()) {
-        message_->MeasureCached(innerW, offerH);
-        bodyH += message_->Desired().h;
-    }
-    if (progress_->IsVisible()) {
-        progress_->MeasureCached(innerW, offerH);
-        bodyH += (bodyH > 0.0f ? kRowGap : 0.0f) + progress_->Desired().h;
-    }
+    auto measureRow = [&](FrameworkElement* e) {
+        if (!e->IsVisible()) return 0.0f;
+        e->MeasureCached(innerW, offerH);
+        return e->Desired().h;
+    };
+    messageH_ = measureRow(message_);
+    progressH_ = measureRow(progress_);
+    warningH_ = measureRow(warning_);
 
     buttonsH_ = 0.0f;
     for (Button* b : {secondary_, primary_}) {
@@ -170,11 +189,30 @@ float OverlayHost::CardHeightFor(float cardW, float slotH) {
         buttonsH_ = std::max(buttonsH_, b->Desired().h);
     }
 
-    float h = kCardPadding + headerH_;
-    if (bodyH > 0.0f) h += (headerH_ > 0.0f ? kRowGap : 0.0f) + bodyH;
-    if (buttonsH_ > 0.0f) h += kButtonsGap + buttonsH_;
-    h += kCardPadding;
-    return std::max(kMinCardHeight, h);
+    // Body rows stack with kRowGap between them, in the order Arrange places them.
+    auto cardHeight = [&](float detailsH) {
+        float body = 0.0f;
+        for (float rowH : {messageH_, detailsH, progressH_, warningH_}) {
+            if (rowH <= 0.0f) continue;
+            body += (body > 0.0f ? kRowGap : 0.0f) + rowH;
+        }
+        float h = kCardPadding + headerH_;
+        if (body > 0.0f) h += (headerH_ > 0.0f ? kRowGap : 0.0f) + body;
+        if (buttonsH_ > 0.0f) h += kButtonsGap + buttonsH_;
+        return h + kCardPadding;
+    };
+
+    // The details box takes what is left of the slot, within [min, max]. Below the
+    // minimum the card overflows rather than squeezing the buttons off it.
+    detailsH_ = 0.0f;
+    if (details_->IsVisible()) {
+        const float spare = offerH - kCardMargin * 2.0f - cardHeight(0.0f) - kRowGap;
+        const float maxH = std::clamp(spare, kDetailsMinHeight, kDetailsMaxHeight);
+        // ScrollPanel reports min(content + padding, offer), which is the box height.
+        details_->MeasureCached(innerW, maxH);
+        detailsH_ = details_->Desired().h;
+    }
+    return std::max(kMinCardHeight, cardHeight(detailsH_));
 }
 
 SizeDip OverlayHost::MeasureOverride(float availW, float availH) {
@@ -205,12 +243,16 @@ void OverlayHost::ArrangeOverride(const RectDip& content) {
     }
     if (headerH_ > 0.0f) y += headerH_ + kRowGap;
 
-    if (message_->IsVisible()) {
-        ArrangeChild(message_, RectDip{left, y, innerW, message_->Desired().h});
-        y += message_->Desired().h + kRowGap;
-    }
-    if (progress_->IsVisible())
-        ArrangeChild(progress_, RectDip{left, y, innerW, progress_->Desired().h});
+    // Same order and heights as CardHeightFor; a row with height 0 is not shown.
+    auto place = [&](FrameworkElement* e, float rowH) {
+        if (rowH <= 0.0f) return;
+        ArrangeChild(e, RectDip{left, y, innerW, rowH});
+        y += rowH + kRowGap;
+    };
+    place(message_, messageH_);
+    place(details_, detailsH_);
+    place(progress_, progressH_);
+    place(warning_, warningH_);
 
     // Buttons right-aligned on the card's bottom edge: [Secondary] [Primary].
     float right = card_.right() - kCardPadding;
@@ -225,12 +267,15 @@ void OverlayHost::ArrangeOverride(const RectDip& content) {
 
 UIElement* OverlayHost::HitTestDeep(float dipX, float dipY) {
     if (!HitTest(dipX, dipY)) return nullptr;
-    // Only the live dialog's buttons take input; everything else (scrim, card,
-    // texts, and the whole layer while it fades out) is swallowed here.
+    // Only the live dialog's buttons and details box take input (the box for wheel,
+    // scrollbar drag and click-to-focus); everything else (scrim, card, texts, the
+    // warning bar, and the whole layer while it fades out) is swallowed here.
     if (shown_) {
-        for (Button* b : {primary_, secondary_})
-            if (b->IsVisible())
-                if (UIElement* hit = b->HitTestDeep(dipX, dipY)) return hit;
+        for (UIElement* t : {static_cast<UIElement*>(primary_),
+                             static_cast<UIElement*>(secondary_),
+                             static_cast<UIElement*>(details_)})
+            if (t->IsVisible())
+                if (UIElement* hit = t->HitTestDeep(dipX, dipY)) return hit;
     }
     return this;
 }
@@ -238,6 +283,7 @@ UIElement* OverlayHost::HitTestDeep(float dipX, float dipY) {
 void OverlayHost::CollectFocusables(std::vector<UIElement*>& out) {
     if (!IsVisible() || !shown_) return;
     out.push_back(this);
+    if (details_->IsVisible()) details_->CollectFocusables(out);
     for (Button* b : {secondary_, primary_})
         if (b->IsVisible()) b->CollectFocusables(out);
 }
@@ -259,9 +305,13 @@ void OverlayHost::OnPreviewKeyDown(KeyEventArgs& e) {
             e.handled = true;
             return;
         case VK_LEFT: case VK_UP:
-            CycleFocus(-1); e.handled = true; return;
         case VK_RIGHT: case VK_DOWN:
-            CycleFocus(1); e.handled = true; return;
+            // Inside the details box the arrows scroll it (they continue down the
+            // route to the ScrollPanel); elsewhere they move between buttons.
+            if (IsWithin(e.originalSource, details_)) return;
+            CycleFocus(e.vk == VK_LEFT || e.vk == VK_UP ? -1 : 1);
+            e.handled = true;
+            return;
         case VK_RETURN:
         case VK_SPACE:
             // A focused button activates itself (it is further down the route).
@@ -303,7 +353,20 @@ void OverlayHost::Render(const DrawingContext& dc) {
 
     if (spec_.icon != OverlayIcon::None) DrawIcon(dc, card_.x + kCardPadding, iconY_);
 
-    Panel::Render(dc);  // title, message, progress, buttons
+    // Details box: a recessed well (the page colour, flattened onto the card) with a
+    // hairline, so long text reads as a separate region of the card. The stroke is
+    // inset by half its width to stay inside the box's bounds.
+    if (details_->IsVisible()) {
+        const RectDip& d = details_->Bounds();
+        const D2D1_RECT_F r = D2D1::RectF(d.x + 0.5f, d.y + 0.5f, d.right() - 0.5f,
+                                          d.bottom() - 0.5f);
+        dc.FillRoundedRect(D2D1::RoundedRect(r, kDetailsRadius, kDetailsRadius),
+                           FlattenOver(c.windowBackground, cardColor));
+        dc.DrawRoundedRect(D2D1::RoundedRect(r, kDetailsRadius, kDetailsRadius),
+                           c.controlStrokeDefault, 1.0f);
+    }
+
+    Panel::Render(dc);  // title, message, details, progress, warning, buttons
 }
 
 void OverlayHost::DrawIcon(const DrawingContext& dc, float x, float y) {

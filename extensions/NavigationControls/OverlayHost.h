@@ -15,7 +15,8 @@
 // MODALITY. While shown, HitTestDeep returns the overlay for any point not on one of
 // its own controls, so nothing underneath receives pointer input. Show() focuses the
 // overlay itself (no focus ring, like the reference UI); Tab / Shift+Tab / arrows
-// cycle the card's buttons and never walk back into the page underneath.
+// cycle the card's Tab stops (the details box when shown, then the buttons) and
+// never walk back into the page underneath.
 //   Esc   -> Secondary when a secondary button exists, else Dismissed when there is
 //            any button; ignored in the button-less Progress state (DESIGN §2.4).
 //   Enter -> on a focused button, that button. On the overlay itself, Primary only
@@ -30,10 +31,26 @@
 // is textPrimary at reduced alpha in light mode, windowBackground in dark mode);
 // the card is cardFill flattened over windowBackground, because no DWM material
 // sits behind it (CLAUDE.md, Theming).
+//
+// DETAILS AND WARNING. Two optional rows, both off when their string is empty, so a
+// spec that sets neither lays out exactly as before:
+//   details  long free text (release notes) in an inset box under the message. The
+//            box is a ScrollPanel: it grows with the text up to kDetailsMaxHeight and
+//            scrolls beyond that. When the window is short it is also the row that
+//            gives up height (down to kDetailsMinHeight), because the buttons must
+//            stay on the card and the other rows are a line or two each. The box is a
+//            Tab stop so keyboard users can scroll it; while it has focus the arrow
+//            keys scroll it instead of cycling the buttons.
+//   warning  an InfoBar (Warning severity) right above the buttons, for "do not unplug
+//            the device" text. It is a separate row rather than part of `message`
+//            because UpdateProgress rewrites the message on every tick, and the
+//            warning has to stay visible through the whole Progress state.
 #pragma once
 
 #include "../../FluentUI/layout/Panel.h"
+#include "../../FluentUI/layout/ScrollPanel.h"
 #include "../../FluentUI/controls/Button.h"
+#include "../../FluentUI/controls/InfoBar.h"
 #include "../../FluentUI/controls/TextBlock.h"
 #include "../../FluentUI/controls/ProgressBar.h"
 #include "../../FluentUI/animation/AnimatedValue.h"
@@ -52,6 +69,8 @@ struct OverlaySpec {
     std::wstring primaryText;     // empty = no primary button
     std::wstring secondaryText;   // empty = no secondary button
     bool showProgress = false;    // ProgressBar under the message
+    std::wstring details;         // empty = no details box (scrollable, e.g. release notes)
+    std::wstring warning;         // empty = no warning bar (kept through UpdateProgress)
 };
 
 struct OverlayResultArgs {
@@ -97,6 +116,10 @@ public:
     static constexpr float kScrimAlphaLight = 0.10f;
     static constexpr float kScrimAlphaDark = 0.50f;
     static constexpr float kShadowAlpha = 0.035f; // per ring, three rings
+    static constexpr float kDetailsMaxHeight = 180.0f;  // ~9 body lines, then it scrolls
+    static constexpr float kDetailsMinHeight = 64.0f;   // floor when the window is short
+    static constexpr float kDetailsPadding = 12.0f;
+    static constexpr float kDetailsRadius = 6.0f;
 
     RectDip CardRect() const { return card_; }
 
@@ -133,13 +156,21 @@ private:
     float fadeTarget_ = 0.0f;
     AnimatedValue fade_{0.0f};
     RectDip card_{};
-    float headerH_ = 0.0f;   // icon/title row height (CardHeightFor)
-    float buttonsH_ = 0.0f;  // button row height (CardHeightFor)
-    float iconY_ = 0.0f;     // window-DIP top of the icon box (Arrange)
+    // Row heights from CardHeightFor, reused by Arrange (0 = row not shown).
+    float headerH_ = 0.0f;    // icon/title row
+    float messageH_ = 0.0f;
+    float detailsH_ = 0.0f;   // details box, already clamped to the space left
+    float progressH_ = 0.0f;
+    float warningH_ = 0.0f;
+    float buttonsH_ = 0.0f;
+    float iconY_ = 0.0f;      // window-DIP top of the icon box (Arrange)
 
     TextBlock* title_ = nullptr;      // children, owned by children_
     TextBlock* message_ = nullptr;
+    ScrollPanel* details_ = nullptr;  // inset box; holds detailsText_
+    TextBlock* detailsText_ = nullptr;
     ProgressBar* progress_ = nullptr;
+    InfoBar* warning_ = nullptr;
     Button* secondary_ = nullptr;
     Button* primary_ = nullptr;
 

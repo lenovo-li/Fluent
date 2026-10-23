@@ -8,8 +8,9 @@ Navigation controls for FluentUI, built as a separate static library that links
   selected item = 3 DIP accent bar + accent-tinted rounded fill, hover fill, red-dot
   badge, per-item tooltip, keyboard cursor (Up/Down + Enter/Space).
 - **OverlayHost**: in-window modal overlay. Scrim over the whole layer plus a centered
-  520 DIP card (icon, title, message, optional ProgressBar, pill buttons). Blocks all
-  input underneath, keeps focus inside the card, fades in/out.
+  520 DIP card (icon, title, message, optional scrollable details box, optional
+  ProgressBar, optional warning bar, pill buttons). Blocks all input underneath, keeps
+  focus inside the card, fades in/out.
 - **PageHost**: multi-page container with animated transitions. Supports None/Fade/FadeSlide
   modes. Only the current page responds to input during transitions. Respects system
   "Show animations in Windows" setting.
@@ -71,6 +72,23 @@ overlay->Show(spec);
 overlay->UpdateProgress(45, L"Writing firmware... 45%");
 ```
 
+Details box and warning bar (both optional; leave empty to omit):
+
+```cpp
+OverlaySpec spec;
+spec.icon = OverlayIcon::Info;
+spec.title = L"Firmware Update";
+spec.message = L"1.2.00 -> 1.3.00";
+spec.details = releaseNotes;        // long text: scrolls past ~9 lines, Tab-reachable
+spec.warning = L"Do not unplug the dock until the update finishes.";
+spec.primaryText = L"Update";
+spec.secondaryText = L"Cancel";
+overlay->Show(spec);
+```
+
+`warning` survives `UpdateProgress` (only the message is rewritten), so the same
+warning can stay on screen through the whole Progress state.
+
 ## API summary
 
 | Area | API |
@@ -81,6 +99,7 @@ overlay->UpdateProgress(45, L"Writing firmware... 45%");
 | PageHost | `AddPage(unique_ptr)` → index, `ShowPage(i)`, `CurrentPage()`, `IsTransitioning()` |
 | PageHost animation | `SetTransition(None/Fade/FadeSlide)`, `SetTransitionDuration(sec)`, `SetSlideDistance(dip)` |
 | Overlay | `Show(spec)`, `UpdateProgress(percent, message)`, `Hide()` (no event), `IsShown()` |
+| Overlay spec | `icon`, `title`, `message`, `primaryText`, `secondaryText`, `showProgress`, `details`, `warning` |
 | Overlay result | `Closed()` → `OverlayResultArgs{Primary / Secondary / Dismissed}` |
 
 ## Behavior worth knowing
