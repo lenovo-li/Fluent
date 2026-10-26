@@ -85,9 +85,16 @@ private:
 
     // Resolve final track sizes along one axis given the available extent.
     // `tracks` are the definitions; `spacing` sits between adjacent tracks;
-    // `autoSizes` supplies each track's measured content size (0 for non-Auto).
+    // `contentSizes` supplies each Auto and Star track's measured content size
+    // (single-span children only; ignored for Pixel tracks).
+    //
+    // Star tracks share the leftover by weight when `avail` is finite. When it is
+    // infinite (measured inside a ScrollPanel / StackPanel along its scroll axis)
+    // there is no leftover to share, so a Star track takes its content size, the
+    // same as Auto (WPF behaves the same). Arrange gets a finite extent again,
+    // so Star still fills any extra space there.
     static std::vector<float> ResolveTracks(const std::vector<GridLength>& tracks,
-                                            const std::vector<float>& autoSizes,
+                                            const std::vector<float>& contentSizes,
                                             float spacing, float avail);
     // Cumulative start offset of each track (offsets[i] = start of track i).
     static std::vector<float> TrackOffsets(const std::vector<float>& sizes,

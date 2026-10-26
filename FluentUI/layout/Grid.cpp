@@ -2,6 +2,7 @@
 
 #include "Grid.h"
 #include <algorithm>
+#include <cmath>
 
 namespace fluent {
 
@@ -25,19 +26,25 @@ Grid::Cell Grid::CellOf(const FrameworkElement* child) const {
 // ---------------------------------------------------------------------------
 
 std::vector<float> Grid::ResolveTracks(const std::vector<GridLength>& tracks,
-                                       const std::vector<float>& autoSizes,
+                                       const std::vector<float>& contentSizes,
                                        float spacing, float avail) {
     const int n = static_cast<int>(tracks.size());
     std::vector<float> sizes(n, 0.0f);
+
+    // Unbounded axis: Star sizes to content like Auto (see Grid.h). Without this the
+    // leftover below is inf - used = inf, and the grid reports an infinite desired
+    // size, which makes a ScrollPanel's extent infinite.
+    const bool unbounded = !std::isfinite(avail);
 
     float used = 0.0f;
     float starWeight = 0.0f;
     for (int i = 0; i < n; ++i) {
         const GridLength& t = tracks[i];
         if (t.isPixel()) { sizes[i] = std::max(0.0f, t.value); used += sizes[i]; }
-        else if (t.isAuto()) { sizes[i] = autoSizes[i]; used += sizes[i]; }
+        else if (t.isAuto() || unbounded) { sizes[i] = contentSizes[i]; used += sizes[i]; }
         else starWeight += std::max(0.0f, t.value);  // Star: sized below.
     }
+    if (unbounded) return sizes;
     if (n > 1) used += spacing * (n - 1);
 
     float leftover = std::max(0.0f, avail - used);
@@ -111,6 +118,15 @@ SizeDip Grid::MeasureOverride(float availW, float availH) {
     std::vector<GridLength> rws = rows_.empty()
         ? std::vector<GridLength>{GridLength::Star()} : rows_;
 
+    // A track's content size feeds its resolution when it is Auto, or Star on an
+    // unbounded axis (ResolveTracks sizes Star to content there). The implicit
+    // single track of an empty list is Star too.
+    const bool unboundedW = !std::isfinite(availW);
+    const bool unboundedH = !std::isfinite(availH);
+    auto sizedByContent = [](const std::vector<GridLength>& tracks, int i, bool unbounded) {
+        return tracks[i].isAuto() || (unbounded && tracks[i].isStar());
+    };
+
     // Pass 1: natural desired sizes against the full space. Only WIDTHS are taken
     // from this pass; heights are re-measured in pass 2 at the final column width.
     std::vector<float> autoW(nCols, 0.0f);
@@ -120,8 +136,7 @@ SizeDip Grid::MeasureOverride(float availW, float availH) {
         c->MeasureCached(availW, availH);
         Cell cell = CellOf(c);
         const SizeDip& d = c->Desired();
-        if (cell.colSpan == 1 && cell.col < nCols && !columns_.empty() &&
-            columns_[cell.col].isAuto())
+        if (cell.colSpan == 1 && cell.col < nCols && sizedByContent(cols, cell.col, unboundedW))
             autoW[cell.col] = std::max(autoW[cell.col], d.w + c->Margin().horizontal());
     }
 
@@ -146,8 +161,7 @@ SizeDip Grid::MeasureOverride(float availW, float availH) {
         const float cw = SpanExtent(colSizes, cell.col, cell.colSpan, colSpacing_);
         c->MeasureCached(std::max(0.0f, cw - c->Margin().horizontal()), availH);
         const SizeDip& d = c->Desired();
-        if (cell.rowSpan == 1 && cell.row < nRows && !rows_.empty() &&
-            rows_[cell.row].isAuto())
+        if (cell.rowSpan == 1 && cell.row < nRows && sizedByContent(rws, cell.row, unboundedH))
             autoH[cell.row] = std::max(autoH[cell.row], d.h + c->Margin().vertical());
     }
 
