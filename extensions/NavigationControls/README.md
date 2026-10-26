@@ -96,6 +96,7 @@ warning can stay on screen through the whole Progress state.
 | NavRail data | `SetItems({glyph, label, showBadge})`, `SetBadge(i, bool)`, `SetHeader(unique_ptr)` |
 | NavRail selection | `SetSelectedIndex(i)` (silent), `SelectedIndex()`, `SelectionChanged()` (`int&`, user only) |
 | NavRail look | `SetRailBackground(color)` (default `windowBackground`), constants `kRailWidth` etc. |
+| NavRail pane mode | `SetPaneMode(true)` (opt-in, Win11 NavigationView look): `SetFooterItems`, `SetExpanded(bool, animate)`, `ExpandedChanged()`, `SetExpandedWidth`, `SetBackButtonVisible/Enabled`, `BackRequested()`, `SetItemEnabled(i, bool)`, item `header = true` (caption / separator), `SetPaneToggleTooltip`, `SetBackButtonTooltip` |
 | PageHost | `AddPage(unique_ptr)` → index, `ShowPage(i)`, `CurrentPage()`, `IsTransitioning()` |
 | PageHost animation | `SetTransition(None/Fade/FadeSlide)`, `SetTransitionDuration(sec)`, `SetSlideDistance(dip)` |
 | Overlay | `Show(spec)`, `UpdateProgress(percent, message)`, `Hide()` (no event), `IsShown()` |
@@ -108,6 +109,11 @@ warning can stay on screen through the whole Progress state.
   (Win10); pick codepoints present in both (E896 Download, E897 Help, E701 Wifi).
 - **Programmatic selection is silent.** Only click / Enter / Space raise
   `SelectionChanged`, so restoring the last page from config does not loop.
+  Likewise `SetExpanded` does not raise `ExpandedChanged` (only the ☰ button does).
+- **Pane mode indices are unified**: `SetItems` items first, then footer items at
+  `Items().size() + i`. Header items and disabled items are never selected and are
+  skipped by Up / Down. The pane width eases (`AnimatedValue`) and jumps when
+  Windows "Animation effects" is off. Rail mode (the default) is unchanged.
 - **Esc** closes with Secondary when there is a secondary button, Dismissed when there
   is only a primary one, and does nothing in the button-less Progress state.
 - **Enter on the overlay itself** activates Primary only when it is the sole button,

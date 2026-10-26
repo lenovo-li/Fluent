@@ -19,11 +19,28 @@
 // select it (DESIGN §3.3); the focus ring marks the cursor only after keyboard use. Tooltip: the framework tracks tooltips per element, so the
 // rail swaps its tooltip text to the hovered item's label; the text shown is the one
 // current when the hover delay elapses.
+//
+// PANE MODE (opt-in, SetPaneMode(true)) — the Win11 NavigationView / Task Manager
+// layout. Off by default, and everything above stays exactly as it was when off.
+//
+//   [<]  back button          optional, SetBackButtonVisible; raises BackRequested
+//   [=]  pane toggle          expands / collapses; raises ExpandedChanged
+//   [i]  Label                items: glyph + label (label shown when expanded)
+//   ---  / SECTION            header item: separator collapsed, caption expanded
+//   ...
+//   [*]  Settings             footer items, pinned to the bottom
+//
+// Compact width kPaneCompactWidth (icons only, labels as tooltips), expanded width
+// SetExpandedWidth (default kPaneExpandedWidth). The width eases between the two;
+// it jumps when Windows "Animation effects" is off. Item indices are unified:
+// SetItems indices first, then footer items (Items().size() + i). A disabled item
+// is dimmed and cannot be selected or reached with the keyboard.
 #pragma once
 
 #include "../../FluentUI/layout/Panel.h"
 #include "../../FluentUI/base/Event.h"
 #include "../../FluentUI/input/RoutedEvent.h"
+#include "../../FluentUI/animation/AnimatedValue.h"
 #include <dwrite.h>
 #include <memory>
 #include <optional>
@@ -34,8 +51,12 @@ namespace fluent {
 
 struct NavRailItem {
     std::wstring glyph;       // icon-font glyph, e.g. L"\xE896"
-    std::wstring label;       // page name, used as tooltip
+    std::wstring label;       // page name, used as tooltip (and drawn in pane mode)
     bool showBadge = false;   // red dot indicator
+    bool enabled = true;      // false: dimmed, not selectable
+    // Pane mode only: a non-selectable section caption (the label), drawn as a
+    // separator line when the pane is collapsed. Ignored in rail mode.
+    bool header = false;
 };
 
 class NavRail : public Panel {
@@ -49,6 +70,9 @@ public:
     void SetItems(std::vector<NavRailItem> items);
     const std::vector<NavRailItem>& Items() const { return items_; }
     void SetBadge(int index, bool show);
+    // Unified index (footer items included). A disabled selected item stays
+    // selected; the host decides where to go instead.
+    void SetItemEnabled(int index, bool enabled);
 
     // Programmatic selection does NOT raise SelectionChanged (same as WinUI's
     // SelectedItem setter path used for state restore). -1 clears.
@@ -61,10 +85,33 @@ public:
     // Raised on user selection (click / Enter / Space) with the new index.
     Event<NavRail, int>& SelectionChanged() { return selectionChanged_; }
 
+    // --- Pane mode -------------------------------------------------------
+    void SetPaneMode(bool enabled);
+    bool PaneMode() const { return paneMode_; }
+    // Bottom-pinned items (pane mode only), e.g. Settings.
+    void SetFooterItems(std::vector<NavRailItem> items);
+    const std::vector<NavRailItem>& FooterItems() const { return footer_; }
+    // `animate` = ease the width (still instant when system animations are off).
+    // Does not raise ExpandedChanged.
+    void SetExpanded(bool expanded, bool animate = true);
+    bool IsExpanded() const { return expanded_; }
+    void SetExpandedWidth(float dip);
+    void SetBackButtonVisible(bool visible);
+    void SetBackButtonEnabled(bool enabled);
+    void SetPaneToggleTooltip(std::wstring text) { toggleTooltip_ = std::move(text); }
+    void SetBackButtonTooltip(std::wstring text) { backTooltip_ = std::move(text); }
+
+    // Raised when the user toggles the pane, with the new state.
+    Event<NavRail, bool>& ExpandedChanged() { return expandedChanged_; }
+    // Raised when the user activates the back button. Payload is unused.
+    Event<NavRail, int>& BackRequested() { return backRequested_; }
+
     // Panel overrides.
     void Render(const DrawingContext& dc) override;
     UIElement* HitTestDeep(float dipX, float dipY) override;
     void CollectFocusables(std::vector<UIElement*>& out) override;
+    bool WantsAnimationTick() const override;
+    void OnAnimationTick(float dtSec) override;
 
     // Layout constants, public so tests and hosts can align against them.
     static constexpr float kRailWidth = 88.0f;
@@ -75,6 +122,17 @@ public:
     static constexpr float kAccentBarWidth = 3.0f;
     static constexpr float kIconSize = 20.0f;
     static constexpr float kBadgeSize = 8.0f;
+
+    // Pane mode geometry (Win11 NavigationView).
+    static constexpr float kPaneCompactWidth = 48.0f;
+    static constexpr float kPaneExpandedWidth = 240.0f;
+    static constexpr float kPaneItemHeight = 36.0f;
+    static constexpr float kPaneItemGap = 4.0f;
+    static constexpr float kPaneInset = 4.0f;         // item box inset from the rail edges
+    static constexpr float kPaneIconSize = 16.0f;
+    static constexpr float kPaneLabelOffset = 44.0f;  // label x from the item box left
+    static constexpr float kPaneHeaderHeight = 36.0f; // section caption (expanded)
+    static constexpr float kPaneSeparatorHeight = 9.0f;  // section line (collapsed)
 
     // Window-DIP rect of item `index` (empty when out of range / not arranged).
     RectDip ItemRect(int index) const;
@@ -98,10 +156,30 @@ private:
     using Panel::RemoveAt;
     using Panel::Clear;
 
+    // Pane-mode hit targets that are not items.
+    static constexpr int kBackTarget = -2;
+    static constexpr int kToggleTarget = -3;
+
     void UserSelect(int index);
     void SetHover(int index);
     IDWriteTextFormat* IconFormat();
+    IDWriteTextFormat* PaneIconFormat();
     void DrawItem(const DrawingContext& dc, int index);
+
+    // Pane mode.
+    int TotalCount() const { return static_cast<int>(items_.size() + footer_.size()); }
+    const NavRailItem* ItemAt(int index) const;
+    NavRailItem* ItemAt(int index);
+    bool Selectable(int index) const;
+    float PaneItemHeight(const NavRailItem& item) const;
+    RectDip PaneTargetRect(int target) const;   // item index, kBackTarget or kToggleTarget
+    int PaneHitTest(float dipX, float dipY) const;
+    std::vector<int> PaneKeyStops() const;      // keyboard order
+    void PaneActivate(int target);
+    void DrawPane(const DrawingContext& dc);
+    void DrawPaneButton(const DrawingContext& dc, int target, const wchar_t* glyph, bool enabled);
+    void DrawPaneItem(const DrawingContext& dc, int index);
+    float CurrentWidth() const;
 
     FrameworkElement* header_ = nullptr;   // owned by children_
     std::vector<NavRailItem> items_;
@@ -114,7 +192,21 @@ private:
     float itemsTop_ = 0.0f;                // window-DIP y of item 0, set in Arrange
     std::optional<D2D1_COLOR_F> background_;
     ComPtr<IDWriteTextFormat> iconFormat_;
+    ComPtr<IDWriteTextFormat> paneIconFormat_;
     Event<NavRail, int> selectionChanged_;
+
+    // Pane mode state.
+    bool paneMode_ = false;
+    std::vector<NavRailItem> footer_;
+    bool expanded_ = false;
+    float expandedWidth_ = kPaneExpandedWidth;
+    AnimatedValue width_{kPaneCompactWidth};  // current pane width (DIP)
+    bool backVisible_ = false;
+    bool backEnabled_ = true;
+    std::wstring toggleTooltip_;
+    std::wstring backTooltip_;
+    Event<NavRail, bool> expandedChanged_;
+    Event<NavRail, int> backRequested_;
 };
 
 }  // namespace fluent
