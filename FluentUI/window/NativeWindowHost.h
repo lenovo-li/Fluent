@@ -401,6 +401,15 @@ public:
     double HangStalledMs() const { return diagnostics_.Hang().StalledMs(); }
 
 protected:
+    // ArmTooltip's re-arm rule (see ArmTooltip below), pure so it can be tested
+    // without a window: a different element, or the same element whose tooltip
+    // text changed since it was armed, is a new hover target.
+    static bool TooltipTargetChanged(const UIElement* armed, const std::wstring& armedText,
+                                     const UIElement* hovered) {
+        if (hovered != armed) return true;
+        return hovered && hovered->Tooltip() != armedText;
+    }
+
     // Paint window content (background card etc.) before elements are drawn.
     // Coordinates are DIPs; multiply by DpiScale() for pixels — but the content
     // DC is already set to a DPI transform, so paint in DIPs directly.
@@ -626,9 +635,14 @@ private:
     void UpdateBlinkTimer(UIElement* newFocus);
 
     // Tooltip: track the element under the pointer and (re)arm the hover timer.
-    // ArmTooltip is called on pointer move; when the hover element changes we
+    // ArmTooltip is called on pointer move; when the hover target changes we
     // hide any visible tooltip and restart the delay. HideTooltip cancels both
     // the timer and the popup (on click, wheel, leave, or move-away).
+    //
+    // The target is the element AND its tooltip text: a composite control that is
+    // one hit target (NavRail, a chart) swaps its text per region with SetTooltip,
+    // and keying on the element alone never re-armed after the first popup —
+    // moving to the next region showed nothing until a click reset the state.
     //
     // Deliberately NOT dismissed by a keypress. The tooltip used to hide on any
     // WM_KEYDOWN, which made a hotkey-triggered screenshot of a visible tooltip
@@ -888,6 +902,7 @@ private:
     // is the element the hover timer is currently counting down for.
     std::unique_ptr<TooltipService> tooltip_;
     UIElement* tooltipHot_ = nullptr;
+    std::wstring tooltipHotText_;  // tooltipHot_'s tooltip text when it was armed
     bool tooltipTimerOn_ = false;
     Event<NativeWindowHost, ThemeChangedArgs> themeChanged_;
     Application* application_ = nullptr;

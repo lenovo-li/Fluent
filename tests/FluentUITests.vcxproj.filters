@@ -17,6 +17,7 @@
     <ClCompile Include="unit\CanvasZIndexTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\DockPanelTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\InvalidationTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\TooltipArmTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\DirtyFlagsTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\SubtreeDirtyTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\PopupStateTests.cpp"><Filter>unit</Filter></ClCompile>

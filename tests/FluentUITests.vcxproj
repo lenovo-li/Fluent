@@ -83,6 +83,7 @@
     <ClCompile Include="unit\CanvasZIndexTests.cpp" />
     <ClCompile Include="unit\DockPanelTests.cpp" />
     <ClCompile Include="unit\InvalidationTests.cpp" />
+    <ClCompile Include="unit\TooltipArmTests.cpp" />
     <ClCompile Include="unit\DirtyFlagsTests.cpp" />
     <ClCompile Include="unit\SubtreeDirtyTests.cpp" />
     <ClCompile Include="unit\PopupStateTests.cpp" />

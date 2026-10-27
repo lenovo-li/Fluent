@@ -2327,14 +2327,17 @@ void NativeWindowHost::InvalidateThunk(void* ctx) {
 }
 
 void NativeWindowHost::ArmTooltip(UIElement* hovered) {
-    // The hovered element hasn't changed: keep whatever state we're in (either a
-    // pending timer counting down or a tooltip already shown). Don't restart.
-    if (hovered == tooltipHot_) return;
+    // Same element, same text: keep whatever state we're in (either a pending
+    // timer counting down or a tooltip already shown). Don't restart. The text is
+    // part of the target because a composite control (NavRail) is one element whose
+    // tooltip changes per region; comparing the element alone never re-armed there.
+    if (!TooltipTargetChanged(tooltipHot_, tooltipHotText_, hovered)) return;
 
     tooltipHot_ = hovered;
+    tooltipHotText_ = hovered ? hovered->Tooltip() : std::wstring{};
 
-    // Moving to a different element hides any visible tooltip and cancels a
-    // pending one. We re-arm only if the new element actually has tooltip text.
+    // A new target hides any visible tooltip and cancels a pending one. We re-arm
+    // only if the new target actually has tooltip text.
     if (tooltip_ && tooltip_->IsVisible()) tooltip_->Hide();
     if (tooltipTimerOn_) {
         KillTimer(hwnd_, kTooltipTimerId);
@@ -2354,6 +2357,7 @@ void NativeWindowHost::HideTooltip() {
     }
     if (tooltip_ && tooltip_->IsVisible()) tooltip_->Hide();
     tooltipHot_ = nullptr;
+    tooltipHotText_.clear();
 }
 
 void NativeWindowHost::LightDismissAt(int px, int py) {
