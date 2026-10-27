@@ -1,5 +1,6 @@
 // PageHost.cpp
 #include "PageHost.h"
+#include "NavTrace.h"
 #include "../../FluentUI/input/FocusManager.h"
 #include "../../FluentUI/styling/ThemeTokens.h"
 #include <algorithm>
@@ -52,7 +53,7 @@ void PageHost::FinishTransition() {
     fadeOut_.SetImmediate(1.0f);
     slideOffset_.SetImmediate(0.0f);
     InvalidateDirty(DirtyFlags::Arrange);
-    OutputDebugStringA("[NavigationControls.PageHost] transition complete\n");
+    NAV_TRACEF("[NavigationControls.PageHost] transition complete\n");
 }
 
 
@@ -81,8 +82,7 @@ void PageHost::ShowPage(int index) {
         fadeIn_.SetImmediate(1.0f);
         slideOffset_.SetImmediate(0.0f);
         InvalidateDirty(DirtyFlags::Arrange);
-        OutputDebugStringA(("[NavigationControls.PageHost] instant to page " +
-                            std::to_string(index) + "\n").c_str());
+        NAV_TRACEF("[NavigationControls.PageHost] instant to page %d\n", index);
         return;
     }
 
@@ -125,9 +125,7 @@ void PageHost::ShowPage(int index) {
     }
 
     InvalidateDirty(DirtyFlags::Arrange);
-    OutputDebugStringA(("[NavigationControls.PageHost] transition " +
-                        std::to_string(leavingIndex_) + " -> " +
-                        std::to_string(index) + "\n").c_str());
+    NAV_TRACEF("[NavigationControls.PageHost] transition %d -> %d\n", leavingIndex_, index);
 }
 
 SizeDip PageHost::MeasureOverride(float availW, float availH) {

@@ -18,11 +18,23 @@ namespace fluent {
 namespace {
 constexpr int kConfigVersion = 1;
 
-// Local trace helper (this module does not depend on FluentUI's fl_common).
+// Local trace helper (this module does not depend on FluentUI's fl_common). Same
+// default as FLUENTUI_ENABLE_TRACE: Debug only, overridable from the build.
+#ifndef FLUENTSETTINGS_ENABLE_TRACE
+#  ifdef _DEBUG
+#    define FLUENTSETTINGS_ENABLE_TRACE 1
+#  else
+#    define FLUENTSETTINGS_ENABLE_TRACE 0
+#  endif
+#endif
 void Trace(const char* msg) {
+#if FLUENTSETTINGS_ENABLE_TRACE
     char buf[256];
     _snprintf_s(buf, sizeof(buf), _TRUNCATE, "[FluentSettings] %s\n", msg);
     OutputDebugStringA(buf);
+#else
+    (void)msg;
+#endif
 }
 
 // UTF-16 <-> UTF-8 (JSON stores UTF-8; the Win32 API is UTF-16).

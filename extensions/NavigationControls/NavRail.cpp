@@ -1,5 +1,6 @@
 // NavRail.cpp
 #include "NavRail.h"
+#include "NavTrace.h"
 #include "../../FluentUI/styling/ThemeTokens.h"
 #include "../../FluentUI/styling/FocusVisual.h"
 #include "../../FluentUI/graphics/DWriteContext.h"
@@ -46,10 +47,8 @@ ComPtr<IDWriteTextFormat> CreateIconFormat(DWriteContext* dw, float size) {
                                      DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
                                      size, L"", &format);
     if (FAILED(hr) || !format) {
-        char buf[96];
-        sprintf_s(buf, "[NavigationControls.NavRail] icon format failed hr=0x%08X\n",
-                  static_cast<unsigned>(hr));
-        OutputDebugStringA(buf);
+        NAV_TRACEF("[NavigationControls.NavRail] icon format failed hr=0x%08X\n",
+                   static_cast<unsigned>(hr));
         return nullptr;
     }
     format->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
@@ -136,8 +135,7 @@ void NavRail::UserSelect(int index) {
     if (index == selectedIndex_) { Invalidate(); return; }
     selectedIndex_ = index;
     Invalidate();
-    OutputDebugStringA(("[NavigationControls.NavRail] select " +
-                        std::to_string(index) + "\n").c_str());
+    NAV_TRACEF("[NavigationControls.NavRail] select %d\n", index);
     int payload = index;
     selectionChanged_.Raise(*this, payload);
 }
@@ -188,10 +186,8 @@ void NavRail::SetExpanded(bool expanded, bool animate) {
     } else if (WindowServices* w = Window()) {
         w->RequestAnimationUpdate();  // a programmatic change has no input to wake the tick
     }
-    char buf[80];
-    sprintf_s(buf, "[NavigationControls.NavRail] pane expanded=%d animate=%d\n",
-              expanded_ ? 1 : 0, animate ? 1 : 0);
-    OutputDebugStringA(buf);
+    NAV_TRACEF("[NavigationControls.NavRail] pane expanded=%d animate=%d\n",
+               expanded_ ? 1 : 0, animate ? 1 : 0);
     InvalidateDirty(DirtyFlags::Measure);
 }
 
@@ -317,7 +313,7 @@ std::vector<int> NavRail::PaneKeyStops() const {
 void NavRail::PaneActivate(int target) {
     if (target == kBackTarget) {
         if (!backVisible_ || !backEnabled_) return;
-        OutputDebugStringA("[NavigationControls.NavRail] back\n");
+        NAV_TRACEF("[NavigationControls.NavRail] back\n");
         int payload = 0;
         backRequested_.Raise(*this, payload);
     } else if (target == kToggleTarget) {

@@ -3,6 +3,7 @@
   <ItemGroup>
     <ClInclude Include="NavigationControls.h" />
     <ClInclude Include="NavRail.h" />
+    <ClInclude Include="NavTrace.h" />
     <ClInclude Include="OverlayHost.h" />
     <ClInclude Include="PageHost.h" />
   </ItemGroup>
