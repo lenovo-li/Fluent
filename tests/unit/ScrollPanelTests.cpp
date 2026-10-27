@@ -470,3 +470,87 @@ TEST(ScrollPanel, SetWheelStepZero_IsClamped) {
     panel.SetWheelStep(16.0f);  // Valid value accepted
     EXPECT_EQ(panel.WheelStep(), 16.0f);
 }
+
+// --- Measure / Arrange width agreement under the vertical rail ------------------
+//
+// A stand-in for wrapped text: 4000 DIP^2 of "text" laid out at whatever width it is
+// given, 20 DIP per line, so a narrower width means more lines. Records the widths it
+// was measured at.
+namespace {
+class WrapProbe : public FrameworkElement {
+public:
+    std::vector<float> measuredW;
+    void Measure(float availW, float availH) override {
+        UNREFERENCED_PARAMETER(availH);
+        measuredW.push_back(availW);
+        const float lines = std::ceil(4000.0f / std::max(1.0f, availW));
+        SetDesired({availW, lines * 20.0f});
+    }
+    void Render(const DrawingContext&) override {}
+    float HeightAt(float w) const { return std::ceil(4000.0f / w) * 20.0f; }
+    void Dirty() { InvalidateMeasure(); }
+};
+}  // namespace
+
+// Regression (LenovoDock firmware card): content overflows, so Arrange reserves the
+// 16 DIP rail. The children used to be measured at the full width and arranged at
+// the narrower one; wrapped text gained a line its height did not include, and that
+// line was clipped.
+TEST(ScrollPanel, OverflowMeasuresChildrenAtRailInsetWidth) {
+    ScrollPanel panel;
+    std::vector<WrapProbe*> probes;
+    for (int i = 0; i < 5; ++i) probes.push_back(panel.Emplace<WrapProbe>());
+
+    panel.Measure(400.0f, 300.0f);  // 5 x 200 = 1000 > 300: the rail will show
+    panel.Arrange(RectDip{0, 0, 400, 300});
+
+    for (WrapProbe* p : probes) {
+        EXPECT_NEAR(p->measuredW.back(), 384.0f, 0.01f);
+        EXPECT_NEAR(p->Bounds().w, 384.0f, 0.01f);           // arranged at the same width
+        EXPECT_NEAR(p->Bounds().h, p->HeightAt(384.0f), 0.01f);
+    }
+}
+
+TEST(ScrollPanel, NoOverflowMeasuresChildrenAtFullWidth) {
+    ScrollPanel panel;
+    auto* p = panel.Emplace<WrapProbe>();  // 4000 / 400 = 10 lines = 200 DIP
+
+    panel.Measure(400.0f, 300.0f);
+    panel.Arrange(RectDip{0, 0, 400, 300});
+
+    EXPECT_EQ(panel.MaxVerticalOffset(), 0.0f);
+    EXPECT_NEAR(p->measuredW.back(), 400.0f, 0.01f);
+    EXPECT_NEAR(p->Bounds().w, 400.0f, 0.01f);
+    EXPECT_NEAR(p->Bounds().h, 200.0f, 0.01f);
+}
+
+// The second identical Measure starts from the remembered rail decision: one pass.
+TEST(ScrollPanel, SteadyOverflowMeasuresOncePerPass) {
+    ScrollPanel panel;
+    auto* p = panel.Emplace<WrapProbe>();
+    for (int i = 0; i < 4; ++i) panel.Emplace<WrapProbe>();
+
+    panel.Measure(400.0f, 300.0f);
+    panel.Arrange(RectDip{0, 0, 400, 300});
+    p->Dirty();  // defeat the measure cache so every pass is counted
+    const size_t before = p->measuredW.size();
+    panel.Measure(400.0f, 300.0f);
+
+    EXPECT_EQ(p->measuredW.size(), before + 1);
+    EXPECT_NEAR(p->measuredW.back(), 384.0f, 0.01f);
+}
+
+// Arranged at another width than measured: the children are re-measured at the
+// arranged width rather than given a height computed for a different one.
+TEST(ScrollPanel, ArrangeAtOtherWidthRemeasuresChildren) {
+    ScrollPanel panel;
+    auto* p = panel.Emplace<WrapProbe>();
+
+    panel.Measure(400.0f, 300.0f);           // 200 DIP: fits, no rail
+    panel.Arrange(RectDip{0, 0, 250, 300});  // at 250: 16 lines = 320 > 300 → rail
+
+    EXPECT_TRUE(panel.MaxVerticalOffset() > 0.0f);
+    EXPECT_NEAR(p->Bounds().w, 234.0f, 0.01f);  // 250 minus the rail strip
+    EXPECT_NEAR(p->measuredW.back(), 234.0f, 0.01f);
+    EXPECT_NEAR(p->Bounds().h, p->HeightAt(234.0f), 0.01f);
+}

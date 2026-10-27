@@ -7,25 +7,21 @@
 #include "../styling/ThemeTokens.h"
 #include <d2d1_1.h>
 #include <algorithm>
+#include <cmath>
 
 namespace fluent {
 
-SizeDip ScrollPanel::MeasureOverride(float availW, float availH)
+namespace {
+// Width of the vertical rail's strip, reserved from the children while it is live.
+constexpr float kRailStrip = 16.0f;
+}  // namespace
+
+float ScrollPanel::MeasureChildren(float childAvailW)
 {
-    // Measure all children with unbounded height (they can report their natural size).
+    // Unbounded height: children report their natural size.
     float totalH = 0.0f;
     float maxW = 0.0f;
     bool first = true;
-
-    // Children see the width minus horizontal padding. Infinity minus a finite
-    // padding stays infinity (IEEE), so an unconstrained measure stays unconstrained.
-    const float childAvailW = std::max(0.0f, availW - padding_.horizontal());
-    // Remember the width constraint: Arrange needs it to tell "the child genuinely
-    // wants more than the viewport" (desired > constraint — e.g. a fixed-column Grid)
-    // from "the child was stretched BY the measurement" (desired == constraint).
-    measureConstraintW_ = childAvailW;
-
-
     for (auto& child : children_) {
         if (!child || !child->IsVisible()) continue;
         const Thickness& m = child->Margin();
@@ -38,12 +34,52 @@ SizeDip ScrollPanel::MeasureOverride(float availW, float availH)
         totalH += desired.h + m.vertical();
         first = false;
     }
-
     contentHeight_ = totalH;
     // The horizontal extent includes the padding, so a wide child can scroll until
     // its right edge AND the trailing padding are both visible.
     scroll_.SetContentWidth(maxW + padding_.horizontal());
     UpdateScrollExtent();
+    return maxW;
+}
+
+SizeDip ScrollPanel::MeasureOverride(float availW, float availH)
+{
+    // Children see the width minus horizontal padding. Infinity minus a finite
+    // padding stays infinity (IEEE), so an unconstrained measure stays unconstrained.
+    const float childAvailW = std::max(0.0f, availW - padding_.horizontal());
+    // Remember the width constraint: Arrange needs it to tell "the child genuinely
+    // wants more than the viewport" (desired > constraint — e.g. a fixed-column Grid)
+    // from "the child was stretched BY the measurement" (desired == constraint).
+    //
+    // Content taller than the viewport means the vertical rail will show, and Arrange
+    // gives the children the width minus its strip — so they are measured at that
+    // width. A child whose height depends on its width (wrapped text) would otherwise
+    // report the height of the wider measure, gain a line when arranged narrower,
+    // and have that line clipped. Narrowing only makes content taller, so overflow
+    // found at the full width still holds at the narrow one.
+    //
+    // Whether it overflows is only known after measuring, so start from the last
+    // answer for the same offer: a steady layout then measures once, not twice.
+    const bool canRail = std::isfinite(availH) && std::isfinite(childAvailW);
+    const float narrowW = std::max(0.0f, childAvailW - kRailStrip);
+    const bool guessRail = canRail && railLastPass_ &&
+                           availW == railAvailW_ && availH == railAvailH_;
+    auto overflows = [&] { return canRail && contentHeight_ + padding_.vertical() > availH; };
+
+    measureConstraintW_ = guessRail ? narrowW : childAvailW;
+    float maxW = MeasureChildren(measureConstraintW_);
+    bool rail = overflows();
+    if (rail && !guessRail) {
+        measureConstraintW_ = narrowW;
+        maxW = MeasureChildren(narrowW);
+    } else if (!rail && guessRail) {
+        // Fits even at the narrow width, so it fits at the full one: no rail.
+        measureConstraintW_ = childAvailW;
+        maxW = MeasureChildren(childAvailW);
+    }
+    railLastPass_ = rail;
+    railAvailW_ = availW;
+    railAvailH_ = availH;
 
     // Report our desired size: width = max of children (or availW if constrained),
     // height = min(contentHeight, availH) so we don't request more than the parent
@@ -61,8 +97,27 @@ void ScrollPanel::ArrangeOverride(const RectDip& content)
     // Reserve a strip on the right for the vertical rail so a child with its own
     // scrollbar (ListBox, TreeView) does not draw its rail directly under ours.
     // When the content fits (no scroll) the strip is not needed.
-    const float vRail = (scroll_.MaxOffset() > 0.0f) ? 16.0f : 0.0f;
-    const float fitW = std::max(0.0f, content.w - padding_.horizontal() - vRail);
+    float vRail = (scroll_.MaxOffset() > 0.0f) ? kRailStrip : 0.0f;
+    float fitW = std::max(0.0f, content.w - padding_.horizontal() - vRail);
+
+    // Arrange's width must be the one the children were measured at, or wrapped
+    // text gets a height for another width. Measure normally predicts it (see
+    // MeasureOverride); re-measure when it did not — the parent arranged at another
+    // width than it measured, or the rail decision changed with the real bounds.
+    // If the re-measured content now overflows, measure once more at the rail-inset
+    // width (narrowing only adds height, so the rail then stays). An unconstrained
+    // measure (infinite width) keeps the old behaviour: every child is fitted to the
+    // viewport without a re-measure.
+    if (std::isfinite(measureConstraintW_) && std::fabs(fitW - measureConstraintW_) > 0.5f) {
+        measureConstraintW_ = fitW;
+        MeasureChildren(fitW);
+        if (vRail == 0.0f && scroll_.MaxOffset() > 0.0f) {
+            vRail = kRailStrip;
+            fitW = std::max(0.0f, fitW - kRailStrip);
+            measureConstraintW_ = fitW;
+            MeasureChildren(fitW);
+        }
+    }
 
     // Arrange children in a vertical stack, APPLYING both scroll offsets to their
     // bounds. This moves compositor-backed children (TextArea, TreeView) along with
@@ -97,8 +152,8 @@ void ScrollPanel::ArrangeOverride(const RectDip& content)
         // Width: a child measured WIDER than the constraint it was given has a
         // genuine natural width (a fixed-column Grid of Calendars in a narrow
         // window) — keep it and let the horizontal rail scroll. Everyone else was
-        // merely stretched by the measurement to exactly that constraint and can be
-        // re-fit to the rail-inset width without losing any content.
+        // merely stretched by the measurement to that constraint, which is fitW
+        // (re-measured above if not), so their desired height is valid at fitW.
         const float childW = (desired.w > measureConstraintW_ + 0.5f)
                                  ? desired.w + m.horizontal()
                                  : fitW;

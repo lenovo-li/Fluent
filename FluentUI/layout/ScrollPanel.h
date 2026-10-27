@@ -210,6 +210,10 @@ private:
     // Update scroll content height based on measured children.
     void UpdateScrollExtent();
 
+    // Measure every child at `childAvailW` (minus its margin) x infinity, set
+    // contentHeight_ and both scroll extents. Returns the widest child + margin.
+    float MeasureChildren(float childAvailW);
+
     // Page step for PageUp/PageDown (viewport height minus one line).
     float PageStep() const;
 
@@ -254,11 +258,18 @@ private:
     // scrolled half that and read as sluggish.
     float wheelStep_ = 32.0f;
     float contentHeight_ = 0.0f;  // total height of all children + spacing
-    // The width constraint children were last measured with. Arrange compares each
-    // child's Desired width against it: only a child wider than its constraint has a
-    // genuine natural width worth a horizontal rail; the rest were stretched BY the
-    // measurement and can be re-fit to the viewport width.
+    // The width constraint children were last measured with (already minus the
+    // vertical rail's strip when Measure saw the content overflow). Arrange compares
+    // each child's Desired width against it: only a child wider than its constraint
+    // has a genuine natural width worth a horizontal rail; the rest were stretched BY
+    // the measurement and are arranged at the viewport width, re-measured first if
+    // that width differs from this one.
     float measureConstraintW_ = 0.0f;
+    // The last Measure's rail decision and the offer it was made for; a repeat of
+    // the same offer starts from that width (see MeasureOverride).
+    bool railLastPass_ = false;
+    float railAvailW_ = -1.0f;
+    float railAvailH_ = -1.0f;
     // The offset the current child bounds were arranged at. Compared against the
     // live offset to decide whether an Arrange is still owed.
     float arrangedOffset_ = 0.0f;
