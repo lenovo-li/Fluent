@@ -30,6 +30,8 @@
 //   ...
 //   [*]  Settings             footer items, pinned to the bottom
 //
+// Labels and captions that do not fit end in "…"; hovering one (header captions
+// included) shows the full label as the tooltip, or NavRailItem::tooltip when set.
 // Compact width kPaneCompactWidth (icons only, labels as tooltips), expanded width
 // SetExpandedWidth (default kPaneExpandedWidth). The width eases between the two;
 // it jumps when Windows "Animation effects" is off. Item indices are unified:
@@ -57,6 +59,10 @@ struct NavRailItem {
     // Pane mode only: a non-selectable section caption (the label), drawn as a
     // separator line when the pane is collapsed. Ignored in rail mode.
     bool header = false;
+    // Optional tooltip text. Pane mode: shown whenever set; when empty the label
+    // is the tooltip only if it is not fully visible (collapsed, or ellipsised).
+    // Rail mode: replaces the label as the tooltip.
+    std::wstring tooltip;
 };
 
 class NavRail : public Panel {
@@ -173,12 +179,19 @@ private:
     bool Selectable(int index) const;
     float PaneItemHeight(const NavRailItem& item) const;
     RectDip PaneTargetRect(int target) const;   // item index, kBackTarget or kToggleTarget
-    int PaneHitTest(float dipX, float dipY) const;
+    // Header items are hit only for hover (tooltip) when `includeHeaders`.
+    int PaneHitTest(float dipX, float dipY, bool includeHeaders = false) const;
     std::vector<int> PaneKeyStops() const;      // keyboard order
     void PaneActivate(int target);
     void DrawPane(const DrawingContext& dc);
     void DrawPaneButton(const DrawingContext& dc, int target, const wchar_t* glyph, bool enabled);
     void DrawPaneItem(const DrawingContext& dc, int index);
+    // Single-line label ending in "…" when it does not fit `rect`. Returns true
+    // when it was trimmed.
+    bool DrawPaneLabel(const DrawingContext& dc, const std::wstring& text,
+                       IDWriteTextFormat* fmt, const D2D1_RECT_F& rect,
+                       const D2D1_COLOR_F& color);
+    std::wstring PaneTooltipFor(int target) const;
     float CurrentWidth() const;
 
     FrameworkElement* header_ = nullptr;   // owned by children_
@@ -205,6 +218,8 @@ private:
     bool backEnabled_ = true;
     std::wstring toggleTooltip_;
     std::wstring backTooltip_;
+    // Per unified index: the label was ellipsised in the last paint (pane mode).
+    std::vector<bool> labelTrimmed_;
     Event<NavRail, bool> expandedChanged_;
     Event<NavRail, int> backRequested_;
 };

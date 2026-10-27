@@ -76,6 +76,7 @@ FrameworkElement* NavRail::SetHeader(std::unique_ptr<FrameworkElement> header) {
 
 void NavRail::SetItems(std::vector<NavRailItem> items) {
     items_ = std::move(items);
+    labelTrimmed_.assign(TotalCount(), false);
     if (selectedIndex_ >= TotalCount()) selectedIndex_ = -1;
     hoverIndex_ = -1;
     keyIndex_ = std::max(0, selectedIndex_);
@@ -84,6 +85,7 @@ void NavRail::SetItems(std::vector<NavRailItem> items) {
 
 void NavRail::SetFooterItems(std::vector<NavRailItem> items) {
     footer_ = std::move(items);
+    labelTrimmed_.assign(TotalCount(), false);
     if (selectedIndex_ >= TotalCount()) selectedIndex_ = -1;
     hoverIndex_ = -1;
     InvalidateDirty(DirtyFlags::Measure);
@@ -145,15 +147,26 @@ void NavRail::SetHover(int index) {
     hoverIndex_ = index;
     std::wstring tip;
     if (paneMode_) {
-        // Expanded items show their label already; tooltips are for icons only.
-        if (index == kBackTarget) tip = backTooltip_;
-        else if (index == kToggleTarget) tip = toggleTooltip_;
-        else if (const NavRailItem* item = ItemAt(index); item && !expanded_) tip = item->label;
+        tip = PaneTooltipFor(index);
     } else if (index >= 0) {
-        tip = items_[index].label;
+        const NavRailItem& item = items_[index];
+        tip = item.tooltip.empty() ? item.label : item.tooltip;
     }
     SetTooltip(tip);
     Invalidate();
+}
+
+std::wstring NavRail::PaneTooltipFor(int target) const {
+    if (target == kBackTarget) return backTooltip_;
+    if (target == kToggleTarget) return toggleTooltip_;
+    const NavRailItem* item = ItemAt(target);
+    if (!item) return {};
+    if (!item->tooltip.empty()) return item->tooltip;
+    // A label the user can read in full needs no tooltip (Win11 behaviour); a
+    // collapsed pane hides it, an ellipsis cuts it.
+    const bool trimmed = target < static_cast<int>(labelTrimmed_.size()) &&
+                         labelTrimmed_[target];
+    return (!expanded_ || trimmed) ? item->label : std::wstring{};
 }
 
 // --- Pane mode setters -----------------------------------------------------
@@ -281,12 +294,12 @@ RectDip NavRail::PaneTargetRect(int target) const {
     return {};
 }
 
-int NavRail::PaneHitTest(float dipX, float dipY) const {
+int NavRail::PaneHitTest(float dipX, float dipY, bool includeHeaders) const {
     if (backVisible_ && PaneTargetRect(kBackTarget).contains(dipX, dipY)) return kBackTarget;
     if (PaneTargetRect(kToggleTarget).contains(dipX, dipY)) return kToggleTarget;
     for (int i = 0; i < TotalCount(); ++i) {
         const NavRailItem* item = ItemAt(i);
-        if (item->header) continue;
+        if (item->header && !includeHeaders) continue;
         if (PaneTargetRect(i).contains(dipX, dipY)) return i;
     }
     return -1;
@@ -479,16 +492,16 @@ void NavRail::DrawPaneItem(const DrawingContext& dc, int index) {
             dc.FillRect(D2D1::RectF(r.x + 4.0f, y, r.right() - 4.0f, y + 1.0f),
                         WithAlphaScale(c.controlStrokeDefault, 1.0f - t));
         }
+        bool trimmed = false;
         if (t > 0.0f && dw && !item.label.empty()) {
             if (IDWriteTextFormat* fmt = dw->Format(Theme().typography.bodySize,
                     DWRITE_FONT_WEIGHT_SEMI_BOLD, DWRITE_TEXT_ALIGNMENT_LEADING,
                     DWRITE_PARAGRAPH_ALIGNMENT_CENTER, DWRITE_WORD_WRAPPING_NO_WRAP)) {
                 const D2D1_RECT_F tr = D2D1::RectF(r.x + 12.0f, r.y, r.right() - 8.0f, r.bottom());
-                auto clip = dc.PushClip(tr);
-                dc.DrawText(item.label.c_str(), static_cast<UINT32>(item.label.size()), fmt, tr,
-                            WithAlphaScale(c.textPrimary, t));
+                trimmed = DrawPaneLabel(dc, item.label, fmt, tr, WithAlphaScale(c.textPrimary, t));
             }
         }
+        if (index < static_cast<int>(labelTrimmed_.size())) labelTrimmed_[index] = trimmed;
         return;
     }
 
@@ -525,18 +538,50 @@ void NavRail::DrawPaneItem(const DrawingContext& dc, int index) {
         dc.FillEllipse(D2D1::Ellipse(D2D1::Point2F(cx, cy), kBadgeSize * 0.5f,
                                      kBadgeSize * 0.5f), c.severityErrorStroke);
     }
+    bool trimmed = false;
     if (dw && !item.label.empty() && r.w > kPaneLabelOffset) {
         if (IDWriteTextFormat* fmt = dw->Format(Theme().typography.bodySize,
                 DWRITE_FONT_WEIGHT_NORMAL, DWRITE_TEXT_ALIGNMENT_LEADING,
                 DWRITE_PARAGRAPH_ALIGNMENT_CENTER, DWRITE_WORD_WRAPPING_NO_WRAP)) {
             const D2D1_RECT_F tr = D2D1::RectF(r.x + kPaneLabelOffset, r.y, r.right() - 8.0f,
                                                r.bottom());
-            if (tr.right > tr.left) {
-                auto clip = dc.PushClip(tr);
-                dc.DrawText(item.label.c_str(), static_cast<UINT32>(item.label.size()), fmt, tr, ink);
-            }
+            if (tr.right > tr.left) trimmed = DrawPaneLabel(dc, item.label, fmt, tr, ink);
         }
     }
+    if (index < static_cast<int>(labelTrimmed_.size())) labelTrimmed_[index] = trimmed;
+}
+
+bool NavRail::DrawPaneLabel(const DrawingContext& dc, const std::wstring& text,
+                            IDWriteTextFormat* fmt, const D2D1_RECT_F& rect,
+                            const D2D1_COLOR_F& color) {
+    const float w = rect.right - rect.left;
+    const float h = rect.bottom - rect.top;
+    DWriteContext* dw = Dwrite();
+    ComPtr<IDWriteTextLayout> layout;
+    HRESULT hr = dw && dw->Factory()
+        ? dw->Factory()->CreateTextLayout(text.c_str(), static_cast<UINT32>(text.size()), fmt,
+                                          w, h, &layout)
+        : E_POINTER;
+    if (FAILED(hr) || !layout) {
+        // Old behaviour: hard clip at the edge.
+        auto clip = dc.PushClip(rect);
+        dc.DrawText(text.c_str(), static_cast<UINT32>(text.size()), fmt, rect, color);
+        return false;
+    }
+    // Measure before trimming: an untrimmed no-wrap line reports its full width,
+    // which may exceed the layout box.
+    DWRITE_TEXT_METRICS m{};
+    const bool trimmed = SUCCEEDED(layout->GetMetrics(&m)) && m.width > w + 0.5f;
+    if (trimmed) {
+        // The cached format is shared and must not be mutated; trimming goes on the layout.
+        DWRITE_TRIMMING trim{DWRITE_TRIMMING_GRANULARITY_CHARACTER, 0, 0};
+        ComPtr<IDWriteInlineObject> ellipsis;
+        if (SUCCEEDED(dw->Factory()->CreateEllipsisTrimmingSign(layout.Get(), &ellipsis)))
+            layout->SetTrimming(&trim, ellipsis.Get());
+    }
+    auto clip = dc.PushClip(rect);
+    dc.DrawTextLayout(D2D1::Point2F(rect.left, rect.top), layout.Get(), color);
+    return trimmed;
 }
 
 // --- Input -----------------------------------------------------------------
@@ -572,9 +617,11 @@ void NavRail::OnPointerPressed(PointerEventArgs& e) {
 
 void NavRail::OnPointerMoved(PointerEventArgs& e) {
     if (paneMode_) {
-        int target = PaneHitTest(e.position.x, e.position.y);
+        // Headers take hover for their tooltip only: never selected, never filled
+        // (DrawPaneItem draws no hover wash for them).
+        int target = PaneHitTest(e.position.x, e.position.y, /*includeHeaders=*/true);
         if (target == kBackTarget && !backEnabled_) target = -1;
-        if (target >= 0 && !Selectable(target)) target = -1;
+        if (target >= 0 && !Selectable(target) && !ItemAt(target)->header) target = -1;
         SetHover(target);
         return;
     }

@@ -96,7 +96,7 @@ warning can stay on screen through the whole Progress state.
 | NavRail data | `SetItems({glyph, label, showBadge})`, `SetBadge(i, bool)`, `SetHeader(unique_ptr)` |
 | NavRail selection | `SetSelectedIndex(i)` (silent), `SelectedIndex()`, `SelectionChanged()` (`int&`, user only) |
 | NavRail look | `SetRailBackground(color)` (default `windowBackground`), constants `kRailWidth` etc. |
-| NavRail pane mode | `SetPaneMode(true)` (opt-in, Win11 NavigationView look): `SetFooterItems`, `SetExpanded(bool, animate)`, `ExpandedChanged()`, `SetExpandedWidth`, `SetBackButtonVisible/Enabled`, `BackRequested()`, `SetItemEnabled(i, bool)`, item `header = true` (caption / separator), `SetPaneToggleTooltip`, `SetBackButtonTooltip` |
+| NavRail pane mode | `SetPaneMode(true)` (opt-in, Win11 NavigationView look): `SetFooterItems`, `SetExpanded(bool, animate)`, `ExpandedChanged()`, `SetExpandedWidth`, `SetBackButtonVisible/Enabled`, `BackRequested()`, `SetItemEnabled(i, bool)`, item `header = true` (caption / separator), item `tooltip` (overrides the label tooltip), `SetPaneToggleTooltip`, `SetBackButtonTooltip`. Labels / captions that do not fit end in "…" and show the full label on hover |
 | PageHost | `AddPage(unique_ptr)` → index, `ShowPage(i)`, `CurrentPage()`, `IsTransitioning()` |
 | PageHost animation | `SetTransition(None/Fade/FadeSlide)`, `SetTransitionDuration(sec)`, `SetSlideDistance(dip)` |
 | Overlay | `Show(spec)`, `UpdateProgress(percent, message)`, `Hide()` (no event), `IsShown()` |
