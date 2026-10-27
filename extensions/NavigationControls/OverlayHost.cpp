@@ -89,7 +89,7 @@ void OverlayHost::Show(const OverlaySpec& spec) {
 
 void OverlayHost::UpdateProgress(int percent, const std::wstring& message) {
     if (!shown_ || !spec_.showProgress) return;
-    // The API takes a percentage; ProgressBar's range is fixed at 0..1.
+    // The API takes a percentage; progress_ keeps ProgressBar's default 0..1 range.
     progress_->SetValue(static_cast<float>(std::clamp(percent, 0, 100)) / 100.0f);
     spec_.message = message;
     message_->SetText(message);

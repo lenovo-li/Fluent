@@ -13,7 +13,8 @@
 //     typed Event<Sender,float> without RangeBase needing to know the sender type.
 //   * animFill_ (the eased display value) stays in each subclass: Slider and
 //     ProgressBar animate toward the logical value on different timescales and with
-//     different semantics (Slider over the value range; ProgressBar 0..1).
+//     different semantics (Slider over the value range; ProgressBar over its range,
+//     default 0..1, normalised to the track when drawn).
 //   * No keyboard or pointer input here (Slider overrides OnPointerPressed etc.;
 //     ProgressBar is read-only with no input).
 #pragma once

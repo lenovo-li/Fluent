@@ -493,7 +493,7 @@ Low-priority controls were evaluated and found to prefer **composition over inhe
 **Status**: ✅ Base class (RangeBase) already sufficient
 
 - `RangeBase` exposes `protected value_`, `min_`, `max_`
-- Public APIs: `Value()`, `MaxValue()` getters
+- Public APIs: `Value()`, `Minimum()`, `Maximum()` getters; ProgressBar adds `Fraction()`
 - Custom rendering: override `Render()` and read state
 
 ### DataGrid / TreeView

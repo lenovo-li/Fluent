@@ -70,7 +70,7 @@ TEST(RangeBase, ValueChangedNotFiredWhenUnchanged) {
 }
 
 // ---------------------------------------------------------------------------
-// ProgressBar — fixed 0..1 range via RangeBase
+// ProgressBar — default 0..1 range via RangeBase, widenable by the caller
 // ---------------------------------------------------------------------------
 
 TEST(RangeBase, ProgressBarRange01) {
@@ -108,4 +108,46 @@ TEST(RangeBase, ProgressBarAnimationTick) {
     while (pb.WantsAnimationTick() && guard++ < 2000)
         pb.OnAnimationTick(0.016f);
     EXPECT_FALSE(pb.WantsAnimationTick());
+}
+
+TEST(RangeBase, ProgressBarDefaultFractionIsValue) {
+    ProgressBar pb;
+    pb.SetValue(0.68f);
+    EXPECT_NEAR(pb.Fraction(), 0.68f, 0.001f);
+}
+
+TEST(RangeBase, ProgressBarPercentRangeNormalizesFill) {
+    // docs/controls/ProgressBar.md "方式二": widen to 0..100, pass percentages.
+    ProgressBar pb;
+    pb.SetMinimum(0.0f);
+    pb.SetMaximum(100.0f);
+    pb.SetValue(68.0f);
+    EXPECT_NEAR(pb.Value(), 68.0f, 0.001f);
+    EXPECT_NEAR(pb.Fraction(), 0.68f, 0.001f);
+}
+
+TEST(RangeBase, ProgressBarOffsetRangeNormalizesFill) {
+    ProgressBar pb;
+    pb.SetMaximum(20.0f);
+    pb.SetMinimum(10.0f);
+    pb.SetValue(15.0f);
+    EXPECT_NEAR(pb.Fraction(), 0.5f, 0.001f);
+}
+
+TEST(RangeBase, ProgressBarEmptyRangeFractionIsZero) {
+    ProgressBar pb;
+    pb.SetMaximum(0.0f);  // min == max == 0
+    pb.SetValue(5.0f);
+    EXPECT_NEAR(pb.Fraction(), 0.0f, 0.001f);
+}
+
+TEST(RangeBase, ProgressBarPercentRangeAnimationSettles) {
+    ProgressBar pb;
+    pb.SetMaximum(100.0f);
+    pb.SetValue(100.0f);
+    int guard = 0;
+    while (pb.WantsAnimationTick() && guard++ < 2000)
+        pb.OnAnimationTick(0.016f);
+    EXPECT_FALSE(pb.WantsAnimationTick());
+    EXPECT_TRUE(guard < 2000);
 }

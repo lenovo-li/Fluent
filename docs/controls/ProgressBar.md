@@ -53,6 +53,7 @@ ProgressBar();
 ```cpp
 void  SetValue(float v);      // 同时切回确定态
 float Value() const;
+float Fraction() const;       // 填充比例 0~1 = (Value - Min) / (Max - Min)
 void  SetMinimum(float v);  void SetMaximum(float v);
 ```
 
@@ -96,6 +97,9 @@ void SetProgressPercent(ProgressBar* bar, float percent) {
 
 **注意:** 无论用哪种方式，传给 `SetValue` 的值都会被限制在 `[Minimum, Maximum]` 范围内。
 超出范围的值不会报错，而是被自动截断。
+
+填充长度按 `(Value - Minimum) / (Maximum - Minimum)` 计算，所以任意范围都能正确显示；
+`Minimum == Maximum` 时不填充。当前填充比例可用 `Fraction()` 读取(0~1)。
 
 **脏标记等级:Render**。
 

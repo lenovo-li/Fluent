@@ -5,8 +5,10 @@
 // segment sweeps back and forth continuously (a busy indicator).
 //
 // ProgressBar is a RangeBase (roadmap §WP-06): RangeBase owns min_/max_/value_
-// and the coerce/change pipeline; ProgressBar fixes the range to [0,1] in its
-// constructor and adds indeterminate sweep animation + drawing.
+// and the coerce/change pipeline; ProgressBar defaults the range to [0,1] in its
+// constructor and adds indeterminate sweep animation + drawing. The range may be
+// changed with SetMinimum/SetMaximum (e.g. 0..100 to pass percentages directly):
+// the fill is drawn at Fraction() = (value - min) / (max - min).
 #pragma once
 
 #include "primitives/RangeBase.h"
@@ -19,13 +21,16 @@ namespace fluent {
 class ProgressBar : public RangeBase {
 public:
     ProgressBar() {
-        // Fixed 0..1 range; the base holds min_/max_ so no public setters needed.
+        // Default 0..1 range; callers may widen it via RangeBase::SetMinimum/SetMaximum.
         min_ = 0.0f;
         max_ = 1.0f;
     }
 
     // Setting a value also switches to determinate mode.
     void SetValue(float v) { SetIndeterminate(false); RangeBase::SetValue(v); }
+
+    // The settled fill as a 0..1 fraction of the track (0 when min == max).
+    float Fraction() const { return NormalizedFill(value_); }
 
     // Indeterminate "busy" mode: a segment sweeps back and forth.
     void SetIndeterminate(bool on) {
@@ -74,10 +79,14 @@ private:
     void SyncSweepGeometry(bool startSweep);
     // Compute the track rect + accent in physical pixels from bounds + DPI.
     void TrackGeometryPx(float& ox, float& oy, float& w, float& h, float& radius) const;
+    // Map a value in [min_, max_] to a 0..1 track fraction; 0 for an empty range.
+    float NormalizedFill(float v) const;
+    // max_ - min_, floored so the fill ease's epsilons never collapse to zero.
+    float RangeSpan() const;
 
     AnimatedValue animFill_{0.0f}; // eased determinate fill, same units as value_
-                                   // (OnAnimationTick approaches value_ directly, not a
-                                   // normalised fraction; the [0,1] note here was stale)
+                                   // (OnAnimationTick approaches value_ directly; Render
+                                   // normalises it to the track via NormalizedFill)
     AnimatedValue sweep_{0.0f};    // 0..1 phase of the indeterminate sweep (fallback)
     bool indeterminate_ = false;
     bool compositorActive_ = false;

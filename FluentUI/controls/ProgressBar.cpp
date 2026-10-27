@@ -27,7 +27,17 @@ bool ProgressBar::WantsAnimationTick() const {
     // this branch: the indeterminate sweep is a continuous animation with no settled state
     // to snap to, so priming does not apply to it.
     if (!AnimationPrimed()) return false;
-    return animFill_.Animating(value_, 0.001f);
+    return animFill_.Animating(value_, 0.001f * RangeSpan());
+}
+
+float ProgressBar::RangeSpan() const {
+    return std::max(max_ - min_, 1e-6f);
+}
+
+float ProgressBar::NormalizedFill(float v) const {
+    const float span = max_ - min_;
+    if (!(span > 0.0f)) return 0.0f;  // min == max: nothing to fill
+    return std::clamp((v - min_) / span, 0.0f, 1.0f);
 }
 
 void ProgressBar::OnAnimationTick(float dtSec) {
@@ -39,7 +49,8 @@ void ProgressBar::OnAnimationTick(float dtSec) {
         sweep_.SetImmediate(s);
         return;
     }
-    animFill_.Approach(value_, dtSec, kAnimTau);
+    // Epsilons scale with the range so 0..100 settles like the default 0..1.
+    animFill_.Approach(value_, dtSec, kAnimTau, 0.01f * RangeSpan());
 }
 
 void ProgressBar::Measure(float availW, float availH) {
@@ -82,7 +93,7 @@ void ProgressBar::Render(const DrawingContext& dc) {
             D2D1::RoundedRect(D2D1::RectF(segL, ty, segR, ty + kBarH), r, r),
             EffectiveAccentColor(pal.accent));
     } else {
-        float p = std::clamp(static_cast<float>(animFill_), 0.0f, 1.0f);
+        float p = NormalizedFill(static_cast<float>(animFill_));
         float fillR = left + width * p;
         if (fillR > left + 0.5f) {
             dc.FillRoundedRect(
