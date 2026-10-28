@@ -129,12 +129,37 @@ void PageHost::ShowPage(int index) {
 }
 
 SizeDip PageHost::MeasureOverride(float availW, float availH) {
-    // Measure all pages so they're ready when shown.
+    // Visible pages (the current one, plus the leaving one mid-transition) are
+    // measured and size the host. Hidden pages are measured ONLY when something in
+    // them is Measure-dirty, and never contribute to the desired size.
+    //
+    // WHY NOT ALL PAGES. This used to measure every page "so they're ready when
+    // shown". That bought nothing — showing a page calls SetVisible(true), which
+    // dirties it, so it re-measures at the then-current size anyway — and it cost a
+    // full re-measure of every hidden page on every resize frame, because a new width
+    // misses every MeasureCached in the hidden trees. Measured in an app with five
+    // text-heavy pages: a window-edge drag spent most of each 14-22ms frame
+    // re-wrapping pages nobody could see.
+    //
+    // WHY HIDDEN-BUT-DIRTY PAGES STILL MEASURE. The host clears dirty flags across
+    // the WHOLE tree at the end of every frame (ClearDirtySubtree does not look at
+    // visibility). A leaf that changes inside a hidden page drops only its OWN
+    // measure cache; its ancestors learn about it solely through that dirty bit
+    // (Panel::NeedsRemeasure). Skip the page on that frame and the bit is cleared
+    // unserviced: when the page is shown, its intermediate panels still hold valid
+    // caches at an unchanged width, return their old desired sizes, and the changed
+    // leaf is never re-measured — stale layout until the next resize. Measuring the
+    // page on the frame its content changes consumes the bit while it still exists,
+    // and costs work only when content actually changes (a language switch, a status
+    // update), not per resize frame.
     SizeDip largest{0, 0};
     for (int i = 0; i < PageCount(); ++i) {
         auto* child = ChildAt(i);
         if (!child) continue;
+        const bool visible = child->IsVisible();
+        if (!visible && !child->NeedsRemeasure()) continue;
         child->MeasureCached(availW, availH);
+        if (!visible) continue;
         const SizeDip& d = child->Desired();
         largest.w = std::max(largest.w, d.w);
         largest.h = std::max(largest.h, d.h);

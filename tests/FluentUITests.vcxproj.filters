@@ -144,6 +144,7 @@
     <ClCompile Include="unit\TextEditInputPolicyTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\TabControlTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\WizardControlTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\PageHostTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\DataGridTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ChartTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\InfoBarMetricTests.cpp"><Filter>unit</Filter></ClCompile>
