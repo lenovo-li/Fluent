@@ -1245,6 +1245,7 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
             // stale (possibly much wider) estimate would let the first frames
             // overshoot the panel before the smoothing pulls it back.
             ResetModalGapEstimate();
+            modalTickYields_ = 0;
             // Precise tick from a worker thread posting WM_FLUENT_MODAL_TICK. This
             // is the primary driver now, and the reason a held-but-motionless resize
             // border no longer drops to ~30fps: WM_TIMER could not deliver better
@@ -1306,6 +1307,10 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
                 frame_.Scheduler().EndFrame();
             }
             KillTimer(hwnd_, kAnimTimerId);
+            // Once per drag: how many heartbeat ticks deferred to queued input. Nonzero
+            // means frames ran past the refresh interval at some point in the drag.
+            FL_TRACEF("Modal", "EXITSIZEMOVE (%d heartbeat tick(s) yielded to input)",
+                      modalTickYields_);
             if (sessionLogEnabled_) {
                 char buf[96];
                 _snprintf_s(buf, sizeof(buf), _TRUNCATE, "exit; final %ux%upx",
@@ -1628,12 +1633,34 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
             // heartbeat for the whole duration of a slow frame, which is exactly when
             // a motionless drag needs the next tick to already be on its way.
             modalHeartbeat_.OnTickConsumed();
+            if (!inModalLoop_) return 0;
+            //
+            // Let queued input go first. Posted messages outrank input in GetMessage,
+            // so a slow frame would otherwise always find the next tick already queued
+            // and the mouse would never be read — the drag freezes until frames get
+            // cheap again (ModalTickShouldYieldToInput has the measured case). The
+            // input's own WM_SIZE / WM_MOVING then paints. GetQueueStatus is used
+            // rather than PeekMessage(PM_NOREMOVE) because the latter dispatches
+            // pending sent messages and would re-enter this WndProc. It also resets
+            // the queue's "new input" bits, which is harmless: the main loop waits
+            // with MWMO_INPUTAVAILABLE, and this runs only inside the modal loop.
+            {
+                const bool inputPending =
+                    HIWORD(GetQueueStatus(QS_MOUSEMOVE | QS_MOUSEBUTTON | QS_KEY)) != 0;
+                const double sinceFrameEnd =
+                    lastFrameQpc_ ? QpcToMs(QpcNow() - lastFrameQpc_) : 0.0;
+                if (ModalTickShouldYieldToInput(inputPending, lastFrameQpc_ != 0,
+                                                sinceFrameEnd, RefreshHz())) {
+                    ++modalTickYields_;
+                    return 0;
+                }
+            }
             //
             // pace=false for the same reason as the WM_TIMER heartbeat: this tick IS
             // the pacing (the waitable timer already fires at the refresh interval),
             // so applying the skip-if-not-due test on top would double-pace and drop
             // every other frame.
-            if (inModalLoop_) ServiceModalFrame(/*pace*/ false);
+            ServiceModalFrame(/*pace*/ false);
             return 0;
 
         case WM_TIMER:

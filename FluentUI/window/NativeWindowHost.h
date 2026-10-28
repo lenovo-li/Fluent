@@ -752,6 +752,9 @@ private:
     // can never overshoot the panel.
     double modalGapMs_ = 0.0;
     int64_t modalLastOpportunityQpc_ = 0;
+    // Heartbeat ticks in the current drag that skipped their paint because input was
+    // queued (ModalTickShouldYieldToInput). Reset on WM_ENTERSIZEMOVE, traced on exit.
+    int modalTickYields_ = 0;
     int64_t borderHitQpc_ = 0;        // Last WM_NCHITTEST that returned a resize border
     int64_t lastSizeMsgQpc_ = 0;      // Last WM_SIZE arrival timestamp
     // Reset at WM_ENTERSIZEMOVE: the previous drag's estimate describes a mouse

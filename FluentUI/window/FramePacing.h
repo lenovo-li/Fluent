@@ -209,4 +209,48 @@ inline double FrameWaitRemainingMs(double elapsedMs, int refreshHz) {
     return interval - elapsedMs - kFrameWakeMarginMs;
 }
 
+// How long, in refresh intervals, a modal heartbeat tick may keep deferring to queued
+// input before it paints anyway. See ModalTickShouldYieldToInput.
+inline constexpr double kModalTickYieldWindowIntervals = 2.0;
+
+// Should a modal-heartbeat tick skip its paint because user input is already queued?
+//
+// THE STALL THIS PREVENTS. Inside the system's modal resize loop, GetMessage hands out
+// POSTED messages before INPUT messages. The heartbeat posts WM_FLUENT_MODAL_TICK and
+// re-opens its single in-flight slot as soon as the tick is dispatched — before the
+// paint, so a motionless drag gets its next tick on time. When a frame costs more than
+// one refresh interval, the next tick is therefore already queued by the time the paint
+// returns, the modal loop takes it ahead of the pending WM_MOUSEMOVE, and so on for as
+// long as frames stay slow. The mouse is never read, the window is never resized, and
+// no WM_SIZE arrives. Measured: a consumer app whose pane width animation forced a full
+// re-layout each frame (~12-15ms on a 120Hz panel) froze the drag for the animation's
+// whole 310-335ms, then jumped to the cursor — once per animation, every time.
+//
+// THE RULE. If input is pending, skip this tick so the modal loop reads the mouse; the
+// resulting WM_SIZE / WM_MOVING paints through ServiceModalFrame (which also pumps the
+// animation), so nothing is lost. Without pending input this returns false and the tick
+// paints exactly as before — the motionless-drag case it exists for is unchanged.
+//
+// THE BOUND. Input pending does not guarantee a paint follows: dragging against the
+// minimum size moves the mouse without changing the size, so no WM_SIZE is generated.
+// Yielding unconditionally would then starve the animation for as long as the mouse
+// keeps moving. So a tick only yields while the last painted frame ENDED less than
+// kModalTickYieldWindowIntervals refreshes ago; past that it paints regardless, which
+// caps the cost of a yield that bought nothing at about two refreshes.
+//
+// Measured from the frame's END, not its start. The question is "has the UI thread had
+// a chance to read input since it last painted", and a slow frame's start is long past
+// by the time it returns — a start-based window would expire during the paint itself
+// and never yield in exactly the slow-frame case this is for.
+//
+//   inputPending     : mouse or keyboard messages are waiting in the queue
+//   hasPreviousFrame : false before the first paint (nothing to measure against)
+//   sinceFrameEndMs  : time since the last painted frame finished
+//   refreshHz        : monitor refresh (0 = unknown -> 60Hz assumed)
+inline bool ModalTickShouldYieldToInput(bool inputPending, bool hasPreviousFrame,
+                                        double sinceFrameEndMs, int refreshHz) {
+    if (!inputPending || !hasPreviousFrame) return false;
+    return sinceFrameEndMs < RefreshIntervalMs(refreshHz) * kModalTickYieldWindowIntervals;
+}
+
 } // namespace fluent
