@@ -28,6 +28,9 @@ HRESULT TooltipService::Create(HINSTANCE hInst, HWND hwndOwner, D2DContext* d2d,
     }
     // A tooltip never takes input and is dismissed explicitly by the window.
     popup_->SetLightDismiss(false);
+    // ...and is the one popup that must not announce itself: the owner's reaction
+    // to WM_FLUENT_POPUP_OPENED is to dismiss the tooltip.
+    popup_->SetNotifyOwnerOnOpen(false);
     // Theme the card + injected content with the parent's stable snapshot (§11).
     // Set before SetContent so it flows into the content's UIContext.
     popup_->SetTheme(theme);

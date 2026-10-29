@@ -26,6 +26,17 @@
 
 namespace fluent {
 
+// Sent (synchronously) by PopupHost::Open to the owner window once the popup is
+// visible; wParam is the popup's HWND. NativeWindowHost uses it to dismiss the
+// hover tooltip and keep it from re-showing over the popup — the one point every
+// popup (ComboBox drop-down, DatePicker calendar, MenuFlyout / context menu, any
+// future PopupHost user) passes through, so no control has to remember to do it.
+//
+// WM_APP+n is the documented range for application-private messages. WM_APP+17 is
+// ModalFrameHeartbeat's tick, WM_APP+18 the tray callback (window/TrayIcon.h) —
+// keep the list consistent when adding another.
+constexpr UINT WM_FLUENT_POPUP_OPENED = WM_APP + 19;
+
 class PopupHost {
 public:
     ~PopupHost();
@@ -122,6 +133,13 @@ public:
     // whole set of windows instead of each popup closing itself independently.
     void SetLightDismiss(bool enabled) { lightDismiss_ = enabled; }
 
+    // Whether Open() announces itself to the owner window with
+    // WM_FLUENT_POPUP_OPENED (default on). The tooltip's own popup turns this off:
+    // it is the thing the announcement dismisses, so announcing it would hide the
+    // tooltip the moment it appeared. Not tied to SetLightDismiss — menu levels
+    // also disable light-dismiss yet are exactly the popups a tooltip must not cover.
+    void SetNotifyOwnerOnOpen(bool enabled) { notifyOwnerOnOpen_ = enabled; }
+
     float DpiScale() const { return dpi_ / 96.0f; }
     HWND Hwnd() const { return hwnd_; }
 
@@ -169,6 +187,7 @@ private:
     float cardOpacity_ = 1.0f;     // background card opacity [0..1]
     float contentOpacity_ = 1.0f;  // content opacity [0..1]
     bool lightDismiss_ = true;  // click-outside closes this popup itself
+    bool notifyOwnerOnOpen_ = true;  // Open() sends WM_FLUENT_POPUP_OPENED to the owner
 
     std::function<void()> onClose_;
 };

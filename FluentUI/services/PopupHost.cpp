@@ -186,6 +186,15 @@ HRESULT PopupHost::Open(const RECT& anchorScreenRect, float wDip, float hDip) {
     // Instead, the parent window implements light-dismiss by checking clicks
     // outside the popup via ContainsScreenPoint().
     TraceMsg(kTag, "Open: popup shown (no capture, parent handles light-dismiss)");
+
+    // Tell the owner a popup is now on screen so it can dismiss its hover tooltip
+    // (which would otherwise sit on top of this popup's first row) and hold it off
+    // while the popup is up. Sent, not posted: the tooltip must be gone by the time
+    // Open returns, not one message later. Sent last, after the window is visible,
+    // because the owner tells "still open" apart from "closed" by IsWindowVisible —
+    // there is no matching close notice to keep balanced.
+    if (notifyOwnerOnOpen_ && hwndOwner_)
+        SendMessageW(hwndOwner_, WM_FLUENT_POPUP_OPENED, reinterpret_cast<WPARAM>(hwnd_), 0);
     return S_OK;
 }
 

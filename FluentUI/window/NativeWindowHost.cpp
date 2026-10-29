@@ -1663,6 +1663,12 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
             ServiceModalFrame(/*pace*/ false);
             return 0;
 
+        case WM_FLUENT_POPUP_OPENED:
+            // A PopupHost owned by this window just became visible (menu, drop-down,
+            // calendar). Sent synchronously from PopupHost::Open.
+            OnPopupOpened(reinterpret_cast<HWND>(wp));
+            return 0;
+
         case WM_TIMER:
             if (wp == kBlinkTimerId && input_.Focus().Focused() && input_.Focus().Focused()->WantsBlink()) {
                 input_.Focus().Focused()->OnBlink();
@@ -1671,10 +1677,11 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
                 // Hover delay elapsed: show the tooltip for the tracked element.
                 KillTimer(hwnd_, kTooltipTimerId);
                 tooltipTimerOn_ = false;
-                if (tooltip_ && tooltipHot_ && tooltipHot_->HasTooltip()) {
+                UIElement* armed = tooltipArming_.Armed();
+                if (tooltip_ && armed && armed->HasTooltip()) {
                     POINT pt;
                     GetCursorPos(&pt);
-                    tooltip_->Show(tooltipHot_->Tooltip(), pt.x, pt.y);
+                    tooltip_->Show(armed->Tooltip(), pt.x, pt.y);
                 }
             } else if (wp == kAnimTimerId) {
                 // FALLBACK animation tick, only load-bearing inside a SYSTEM modal
@@ -2354,37 +2361,61 @@ void NativeWindowHost::InvalidateThunk(void* ctx) {
 }
 
 void NativeWindowHost::ArmTooltip(UIElement* hovered) {
-    // Same element, same text: keep whatever state we're in (either a pending
-    // timer counting down or a tooltip already shown). Don't restart. The text is
-    // part of the target because a composite control (NavRail) is one element whose
-    // tooltip changes per region; comparing the element alone never re-armed there.
-    if (!TooltipTargetChanged(tooltipHot_, tooltipHotText_, hovered)) return;
-
-    tooltipHot_ = hovered;
-    tooltipHotText_ = hovered ? hovered->Tooltip() : std::wstring{};
-
-    // A new target hides any visible tooltip and cancels a pending one. We re-arm
-    // only if the new target actually has tooltip text.
-    if (tooltip_ && tooltip_->IsVisible()) tooltip_->Hide();
-    if (tooltipTimerOn_) {
-        KillTimer(hwnd_, kTooltipTimerId);
-        tooltipTimerOn_ = false;
-    }
-
-    if (hovered && hovered->HasTooltip() && tooltip_) {
-        SetTimer(hwnd_, kTooltipTimerId, kTooltipDelayMs, nullptr);
-        tooltipTimerOn_ = true;
+    // Same element, same text: Keep — whatever state we're in (a pending timer
+    // counting down or a tooltip already shown) continues. The text is part of the
+    // target because a composite control (NavRail) is one element whose tooltip
+    // changes per region; comparing the element alone never re-armed there. While
+    // a popup is open, or the pointer is still on the element a popup opened from,
+    // TooltipArming never arms.
+    switch (tooltipArming_.OnHover(hovered, InteractivePopupOpen())) {
+        case TooltipArming::Action::Keep:
+            return;
+        case TooltipArming::Action::Hide:
+            CancelTooltip();
+            return;
+        case TooltipArming::Action::HideAndArm:
+            // A new target hides any visible tooltip and cancels a pending one,
+            // then the delay restarts for the new target.
+            CancelTooltip();
+            if (tooltip_) {
+                SetTimer(hwnd_, kTooltipTimerId, kTooltipDelayMs, nullptr);
+                tooltipTimerOn_ = true;
+            }
+            return;
     }
 }
 
-void NativeWindowHost::HideTooltip() {
+void NativeWindowHost::CancelTooltip() {
     if (tooltipTimerOn_) {
         KillTimer(hwnd_, kTooltipTimerId);
         tooltipTimerOn_ = false;
     }
     if (tooltip_ && tooltip_->IsVisible()) tooltip_->Hide();
-    tooltipHot_ = nullptr;
-    tooltipHotText_.clear();
+}
+
+void NativeWindowHost::HideTooltip() {
+    CancelTooltip();
+    tooltipArming_.OnDismissed();
+}
+
+void NativeWindowHost::OnPopupOpened(HWND popup) {
+    if (popup && std::find(openPopups_.begin(), openPopups_.end(), popup) == openPopups_.end())
+        openPopups_.push_back(popup);
+    // Query the hit target now rather than trusting Armed(): a button's flyout
+    // opens on release, and the press before it already cleared the armed target.
+    const bool wasVisible = tooltip_ && tooltip_->IsVisible();
+    CancelTooltip();
+    tooltipArming_.OnPopupOpened(input_.Input().Hot());
+    FL_TRACEF(kTag, "Tooltip: popup opened, tooltip %s, suppressed until pointer moves on",
+              wasVisible ? "dismissed" : "not visible");
+}
+
+bool NativeWindowHost::InteractivePopupOpen() {
+    // Called on every pointer move; the list is almost always empty.
+    openPopups_.erase(std::remove_if(openPopups_.begin(), openPopups_.end(),
+                                     [](HWND h) { return !IsWindow(h) || !IsWindowVisible(h); }),
+                      openPopups_.end());
+    return !openPopups_.empty();
 }
 
 void NativeWindowHost::LightDismissAt(int px, int py) {

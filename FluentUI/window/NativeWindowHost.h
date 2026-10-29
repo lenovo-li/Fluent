@@ -410,6 +410,95 @@ protected:
         return hovered && hovered->Tooltip() != armedText;
     }
 
+    // The tooltip's hover state machine, kept free of HWNDs and timers so it can be
+    // tested headless. The host feeds it pointer events and carries out the returned
+    // action (kill/start the hover timer, hide the popup card); it holds no other
+    // tooltip state of its own.
+    //
+    // Two pieces of state:
+    //   armed      the target the hover timer is counting down for, or whose tooltip
+    //              is on screen. Same meaning as before popups were considered.
+    //   suppressed the target that was under the pointer when a popup (menu,
+    //              drop-down, calendar) opened. It may not arm again until the pointer
+    //              reaches a different target (TooltipTargetChanged's rule).
+    //
+    // Why both a "popup is open" gate (OnHover's popupOpen) and the suppressed target:
+    //   - The gate is what keeps a tooltip off an OPEN popup. Suppression alone is not
+    //     enough: a context menu opens at the cursor, so the main window gets
+    //     WM_MOUSELEAVE without the pointer moving, and a pointer that wanders from the
+    //     flyout's button to its neighbour would arm the neighbour over the menu.
+    //   - Suppression is what keeps the tooltip away AFTER the popup closes while the
+    //     pointer still rests on the element that opened it (pick a menu item with
+    //     the keyboard, Esc, click the button again). WinUI does not re-show there
+    //     either; the user has already acted on that element.
+    //
+    // A plain press or wheel (no popup) only clears `armed`, exactly as before: the
+    // tooltip hides and the next pointer move re-arms it. Leaving the window does the
+    // same and deliberately does NOT clear suppression — see the context-menu case
+    // above, where the leave is caused by the popup itself.
+    //
+    // Pointers are identity only. `armed` is dereferenced by the host (to show the
+    // text), never by this class; `suppressed` is never dereferenced at all.
+    class TooltipArming {
+    public:
+        enum class Action {
+            Keep,        // nothing changed: leave the timer / visible tooltip alone
+            Hide,        // cancel the timer and hide the tooltip
+            HideAndArm,  // hide, then start the hover timer for Armed()
+        };
+
+        // Pointer moved; `hovered` is the hit-tested element (may be null).
+        // `popupOpen` is whether any popup announced by WM_FLUENT_POPUP_OPENED is
+        // still visible.
+        Action OnHover(UIElement* hovered, bool popupOpen) {
+            if (suppressing_ && TooltipTargetChanged(suppressed_, suppressedText_, hovered)) {
+                suppressing_ = false;
+                suppressed_ = nullptr;
+                suppressedText_.clear();
+            }
+            if (popupOpen || suppressing_) {
+                // Clear `armed` so the first move after the block lifts is a target
+                // change and arms normally.
+                const bool wasArmed = armed_ != nullptr;
+                armed_ = nullptr;
+                armedText_.clear();
+                return wasArmed ? Action::Hide : Action::Keep;
+            }
+            if (!TooltipTargetChanged(armed_, armedText_, hovered)) return Action::Keep;
+            armed_ = hovered;
+            armedText_ = hovered ? hovered->Tooltip() : std::wstring{};
+            return (hovered && hovered->HasTooltip()) ? Action::HideAndArm : Action::Hide;
+        }
+
+        // A popup opened. The caller hides the tooltip and cancels the timer.
+        // `hovered` is what is under the pointer right now — not Armed(), which a
+        // press has already cleared by the time a button's flyout opens on release.
+        void OnPopupOpened(UIElement* hovered) {
+            armed_ = nullptr;
+            armedText_.clear();
+            suppressing_ = true;
+            suppressed_ = hovered;
+            suppressedText_ = hovered ? hovered->Tooltip() : std::wstring{};
+        }
+
+        // Press, wheel, or pointer left the window. The caller hides the tooltip and
+        // cancels the timer. Suppression survives (see the class comment).
+        void OnDismissed() {
+            armed_ = nullptr;
+            armedText_.clear();
+        }
+
+        UIElement* Armed() const { return armed_; }
+        bool Suppressing() const { return suppressing_; }
+
+    private:
+        UIElement* armed_ = nullptr;
+        std::wstring armedText_;        // armed_'s tooltip text when it was armed
+        const UIElement* suppressed_ = nullptr;
+        std::wstring suppressedText_;   // suppressed_'s tooltip text when the popup opened
+        bool suppressing_ = false;      // separate flag: a null target can be suppressed
+    };
+
     // Paint window content (background card etc.) before elements are drawn.
     // Coordinates are DIPs; multiply by DpiScale() for pixels — but the content
     // DC is already set to a DPI transform, so paint in DIPs directly.
@@ -653,8 +742,16 @@ private:
     // the tooltip's lifetime; a key that actually moves focus (Tab, arrows) also
     // moves the pointer's relevance, and those paths already hide it via
     // ArmTooltip on the next mouse move.
+    //
+    // OnPopupOpened handles WM_FLUENT_POPUP_OPENED: hide now, and hold the tooltip
+    // off while the popup is visible and for the element it opened from (rules in
+    // TooltipArming). InteractivePopupOpen answers "is any announced popup still
+    // visible", pruning the ones that have since been hidden or destroyed.
     void ArmTooltip(UIElement* hovered);
     void HideTooltip();
+    void CancelTooltip();  // kill the hover timer and hide the card; no state change
+    void OnPopupOpened(HWND popup);
+    bool InteractivePopupOpen();
 
     HWND hwnd_ = nullptr;
     HINSTANCE hInst_ = nullptr;
@@ -901,12 +998,17 @@ private:
     unsigned keyGen_ = 0;
     unsigned wheelGen_ = 0;
 
-    // Tooltip service (created lazily on first hover with a tooltip). tooltipHot_
-    // is the element the hover timer is currently counting down for.
+    // Tooltip service (created lazily on first hover with a tooltip). tooltipArming_
+    // holds the hover target the timer is counting down for and the popup
+    // suppression; tooltipTimerOn_ mirrors whether kTooltipTimerId is set.
     std::unique_ptr<TooltipService> tooltip_;
-    UIElement* tooltipHot_ = nullptr;
-    std::wstring tooltipHotText_;  // tooltipHot_'s tooltip text when it was armed
+    TooltipArming tooltipArming_;
     bool tooltipTimerOn_ = false;
+    // Popups that announced themselves with WM_FLUENT_POPUP_OPENED. No close notice
+    // exists: an entry is dropped once its HWND is no longer visible (Close hides,
+    // a destroyed window fails IsWindow). Usually empty or one entry; a menu
+    // cascade adds one per open level.
+    std::vector<HWND> openPopups_;
     Event<NativeWindowHost, ThemeChangedArgs> themeChanged_;
     Application* application_ = nullptr;
     uint64_t applicationGeneration_ = 0;

@@ -9,6 +9,15 @@
 // pointed at is still relevant. One PopupHost + one TextBlock are reused for
 // every tooltip.
 //
+// Opening any other popup (MenuFlyout from Button::SetFlyout, a context menu, a
+// ComboBox drop-down, the DatePicker calendar) hides the tooltip at once, as in
+// WinUI. No tooltip arms anywhere in the window while such a popup is visible, and
+// the element that was under the pointer when it opened stays quiet until the
+// pointer moves to a different target — so closing a button's menu while still
+// resting on the button does not bring its tooltip back. The rules live in
+// NativeWindowHost::TooltipArming; PopupHost::Open is the signal
+// (WM_FLUENT_POPUP_OPENED).
+//
 // The tooltip popup is a non-light-dismiss PopupHost (SetLightDismiss(false)):
 // it never steals input and is hidden explicitly by the window, not by clicks.
 #pragma once
