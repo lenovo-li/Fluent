@@ -47,15 +47,36 @@ void TextBox::Measure(float availW, float availH) {
 // Text + layout helpers
 // ---------------------------------------------------------------------------
 
+void TextBox::SetPassword(bool on) {
+    password_ = on;
+    // revealed_ is left alone: it only means something in password mode, and the
+    // subclass that set it (PasswordBox's Visible mode) still wants it on return.
+    OnTextLayoutDirty();
+    // Bullets and real glyphs differ in width, so the scroll offset must be re-clamped.
+    EnsureCaretVisible();
+    // Toggling while focused switches the IME on or off right away rather than at the
+    // next focus change.
+    SyncImeAssociation();
+    Invalidate();
+}
+
+void TextBox::SetMaskRevealed(bool revealed) {
+    if (revealed_ == revealed) return;
+    revealed_ = revealed;
+    OnTextLayoutDirty();
+    EnsureCaretVisible();
+    Invalidate();
+}
+
 std::wstring TextBox::GeometryText() const {
-    return password_ ? std::wstring(text_.size(), L'\x2022') : text_;
+    return Masked() ?std::wstring(text_.size(), L'\x2022') : text_;
 }
 
 const std::wstring& TextBox::DisplayText(std::wstring& scratch) const {
     // Plain (non-password) and not composing: the layout string is the buffer, so hand
     // back a reference without copying. Password masking or an active composition both
     // need a built string, which goes in the caller's scratch buffer.
-    if (!password_ && composition_.empty()) return text_;
+    if (!Masked() && composition_.empty()) return text_;
     scratch = GeometryText();
     if (!composition_.empty())
         scratch.insert(std::min<size_t>(caret_, scratch.size()), composition_);
@@ -143,7 +164,9 @@ UINT32 TextBox::HitIndex(float dipX) const {
 }
 
 float TextBox::ContentLeft() const { return kPadX; }
-float TextBox::ContentWidth() const { return std::max(1.0f, bounds_.w - kPadX * 2.0f); }
+float TextBox::ContentWidth() const {
+    return std::max(1.0f, bounds_.w - kPadX * 2.0f - ReservedRightDip());
+}
 
 void TextBox::ClampScroll() {
     float textW = CaretX(static_cast<UINT32>(text_.size()));
@@ -261,7 +284,7 @@ void TextBox::Render(const DrawingContext& dc) {
     {
         ClipGuard clip = dc.PushClip(
             D2D1::RectF(bounds_.x + ContentLeft(), bounds_.y,
-                        bounds_.right() - ContentLeft(), bounds_.bottom()));
+                        bounds_.x + ContentLeft() + ContentWidth(), bounds_.bottom()));
 
         std::wstring scratch;
         const std::wstring& disp = DisplayText(scratch);

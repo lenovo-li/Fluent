@@ -21,7 +21,7 @@
 - [ToggleSwitch](ToggleSwitch.md) — 开关
 - [Slider](Slider.md) — 滑动条
 - [TextBox](TextBox.md) — 单行文本输入
-- PasswordBox（文档待写） — 密码输入
+- [PasswordBox](PasswordBox.md) — 密码输入
 - [NumericUpDown](NumericUpDown.md) — 数字微调器
 - [Rating](Rating.md) — 星级评分
 

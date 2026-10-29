@@ -105,6 +105,11 @@ public:
     // min/max) so a test can also check WHICH end the caret is on — that distinguishes
     // "dragged forward" from "dragged backward", which matters for word-granularity
     // drags where the fixed edge switches sides.
+    // Whether this control currently has the window's IME switched off (see
+    // SyncImeAssociation). Tracked even without an HWND, so a headless test can check
+    // the policy that a real window would apply.
+    bool ImeSuppressed() const { return imeSuppressed_; }
+
     UINT32 SelectionStartForTest() const { return selAnchor_; }
     UINT32 SelectionEndForTest() const { return caret_; }
 
@@ -167,6 +172,39 @@ protected:
     // Refresh the context-menu item state and place the caret. See the base declaration
     // for why the items must be rebuilt rather than merely reused.
     void OnContextMenuOpening(float dipX, float dipY) override;
+
+    // Whether Ctrl+C / Ctrl+X and the menu's Cut / Copy may put the selection on the
+    // clipboard. TextBox returns false in password mode so a masked secret never
+    // leaves the control as plain text.
+    virtual bool AllowCopyToClipboard() const { return true; }
+
+    // Whether an IME may compose into this control. TextBox returns false in password
+    // mode, matching WinUI's PasswordBox (and Win32's ES_PASSWORD edit): a composition
+    // string is drawn in plain text before it is committed, and a phonetic IME's
+    // candidate window would show the secret's reading on screen.
+    //
+    // Enforced in two places. SyncImeAssociation detaches the window's input context
+    // while such a control holds focus, so the IME is genuinely off (the language bar
+    // shows it disabled and keystrokes arrive as plain WM_CHAR). The composition
+    // handlers below also refuse anything that arrives anyway, as a backstop for an
+    // IME that keeps composing across the association change.
+    virtual bool AllowImeComposition() const { return true; }
+
+    // Bring the window's IME association in line with AllowImeComposition() for the
+    // current focus. Called on focus change and detach; a subclass whose answer can
+    // change while focused (TextBox::SetPassword) calls it after the change.
+    //
+    // The association is per HWND, not per control, so the rule is: a control only
+    // ever undoes a suppression it applied itself (imeSuppressed_). Focus moves blur
+    // the old element before focusing the new one (FocusManager::SetFocus), so moving
+    // between two password boxes restores and re-suppresses in that order, and moving
+    // to any other control leaves the IME at its default.
+    void SyncImeAssociation();
+
+    // Restores the IME association if this control suppressed it. FocusManager drops a
+    // detaching element's focus WITHOUT calling SetFocused(false), so OnFocusChanged
+    // never runs on that path and the window would otherwise stay IME-less.
+    void OnDetachedFromTree() override;
 
     // The character offset a pointer at these window DIPs addresses. Implemented by the
     // subclass, which owns the layout. Needed by OnContextMenuOpening so a right-click
@@ -326,6 +364,7 @@ protected:
     UINT32 dragStartLo_ = 0;
     UINT32 dragStartHi_ = 0;
     bool caretVisible_ = true;            // blink phase
+    bool imeSuppressed_ = false;          // this control detached the HWND's IME context
     Event<TextEditBase, std::wstring> textChanged_;
     Event<TextEditBase, SelectionChangedArgs> selectionChanged_;
 

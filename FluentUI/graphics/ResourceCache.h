@@ -163,6 +163,7 @@ enum class GlyphId : uint32_t {
     ChevronDown = 1,   // ComboBox collapsed indicator
     ChevronRight = 2,  // MenuFlyout submenu indicator
     CheckMark = 3,     // MenuFlyout checked-item glyph
+    EyeOutline = 4,    // PasswordBox reveal button: the lens outline (pupil is a FillEllipse)
 };
 
 // The host-owned resource cache injected into the tree via UIContext. Holds the

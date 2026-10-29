@@ -461,7 +461,14 @@ The following controls were **evaluated for Phase 2** and found to **already hav
 - **TextEditBase** (their base class) is already fully inheritable:
   - `protected` members: `text_`, `caret_`, `selAnchor_`, `composition_`
   - `protected virtual` hooks: `OnTextLayoutDirty`, `OnSelectionChanged`, `EnsureCaretVisible`, `OnNavigationKey`, `SanitizeInput`
-- TextBox's `password_` has public API `SetPassword(bool)`
+- TextBox's `password_` has public API `SetPassword(bool)` / `IsPassword()`
+- TextBox's protected `ReservedRightDip()` (right-edge width the text must not run under),
+  `SetMaskRevealed(bool)` (show a password in plain text without leaving password mode) and
+  `ContentLeft()` / `ContentWidth()` (the text viewport) exist for in-box buttons;
+  PasswordBox's reveal button is built on them
+- TextEditBase's protected `AllowCopyToClipboard()` / `AllowImeComposition()` policy virtuals
+  gate Ctrl+C/X + menu Cut/Copy and IME composition; a subclass whose answer changes while
+  focused calls `SyncImeAssociation()` after the change
 - TextBox's `scrollX_` is internal scroll state (no external access needed)
 - TextArea's virtualization state is complex implementation detail (exposing it couples subclasses to internals)
 

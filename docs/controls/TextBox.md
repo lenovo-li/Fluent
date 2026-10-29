@@ -3,7 +3,7 @@
 ## 概述
 
 单行文本输入框:插入符、选区、剪贴板、撤销/重做、输入法(IME)组字。多行编辑请用
-`TextArea`,密码输入请用 `PasswordBox`(它是 `TextBox` 的一个薄封装)。
+`TextArea`,密码输入请用 [`PasswordBox`](PasswordBox.md)(密码模式的 `TextBox` 加一个显示按钮)。
 
 **典型使用场景**:
 - 表单字段(姓名、股票代码、搜索关键词)
@@ -53,7 +53,15 @@ Visual
 void SetPassword(bool on);
 ```
 
-遮蔽显示。`PasswordBox` 就是预设了这个的 `TextBox`。
+密码模式:文字画成圆点,复制 / 剪切被拒绝(快捷键和右键菜单都是),获得焦点期间关闭输入法
+(与 WinUI `PasswordBox` 一致)。聚焦时切换也立即生效。需要显示按钮(眼睛)时用
+[`PasswordBox`](PasswordBox.md)。
+
+给子类的 protected 钩子(`PasswordBox` 用的就是这两个):
+
+- `virtual float ReservedRightDip() const` —— 右侧给框内按钮预留的宽度,滚动钳制、插入符
+  可见性和文字裁剪都会扣掉它。值随状态变化时,变化后调一次 `EnsureCaretVisible()`。
+- `SetMaskRevealed(bool)` —— 不离开密码模式地显示明文。剪贴板与输入法仍按密码模式拒绝。
 
 ### 事件
 

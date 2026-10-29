@@ -1728,6 +1728,8 @@ void TextArea::OnAttachedToTree() {
 void TextArea::OnDetachedFromTree() {
     // Clear the scroll model's context — it is no longer valid.
     scroll_.DetachFromContext();
+    // Restores the window's IME if this editor had suppressed it (see TextEditBase).
+    TextEditBase::OnDetachedFromTree();
 }
 
 void TextArea::OnFocusChanged() {

@@ -102,6 +102,9 @@
     <ClCompile Include="component\EmptyTextBoxCaretTests.cpp">
       <Filter>component</Filter>
     </ClCompile>
+    <ClCompile Include="component\PasswordBoxTests.cpp">
+      <Filter>component</Filter>
+    </ClCompile>
     <ClCompile Include="component\PopupOpacityTests.cpp">
       <Filter>component</Filter>
     </ClCompile>

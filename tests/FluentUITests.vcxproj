@@ -218,6 +218,7 @@
     <ClCompile Include="component\SelfInspectionTests.cpp" />
     <ClCompile Include="component\DisabledAndInteractionStateTests.cpp" />
     <ClCompile Include="component\EmptyTextBoxCaretTests.cpp" />
+    <ClCompile Include="component\PasswordBoxTests.cpp" />
     <ClCompile Include="component\PopupOpacityTests.cpp" />
     <ClCompile Include="component\ContentDrivenHeightTests.cpp" />
     <ClCompile Include="component\FrameWorkBudgetTests.cpp" />
