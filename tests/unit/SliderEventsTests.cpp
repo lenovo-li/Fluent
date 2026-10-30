@@ -155,3 +155,72 @@ TEST(SliderEvents, NarrowSliderDoesNotCauseDivisionByZero) {
     EXPECT_TRUE(std::isfinite(s.Value()));
     EXPECT_EQ(s.Value(), 0.0f);  // Returns min when track width <= 0
 }
+
+namespace {
+// DisplayedValue() 是 protected 扩展点；测试用一个最薄的子类把它露出来，
+// 与 LogSlider 这类下游子类看到的是同一个值。
+struct ProbeSlider : Slider {
+    float Displayed() const { return DisplayedValue(); }
+};
+}  // namespace
+
+// 拖动时旋钮必须 1:1 跟手，不能缓动。缓动（tau 0.04s）用在拖动上会变成橡皮筋：
+// 旋钮落后光标若干帧再追上。Press 和 Move 各自都必须把显示值直接落到新值上，
+// 所以这里在两步之后都检查 —— 只删掉其中一处 SetImmediate 也会被抓到。
+// 只看 Value() 测不出这个问题：逻辑值始终正确，错的是画出来的位置。
+TEST(SliderEvents, DragSnapsDisplayedValueWithoutEasing) {
+    ProbeSlider s;
+    s.SetMinimum(0.0f);
+    s.SetMaximum(100.0f);
+    s.SetWidth(200.0f);
+    s.SetHeight(32.0f);
+    s.Measure(200.0f, 32.0f);
+    s.Arrange(RectDip{0, 0, 200.0f, 32.0f});   // 首次 Arrange：显示值落到 0
+    EXPECT_EQ(s.Displayed(), 0.0f);
+
+    PointerEventArgs press;
+    press.position = Point{150.0f, 16.0f};
+    press.button = PointerButton::Left;
+    s.OnPointerPressed(press);
+    EXPECT_TRUE(s.Value() > 70.0f);              // 确实跳到了远处
+    EXPECT_EQ(s.Displayed(), s.Value());         // 且没有从 0 缓动过去
+
+    PointerEventArgs move;
+    move.position = Point{50.0f, 16.0f};
+    s.OnPointerMoved(move);
+    EXPECT_TRUE(s.Value() < 30.0f);
+    EXPECT_EQ(s.Displayed(), s.Value());
+    EXPECT_FALSE(s.WantsAnimationTick());        // 没有残留的缓动要追
+}
+
+// 按下点正好落在当前值上、不动就松手：没有新值，两个事件都不能触发。
+// 订阅 ValueChanged 去写配置的代码，否则每次单击旋钮都会白写一次。
+TEST(SliderEvents, PressReleaseWithoutChangeFiresNothing) {
+    Slider s;
+    s.SetMinimum(0.0f);
+    s.SetMaximum(100.0f);
+    s.SetValue(50.0f);
+    s.SetWidth(200.0f);
+    s.SetHeight(32.0f);
+    s.Measure(200.0f, 32.0f);
+    s.Arrange(RectDip{0, 0, 200.0f, 32.0f});
+
+    ValRec changing, changed;
+    auto s1 = s.ValueChanging().Subscribe(&changing, &ValRec::On);
+    auto s2 = s.ValueChanged().Subscribe(&changed, &ValRec::On);
+
+    // 轨道两端内缩相同距离，几何中点就是值 50（step 1 吸附掉浮点误差）。
+    PointerEventArgs press;
+    press.position = Point{100.0f, 16.0f};
+    press.button = PointerButton::Left;
+    s.OnPointerPressed(press);
+
+    PointerEventArgs release;
+    release.position = Point{100.0f, 16.0f};
+    release.button = PointerButton::Left;
+    s.OnPointerReleased(release);
+
+    EXPECT_EQ(s.Value(), 50.0f);
+    EXPECT_EQ(changing.count, 0);
+    EXPECT_EQ(changed.count, 0);
+}

@@ -302,7 +302,15 @@ float ValueToTrackPos(float v) const;  // map value to DIP position (for tick ma
 // RangeBase hooks (already protected)
 float CoerceValue(float v) const override;
 void OnValueChanged(float old, float newVal) override;
+
+// Repaint hooks (both just call Invalidate())
+void OnStateChanged() override;     // hover / pressed / disabled changed
+void OnFocusChanged() override;     // focus ring appears / disappears
 ```
+
+If you override `OnStateChanged` or `OnFocusChanged`, call the `Slider::` version
+(or `Invalidate()` yourself). Otherwise the thumb's hover size and the focus ring
+stop updating.
 
 **Example: Logarithmic Slider**
 
@@ -317,10 +325,13 @@ public:
 
 protected:
     float CoerceValue(float v) const override {
-        // Snap to nearest power of 10
-        float logVal = std::log10(std::max(1.0f, v));
-        float rounded = std::round(logVal);
-        return std::pow(10.0f, rounded);
+        // Run the base clamp + step snap first, then snap to the nearest power
+        // of 10, and clamp again: rounding the exponent can land outside
+        // [Minimum, Maximum] (e.g. max 5000 rounds up to 10000).
+        v = Slider::CoerceValue(v);
+        if (v <= 0.0f) return Minimum();
+        float snapped = std::pow(10.0f, std::round(std::log10(v)));
+        return std::clamp(snapped, Minimum(), Maximum());
     }
     
     void OnValueChanged(float old, float newVal) override {

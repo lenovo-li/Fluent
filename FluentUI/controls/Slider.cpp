@@ -135,7 +135,7 @@ void Slider::OnPointerPressed(PointerEventArgs& e) {
     UpdateState();
     SetValue(orientation_ == Orientation::Vertical ? ValueFromY(e.position.y)
                                                   : ValueFromX(e.position.x));
-    // Phase 1B: while dragging, the fill/thumb must track the pointer 1:1. The
+    // While dragging, the fill/thumb must track the pointer 1:1. The
     // eased animFill_ (tau 0.04s) would lag behind the cursor — a rubber-band
     // stutter. Snap the animated value straight to the (coerced) target so there
     // is no easing during the drag; keyboard/programmatic SetValue still eases.
@@ -147,7 +147,7 @@ void Slider::OnPointerMoved(PointerEventArgs& e) {
     if (!dragging_) return;
     SetValue(orientation_ == Orientation::Vertical ? ValueFromY(e.position.y)
                                                   : ValueFromX(e.position.x));
-    animFill_.SetImmediate(value_);  // Phase 1B: track the pointer 1:1 (no easing)
+    animFill_.SetImmediate(value_);  // track the pointer 1:1 (no easing)
     e.handled = true;
 }
 

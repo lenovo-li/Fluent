@@ -101,9 +101,13 @@ Orientation GetOrientation() const;   // 默认 Orientation::Horizontal
 Event<Slider, float>& ValueChanged();
 ```
 
-值**提交**时触发。**键盘方向键**、**`SetValue`**、以及**拖动松手**时触发。
+值**提交**时触发。**键盘方向键 / Home / End**、**`SetValue`** 在值确实改变时立即触发;
+拖动则在**松手**时触发一次。
 
 拖动过程中的**中间值不触发此事件**——那些是预览（见 `ValueChanging`）,最终提交只在松手时触发一次。
+
+⚠️ **松手只在这次拖动确实改过值时才触发。** 按下点正好落在当前值上、随后不动就松手,
+`ValueChanging` 和 `ValueChanged` 都不触发 —— 没有新值可提交。
 
 处理器是**无捕获函数指针**,且 `Args` 是**引用**:
 
@@ -161,7 +165,7 @@ slider->SetMaximum(100.0f);
 slider->SetValue(50.0f);
 ```
 
-### 标签 + 滑块 + 数值(三列 Grid)
+### 实际应用示例：标签 + 滑块 + 数值(三列 Grid)
 
 ```cpp
 // 数值列用固定宽度并右对齐，否则数字位数变化时滑块会左右跳动
@@ -188,12 +192,26 @@ slider->SetHAlign(HAlign::Left);
 
 ### 性能特征
 
-- **Render**:两个圆角矩形(轨道槽 + 已填充)+ 一个圆(旋钮),无文本布局。
-- **填充动画是 Render 级 O(1)**,不会触发重新布局。
-- **拖动时不缓动**:`OnPointerMoved` 走 `animFill_.SetImmediate(value_)`,让旋钮 1:1
-  跟随光标。缓动只用于键盘/程序改值 —— 拖动时的缓动会变成橡皮筋手感。
-- **首帧不动画**:`SnapAnimationsToSettledState()` 在第一次 Arrange 时落位。此前
-  `SetValue(50)` 建出来的滑块第一次显示会从最小值扫到 50。
+- **Render**:每帧固定 4~5 个图元 —— 轨道槽、已填充部分(两个圆角矩形;值在最小端时
+  不画填充)、旋钮填充圆、旋钮描边圆,聚焦时再加一个焦点环圆。无文本布局。
+- **填充动画是 Render 级 O(1)**,在 UI 线程上逐帧缓动,不走 compositor,也不触发重新布局。
+- **idle 零成本**:缓动收敛后 `WantsAnimationTick()` 返回 false,不再占用帧。
+- **拖动时不缓动**:`OnPointerPressed` / `OnPointerMoved` 都走 `animFill_.SetImmediate(value_)`,
+  让旋钮 1:1 跟随光标。缓动只用于键盘/程序改值 —— 拖动时的缓动会变成橡皮筋手感。
+- **首帧不动画**:第一次 Arrange 时 `FrameworkElement` 调用 `SnapAnimationsToSettledState()`,
+  把显示值直接落到当前值;在此之前 `WantsAnimationTick()` 恒为 false。否则 `SetValue(50)`
+  建出来的滑块第一次显示会从最小值扫到 50。
+
+**这两项优化的证明**(headless 单元测试):
+
+| 优化 | 测试 | 回退修复后的结果 |
+| --- | --- | --- |
+| 拖动时不缓动 | `SliderEvents.DragSnapsDisplayedValueWithoutEasing` | 删掉 `OnPointerPressed` 或 `OnPointerMoved` 里的 `SetImmediate`,显示值停在拖动前的位置,断言失败 |
+| 首帧不动画 | `InitialStateNoAnimation.SliderBuiltAtMidRangeDoesNotSweepUp`、`SliderWithNonZeroMinimumAlsoStartsSettled` | 删掉 `SnapAnimationsToSettledState` 覆写,第一帧仍请求动画 tick |
+| 按下不动就松手不提交 | `SliderEvents.PressReleaseWithoutChangeFiresNothing` | 去掉 `OnPointerReleased` 里的 `dragChangedValue_` 判断,`ValueChanged` 多触发一次 |
+| (对照)程序改值仍然缓动 | `InitialStateNoAnimation.SliderStillAnimatesOnProgrammaticChange` | 防止把「不缓动」误扩到所有改值路径 |
+
+未验证:F12 HUD 下的帧成本与拖动跟手程度需要在真机上看,headless 测试不覆盖像素与流畅度。
 
 ### 使用注意事项
 
@@ -201,14 +219,20 @@ slider->SetHAlign(HAlign::Left);
   这样窗口尺寸变化时仍然自适应。
 - **垂直方向必须给 Height。**
 - **退化区间**:`max <= min` 时 `CoerceValue` 直接返回 `min`,不会除零。
-- 焦点环画在 `bounds_` 之外,`VisualOverflowDip()` 上报该外扩量。
+- **溢出声明 14.2 DIP**:`VisualOverflowDip()` 返回 `8 × 1.15 + 3.5 + 1.5`(拖动时放大的
+  旋钮半径 + 焦点环间距 + 描边),并且无条件上报,不只在聚焦时。轨道两端也内缩了同样的
+  距离,所以旋钮和焦点环在横向上不会画出 `bounds_`。
+- **按下即跳值**:在轨道任意位置按下,值立刻跳到该位置(触发 `ValueChanging`),然后才开始拖动。
 
 ### 键盘导航
+
+方向键**不区分方向**:水平和垂直滑块都同时响应四个方向键。
 
 | 按键 | 行为 |
 | --- | --- |
 | Tab | 进入焦点顺序 |
-| ← / → (水平)、↑ / ↓ (垂直) | 按 step 调整 |
+| → / ↑ | 增加一个 step |
+| ← / ↓ | 减少一个 step |
 | Home / End | 跳到 min / max |
 
 ### 主题 Token
@@ -216,6 +240,7 @@ slider->SetHAlign(HAlign::Left);
 | Token | 用途 |
 | --- | --- |
 | `accent` | 已填充轨道、旋钮描边（EffectiveBorderBrush 回退值）、焦点环（自绘，不走 DrawFocusRing） |
+| `accentPressed` | 按下（拖动）时的已填充轨道 |
 
 **说明**：
 - 未填充轨道槽使用硬编码回退值（dark = rgba(255,255,255,0.18), light = rgba(0,0,0,0.12)），不是主题 token
@@ -227,3 +252,12 @@ slider->SetHAlign(HAlign::Left);
 demo 导航 → 输入控件 → Slider。含范围与状态、Stretch vs 固定宽度、Min/Max 夹逼在三种
 容器宽度下的表现、垂直方向、三列表单形状、五种 AccentColor、step 网格,
 以及滑块驱动 ProgressBar 的联动。
+
+---
+
+## 相关控件
+
+- `ProgressBar` — 同样继承 `RangeBase`,只读、无输入
+- `NumericUpDown` — 需要精确输入数值时用它
+- `LogSlider`(`extensions/CustomControls`) — 继承 Slider 的对数刻度示例;Slider 留给子类的
+  protected 扩展点见 [inheritance-guide.md](inheritance-guide.md)
