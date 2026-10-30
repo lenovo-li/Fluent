@@ -65,7 +65,7 @@ public:
     void SetContent(UIElement* content);
 
     // Share the parent's resource cache so popup-hosted content reuses the same
-    // text-layout / glyph-geometry caches (roadmap §13.3). The cache is DWrite /
+    // text-layout / glyph-geometry caches. The cache is DWrite /
     // D2D-factory backed and safe to share across composition targets on the UI thread.
     // Must be set before SetContent to be injected into the content's context.
     void SetResourceCache(ResourceCache* cache) { resourceCache_ = cache; }
@@ -80,7 +80,7 @@ public:
         animations_ = anims;
     }
 
-    // Share the parent's stable theme snapshot (roadmap §11, WP-05) so popup
+    // Share the parent's stable theme snapshot so popup
     // content reads the same tokens the tree does, and the popup paints its own
     // card chrome (fill / border) from it. The pointer is stable (overwritten in
     // place on a theme change); set it before SetContent so it is injected into
@@ -177,7 +177,7 @@ private:
 
     UIElement* content_ = nullptr;       // not owned
     // The popup's own input router: hit-tests + routes pointer events over the
-    // single content element and owns pointer capture inside this window (WP-03).
+    // single content element and owns pointer capture inside this window.
     // A popup keeps focus in the parent window, so there is no FocusManager here;
     // keyboard reaches the content via ForwardKey -> OnKeyDownRouted.
     InputManager input_;

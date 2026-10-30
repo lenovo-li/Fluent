@@ -1,4 +1,4 @@
-// PanelViewportCullingTests.cpp — Panel::Render viewport culling (WP-07 §S3).
+// PanelViewportCullingTests.cpp — Panel::Render viewport culling.
 //
 // Panel::Render skips a child whose bounds don't intersect the panel's own bounds
 // (StackPanel overflow) OR the DrawingContext's clip hint (partial redraw). A spy

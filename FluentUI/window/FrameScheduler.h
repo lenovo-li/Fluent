@@ -1,9 +1,9 @@
 // FrameScheduler.h — on-demand frame scheduling + the per-frame animation clock
-// for a top-level window (roadmap §14).
+// for a top-level window.
 //
 // Two responsibilities, kept in one small, HWND-free, unit-testable object:
 //
-//  1. Frame-request coalescing (WP-01, §14.3). Anything that dirties the window
+//  1. Frame-request coalescing. Anything that dirties the window
 //     — input, a property change, layout invalidation, an animation tick, a
 //     resize/DPI/theme change, a popup — calls RequestFrame(reason). Multiple
 //     requests between two frames merge into a single pending frame whose reason
@@ -15,7 +15,7 @@
 //     be running?" edge logic (arm/disarm) and the framerate-independent dt, but
 //     owns no HWND: the host installs an arm/disarm pair that start/stop the real
 //     OS timer, and drives ComputeDt() from its tick. dt now comes from the
-//     high-resolution QPC clock (§14.6: absolute time, not tick counts) so easing
+//     high-resolution QPC clock (absolute time, not tick counts) so easing
 //     is stable regardless of timer granularity or stalls.
 //
 // The two halves are independent: an animation running arms the clock AND keeps
@@ -28,7 +28,7 @@
 
 namespace fluent {
 
-// Why a frame was requested (roadmap §14.3). A bitmask so several reasons merge
+// Why a frame was requested. A bitmask so several reasons merge
 // into one pending frame; recorded per frame for the Debug HUD / FrameStats.
 enum class FrameReason : uint32_t {
     None      = 0,
@@ -69,7 +69,7 @@ public:
     // can be delayed arbitrarily by a modal loop, drag, or a busy UI thread).
     static constexpr float kMaxDtSec = 0.1f;
 
-    // ---- Frame-request coalescing (§14.3) --------------------------------
+    // ---- Frame-request coalescing --------------------------------
 
     // Merge a frame request. Between two frames, all reasons OR together into a
     // single pending frame. Cheap (a bit-or + bool set); safe to call many times

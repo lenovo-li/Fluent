@@ -1,4 +1,4 @@
-// Visual.h — the lowest layer of the FluentUI element model (roadmap §5.1).
+// Visual.h — the lowest layer of the FluentUI element model.
 //
 // A Visual owns only what "being a node that draws" needs:
 //   * the visual-tree link to its parent (non-owning),
@@ -98,8 +98,8 @@ public:
     Visual* Parent() const { return parent_; }
 
     // --- Render -----------------------------------------------------------
-    // Paint into the frame's device context using the shared render resources
-    // (roadmap §5.3.1 / §13.2). The DrawingContext wraps the frame device
+    // Paint into the frame's device context using the shared render resources.
+    // The DrawingContext wraps the frame device
     // context + the shared per-frame brush; controls call its typed, color-taking
     // methods (dc.FillRoundedRect(rr, color), dc.DrawText(...)) rather than
     // touching a raw brush. dc.DpiScale() = dpi/96.
@@ -161,7 +161,7 @@ public:
     virtual void OnThemeChanged() {}
     virtual void OnDpiChanged(float dpiScale) { UNREFERENCED_PARAMETER(dpiScale); }
 
-    // Device-loss notifications (roadmap §17). The host calls OnDeviceLost when
+    // Device-loss notifications. The host calls OnDeviceLost when
     // the GPU device drops (so an element can release any device-bound resource it
     // holds) and OnDeviceRestored after the device stack is rebuilt (to reacquire
     // / re-dirty). Default no-ops: no control holds a device resource of its own
@@ -217,8 +217,8 @@ protected:
     // Record dirty flags and trigger the repaint/relayout request up the tree.
     void InvalidateDirty(DirtyFlags flags);
 
-    // Assign a property and invalidate exactly what it dirtied, in one place
-    // (roadmap §7.1). Returns false (no-op) when unchanged, so a redundant set
+    // Assign a property and invalidate exactly what it dirtied, in one place.
+    // Returns false (no-op) when unchanged, so a redundant set
     // never schedules a frame; otherwise stores the value, records `flags`
     // (expanded by InvalidateDirty) and returns true.
     template <class T>

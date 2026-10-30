@@ -1,19 +1,18 @@
 // PerformanceCounters.h — per-frame and process-level metrics for the frame loop
-// (roadmap §18.3). WP-00 introduces the counter surface so later work packages
-// have somewhere to record layout/render/present timings, dirty-element counts,
-// TextLayout cache hit/miss and active-animation counts without threading a bag
-// of out-params through every call site.
+// loop. This is the counter surface: subsystems record layout/render/present
+// timings, dirty-element counts, TextLayout cache hit/miss and active-animation
+// counts here without threading a bag of out-params through every call site.
 //
-// Design constraints from the roadmap:
+// Design constraints:
 //   * The counters live in the diagnostics layer, not the hot path. Recording a
 //     value is a plain field write / increment (no allocation, no locking): the
-//     UI is single-threaded (roadmap §16) so a per-window FrameStats owned by the
-//     host is enough. There is no global singleton (roadmap §19.4).
+//     UI is single-threaded so a per-window FrameStats owned by the
+//     host is enough. There is no global singleton.
 //   * A frame's stats are reset at BeginFrame and sampled at EndFrame. The host
-//     may keep a small ring of recent frames for P95/P99 export (WP-07); WP-00
-//     only defines the shape and the scoped timer so nothing has to change later.
+//     may keep a small ring of recent frames for P95/P99 export (see
+//     FrameRing.h); this header only defines the shape and the scoped timer.
 //   * ScopedTimer measures a phase in milliseconds using QueryPerformanceCounter
-//     (the same clock the animation system uses, roadmap §14.6) and adds the
+//     (the same clock the animation system uses) and adds the
 //     elapsed time into a float field on destruction.
 //
 // This header is self-contained (only <windows.h> via fl_common) so tests and
@@ -47,10 +46,10 @@ inline double QpcToMs(int64_t ticks) {
     return static_cast<double>(ticks) * 1000.0 / static_cast<double>(QpcFrequency());
 }
 
-// The metrics recorded for a single frame (roadmap §18.3). Timings are in
+// The metrics recorded for a single frame. Timings are in
 // milliseconds; counts are plain integers. A field left at its default (0) means
-// "not yet measured by the current pipeline" — WP-00 wires the struct and the
-// timing mechanism; individual subsystems fill their fields as they are migrated.
+// "not yet measured by the current pipeline" — this header provides the struct
+// and the timing mechanism; each subsystem fills only the fields it measures.
 struct FrameStats {
     // Phase timings (ms).
     double cpuFrameMs = 0.0;    // whole frame on the UI thread
@@ -86,10 +85,10 @@ struct FrameStats {
 
     // Work counts.
     uint32_t dirtyElements = 0;    // elements re-measured/re-rendered this frame
-    uint32_t dirtyRects = 0;       // WP-07 dirty-rect count (0 = full-window)
+    uint32_t dirtyRects = 0;       // partial-redraw dirty-rect count (0 = full-window)
     uint32_t drawOps = 0;          // draw calls issued into the DC
 
-    // Text layout cache (roadmap §13.3 / §18.3).
+    // Text layout cache.
     uint32_t textLayoutsNew = 0;      // IDWriteTextLayout objects created
     uint32_t textLayoutCacheHits = 0; // served from cache
 
@@ -97,7 +96,7 @@ struct FrameStats {
     uint32_t activeAnimations = 0;
 
     // Frame accounting.
-    uint32_t frameReason = 0;   // FrameReason bitmask (roadmap §14.3)
+    uint32_t frameReason = 0;   // FrameReason bitmask
     bool lateFrame = false;     // missed the frame-latency deadline
 
     // Reset all per-frame fields to their "nothing recorded" state. Called at the
@@ -105,7 +104,7 @@ struct FrameStats {
     void Reset() { *this = FrameStats{}; }
 };
 
-// Process-level counters sampled on demand (roadmap §18.3) — working set,
+// Process-level counters sampled on demand — working set,
 // private bytes, GDI/USER handles. Cheap enough to sample once per second or
 // around a stress loop (e.g. before/after 10,000 popup open/close cycles) to
 // prove no monotonic growth. Returns false if a value could not be read.

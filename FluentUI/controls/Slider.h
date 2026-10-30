@@ -4,7 +4,7 @@
 // animate to the current value via the host's per-frame tick. Arrow keys step
 // the value; dragging sets it immediately.
 //
-// Slider is a RangeBase (roadmap §WP-06): RangeBase owns min_/max_/value_ and the
+// Slider is a RangeBase: RangeBase owns min_/max_/value_ and the
 // coerce pipeline; Slider adds the step grid (CoerceValue override), the keyboard
 // and drag input, the animated fill (animFill_), and the ValueChanged event.
 #pragma once

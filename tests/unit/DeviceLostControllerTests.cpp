@@ -1,8 +1,8 @@
 // DeviceLostControllerTests.cpp — pure-logic tests for the GPU device-loss state
-// machine and HRESULT classifier (roadmap §17, WP-04). No GPU is involved (and
+// machine and HRESULT classifier. No GPU is involved (and
 // none can be made to drop its device in this environment), so only the logic is
-// exercised here; the real device rebuild path is flagged unverifiable-headless
-// in the WP-04 report.
+// exercised here; the real device rebuild path cannot be verified headless and
+// needs a check on real hardware.
 
 #include "../framework/Test.h"
 #include "../../FluentUI/graphics/DeviceLostController.h"

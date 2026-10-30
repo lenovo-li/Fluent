@@ -1,5 +1,5 @@
 // DirtyBoundsOverflowTests.cpp — controls that paint OUTSIDE their layout bounds
-// must report an inflated dirty rect (WP-07 §S4).
+// must report an inflated dirty rect.
 //
 // Why this file exists: the partial-redraw region is exactly this frame's union of
 // CollectDirtyBounds rects. Nothing widens it — the planner used to union in last

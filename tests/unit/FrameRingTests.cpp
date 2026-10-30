@@ -1,4 +1,4 @@
-// FrameRingTests.cpp — unit tests for the P95/P99 frame-time ring (WP-07 §S2).
+// FrameRingTests.cpp — unit tests for the P95/P99 frame-time ring.
 
 #include "../framework/Test.h"
 #include "../../FluentUI/diagnostics/FrameRing.h"

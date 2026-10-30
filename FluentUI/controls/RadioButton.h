@@ -6,7 +6,7 @@
 // this button's own value: selecting one sets the shared value, and the others
 // animate their dot out on the next tick. Space/Enter or a click selects.
 //
-// RadioButton is a ButtonBase (roadmap §WP-06): ButtonBase supplies the text
+// RadioButton is a ButtonBase: ButtonBase supplies the text
 // label (via ContentControl), the focusable+clickable setup, and click/Space/Enter
 // → OnActivate(); RadioButton overrides OnActivate() to run the group-select
 // logic. It is NOT a ToggleButton because "checked" here is derived from the group
@@ -43,7 +43,7 @@ public:
     void Measure(float availW, float availH) override;
 
     // The focus circle is stroked OUTSIDE the ring glyph, which sits at the left edge
-    // of bounds_ (WP-07 §S4).
+    // of bounds_.
     float VisualOverflowDip() const override {
         return kFocusRingGap + kFocusRingStroke * 0.5f + 1.0f;
     }
@@ -52,7 +52,7 @@ protected:
     // ButtonBase routes click + Space/Enter here; RadioButton selects within group.
     void OnActivate() override;
     // DWrite arrives with the tree context; re-measure once attached so the label
-    // width is known (roadmap §6.2 — no manual SetDWrite).
+    // width is known (DWrite comes from the attached UIContext — no manual SetDWrite).
     void OnAttachedToTree() override { InvalidateMeasure(); }
 
 private:

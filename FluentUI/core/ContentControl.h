@@ -1,4 +1,4 @@
-// ContentControl.h — a Control that carries a text label (roadmap §WP-06).
+// ContentControl.h — a Control that carries a text label.
 //
 // The interactive controls that show a caption (Button, CheckBox, RadioButton,
 // ToggleSwitch) all held their own `std::wstring text_` + an identical
@@ -37,7 +37,7 @@ protected:
     // `maxWidth` bounds the layout box (callers pass the available width, else a
     // large sentinel), and `boxHeight` is the layout height (label is single-line
     // so it only affects the box, not the returned width).
-    // Route through the shared, epoch-versioned layout cache (roadmap §13.3), the
+    // Route through the shared, epoch-versioned layout cache, the
     // same path TextBox uses. This runs on EVERY Measure of every Button / CheckBox
     // / RadioButton / ToggleSwitch, and a Measure re-runs whenever the constraint
     // changes — so a resize drag rebuilt one throwaway IDWriteTextLayout per

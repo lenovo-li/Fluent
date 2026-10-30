@@ -146,7 +146,7 @@ public:
     void ClearUndoHistory() { undo_.Clear(); }
 
     // The border is stroked ON the bounds edge, so half its width falls OUTSIDE
-    // bounds_ (WP-07 §S4) — otherwise the outer half survives a partial redraw as a
+    // bounds_ — otherwise the outer half survives a partial redraw as a
     // stale line. kBorderStrokeMax is the widest the subclasses stroke it (1.5 while
     // focused).
     float VisualOverflowDip() const override {
@@ -165,7 +165,7 @@ public:
 
 protected:
     void OnFocusChanged() override;
-    // DWrite arrives with the tree context (roadmap §6.2): rebuild the cached
+    // DWrite arrives with the tree context: rebuild the cached
     // layout and repaint once attached (replaces the old SetDWrite side effects).
     void OnAttachedToTree() override;
 

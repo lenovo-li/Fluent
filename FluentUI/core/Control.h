@@ -1,4 +1,4 @@
-﻿// Control.h — the interactive-control layer (roadmap §5.4, chrome implemented 2026-08-08).
+﻿// Control.h — the interactive-control layer (chrome implemented 2026-08-08).
 //
 // Control is the base for controls that have appearance (chrome) of their own:
 // Foreground, Background, BorderBrush, AccentColor, CornerRadius, BorderThickness,

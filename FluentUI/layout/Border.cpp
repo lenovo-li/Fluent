@@ -47,7 +47,7 @@ void Border::Arrange(const RectDip& finalRect) {
 
 void Border::Render(const DrawingContext& dc) {
     // Paint our own chrome (background fill + border stroke) first, then the child
-    // on top (roadmap §11.5 order: Background -> BorderBrush -> content).
+    // on top (order: Background -> BorderBrush -> content).
     const RectDip& b = bounds_;
     if (b.w > 0.0f && b.h > 0.0f) {
         if (hasBg_ && bg_.a > 0.0f) {

@@ -1,4 +1,4 @@
-// InputManagerCaptureTests.cpp — pointer capture semantics (WP-03, roadmap §9.3).
+// InputManagerCaptureTests.cpp — pointer capture semantics.
 // Pure logic: capture routes move/release only to the captor; up releases;
 // window-deactivate and element-detach release with a canceling release; the base
 // click gesture presses/captures/clicks-inside/cancels-outside.

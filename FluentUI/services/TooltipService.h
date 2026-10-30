@@ -37,7 +37,7 @@ class TooltipService {
 public:
     // Create the (hidden) tooltip popup, sharing the parent's devices. Call once
     // after the window and its D2D/DWrite contexts exist. `theme` is the parent's
-    // stable theme snapshot (roadmap §11) so the tooltip card + text theme with
+    // stable theme snapshot so the tooltip card + text theme with
     // the window; it is injected into the content TextBlock and the popup chrome.
     HRESULT Create(HINSTANCE hInst, HWND hwndOwner, D2DContext* d2d,
                    DWriteContext* dwrite, const ThemeSnapshot* theme);

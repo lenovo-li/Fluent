@@ -114,7 +114,7 @@ public:
     DWriteContext& DWrite() override { return graphics_.DWrite(); }
     DCompHost& Comp() { return graphics_.Comp(); }
 
-    // Composition layer (Plan B / Phase 2). The backend wraps comp_ (DCompHost) +
+    // Composition layer. The backend wraps comp_ (DCompHost) +
     // d2d_ and forwards commits to RequestFrame(Paint). Null until graphics are up
     // (a control then falls back to its UI-thread path); it is created once in
     // InitGraphics and survives device-loss rebuilds (comp_/d2d_ rebuild in place,
@@ -126,7 +126,7 @@ public:
     // Register an element for hit-testing / event routing (not owned).
     void AddElement(UIElement* e);
 
-    // The window's service context (roadmap §6.2), valid once graphics are up.
+    // The window's service context, valid once graphics are up.
     // Tree-registered elements are attached automatically by AddElement; this
     // accessor is for non-tree helpers a host builds by hand (e.g. a standalone
     // context-menu MenuFlyout) so they can be given the same services without the
@@ -135,7 +135,7 @@ public:
 
     // Give keyboard focus to `e` (must be a registered, focusable element), or
     // nullptr to clear focus. Forwards to the FocusManager (the single focus
-    // authority, WP-03); kept as a public entry point so apps can set initial
+    // authority); kept as a public entry point so apps can set initial
     // focus without reaching into the manager.
     void SetFocusElement(UIElement* e);
     UIElement* FocusedElement() const { return input_.Focus().Focused(); }
@@ -150,7 +150,7 @@ public:
     using PopupDismissReason = fluent::PopupDismissReason;
 
     // Install the callback and return a Subscription whose destruction clears the
-    // slot — but only if it still owns that registration (roadmap §10.3). A
+    // slot — but only if it still owns that registration. A
     // generation counter guards against a stale subscription (whose slot was
     // already replaced by a newer Register* call) clearing the newer callback.
     // These are the only registration paths: a control holds the Subscription and
@@ -194,8 +194,8 @@ public:
         });
     }
 
-    // Expose the animation registry for popup content injection (roadmap §6.2,
-    // WP-02 Step 3). PopupHost sets ctx.animations to this so UIElement can
+    // Expose the animation registry for popup content injection.
+    // PopupHost sets ctx.animations to this so UIElement can
     // remove itself on detach. Non-owning pointer; stable for the host's life.
     AnimationRegistry* Anims() override { return &frame_.Anims(); }
     // Popup input arrives on the popup's own WndProc, bypassing this window's
@@ -205,7 +205,7 @@ public:
     // Re-apply theme (tokens + dark title bar) and repaint.
     void ApplyTheme();
 
-    // Theme control (roadmap §11, WP-05). Replaces the old global
+    // Theme control. Replaces the old global
     // Theme::Instance().SetDark / FollowSystem / IsDark: the window owns the
     // ThemeManager, so an app flips the theme through the window. SetDarkMode /
     // FollowSystemTheme rebuild the snapshot (in place) and call ApplyTheme so the
@@ -255,7 +255,7 @@ public:
     }
     Event<NativeWindowHost, ThemeChangedArgs>& ThemeChanged() { return themeChanged_; }
 
-    // Window material policy (roadmap §12, WP-05). SetBackdropKind changes the
+    // Window material policy. SetBackdropKind changes the
     // requested material (Auto/None/Mica/MicaAlt/Acrylic) and re-applies it with
     // the environment-aware fallback. Appearance() exposes the WindowAppearance
     // for corner/caption/border tweaks and the last resolution (LastResolved()).
@@ -291,7 +291,7 @@ public:
     // draw nothing". Public so a test or a subclass can assert the policy.
     BaseFillPlan BaseFill() const;
 
-    // Request a repaint for the next frame (roadmap §14.3). This is the normal
+    // Request a repaint for the next frame. This is the normal
     // entry point — it coalesces: many calls between two frames merge into one
     // pending frame serviced by the message loop (via RunDueFrame).
     void Render() { RequestFrame(FrameReason::Paint); }
@@ -299,7 +299,7 @@ public:
     // Merge a frame request of a given reason. Cheap; safe to call repeatedly.
     void RequestFrame(FrameReason reason);
 
-    // The DXGI frame-latency waitable for pacing (roadmap §14.4), or nullptr if
+    // The DXGI frame-latency waitable for pacing, or nullptr if
     // unavailable. Always nullptr since the content became a DComp surface (Route 2):
     // there is no swap chain to pace against. Kept for source compatibility; use
     // FrameWaitTimeoutMs() for pacing instead.
@@ -347,20 +347,20 @@ public:
     // waiting on the frame-latency waitable instead of blocking on input alone).
     bool IsAnimating() const { return frame_.Scheduler().Running(); }
 
-    // Metrics recorded for the most recently painted frame (roadmap §18.3): phase
+    // Metrics recorded for the most recently painted frame: phase
     // timings, the serviced FrameReason, dirty-element count, drawOps, and
     // dirtyRects. Populated by RenderNow; read by a Debug HUD / diagnostics.
     // Zeroed until the first paint.
     const FrameStats& LastFrameStats() const { return lastFrameStats_; }
 
-    // Ring buffer of the last 120 frame CPU times (WP-07 §S2). ~2 s at 60 fps.
+    // Ring buffer of the last 120 frame CPU times. ~2 s at 60 fps.
     // Call FrameRingStats().P95() / .P99() for latency percentile stats.
     const FrameRing<120>& FrameRingStats() const { return diagnostics_.Frames(); }
 
     // Ring of the last 120 frame INTERVALS (ms) — real cadence for FPS/jank.
     const FrameRing<120>& FrameIntervalStats() const { return diagnostics_.Intervals(); }
 
-    // Toggle / query the on-screen performance HUD (roadmap §18.3). When shown,
+    // Toggle / query the on-screen performance HUD. When shown,
     // the window keeps repainting so the numbers stay live.
     void SetHudVisible(bool on);
     bool HudVisible() const { return hudVisible_; }
@@ -625,7 +625,7 @@ private:
     static constexpr float kTitleIconLeftDip = 10.0f;
 
     HRESULT InitGraphics(UINT pixelW, UINT pixelH);
-    // Rebuild the GPU device stack after a loss (roadmap §17). Rebuilds d2d_ IN
+    // Rebuild the GPU device stack after a loss. Rebuilds d2d_ IN
     // PLACE (borrowers keep valid pointers), re-inits comp_ + the resource cache
     // factories, clears cached GPU resources, closes transient popups (they
     // recreate their own composition target from the fresh device on next open), notifies
@@ -670,7 +670,7 @@ private:
     void RecreateWindowIcon();
     void DrawWindowIcon(ID2D1DeviceContext* dc);
     void DrawStandardTitle(ID2D1DeviceContext* dc);
-    void DrawHud(ID2D1DeviceContext* dc);  // on-screen perf HUD (roadmap §18.3)
+    void DrawHud(ID2D1DeviceContext* dc);  // on-screen perf HUD
 
     // Apply a saved placement onto the centered startup rect (DPI rescale +
     // multi-monitor validation). No-op when `restore` is null/invalid.
@@ -773,16 +773,16 @@ private:
     // Graphics device stack (D2D, DWrite, DComp, composition backend, resource cache).
     // Extracted to GraphicsHost in Phase 1 of the window refactoring.
     GraphicsHost graphics_;
-    // GPU device-loss state machine (roadmap §17). Fed each frame's present/draw
+    // GPU device-loss state machine. Fed each frame's present/draw
     // HRESULT; when it flips to Lost the frame loop runs RecoverDevice().
     DeviceLostController deviceLost_;
 
-    // The window's theme authority (roadmap §11, WP-05). Owns the one stable
+    // The window's theme authority. Owns the one stable
     // ThemeSnapshot handed to the tree via context_.theme; its pointee is
     // overwritten in place on a theme change so the parked pointer stays valid.
     // The app drives it through SetDarkMode / FollowSystemTheme; controls read the
     // snapshot via UIElement::Theme(). Replaced the old global Theme::Instance().
-    // Theme subsystem (roadmap §11-12, WP-05). ThemeHost encapsulates the token
+    // Theme subsystem. ThemeHost encapsulates the token
     // manager (the snapshot controls read via UIElement::Theme(); overwritten in
     // place on a theme change so the parked UIContext pointer stays valid) and the
     // native appearance controller (resolves the requested BackdropKind against
@@ -799,7 +799,7 @@ private:
 
     bool restoreMaximized_ = false;
 
-    // Input routing (WP-03). InputHost encapsulates InputManager, FocusManager,
+    // Input routing. InputHost encapsulates InputManager, FocusManager,
     // ClickCounter, and drag-drop COM state. The window only translates raw Win32
     // messages and feeds them to the host.
     InputHost input_;
@@ -814,7 +814,7 @@ private:
     // UpdateAnimationTimer) must then bail rather than touch the torn-down window.
     bool destroying_ = false;
 
-    // Per-frame animation subsystem (roadmap §6.1). FrameHost encapsulates the
+    // Per-frame animation subsystem. FrameHost encapsulates the
     // frame scheduler (clock: running/dt state, arm/disarm logic) and animation
     // registry (active set: rebuilt from the tree, ticked in place, so per-frame
     // cost is O(animating) not a whole-tree scan). The clock is driven by the main
@@ -864,13 +864,13 @@ private:
     // Fold this opportunity into the estimate and return the current gap estimate.
     double SampleModalGap();
 
-    // Service context injected into every element registered via AddElement
-    // (roadmap §6.2). Built once graphics are up (device / DWrite / anim set /
+    // Service context injected into every element registered via AddElement.
+    // Built once graphics are up (device / DWrite / anim set /
     // HWND / DPI), pushed on attach, and refreshed on WM_DPICHANGED. Replaces the
     // old per-control SetDWrite / Attach(WindowServices*) wiring.
     UIContext context_;
 
-    // Metrics for the most recently serviced frame (roadmap §18.3), filled by
+    // Metrics for the most recently serviced frame, filled by
     // RenderNow and exposed via LastFrameStats() for a Debug HUD / diagnostics.
     FrameStats lastFrameStats_;
     // Snapshot of the PREVIOUS fully-completed frame's stats. The HUD is drawn
@@ -913,7 +913,7 @@ public:
 
 private:
 
-    // Diagnostic subsystem (roadmap §18). DiagnosticsHost encapsulates the
+    // Diagnostic subsystem. DiagnosticsHost encapsulates the
     // SessionLog (in-memory operation capture + per-frame stats for timeline/
     // export) and two FrameRing<120> buffers (last 120 frame build costs and
     // intervals — the raw data behind FPS / P95 / P99 jank metrics).
@@ -970,12 +970,12 @@ private:
     // mean and is the number a user comparing against a frame budget expects to read.
     int64_t lastFrameStartQpc_ = 0;  // 0 = no previous frame yet (paint immediately)
 
-    // On-screen performance HUD toggle (roadmap §18.3). Off by default; the demo
+    // On-screen performance HUD toggle. Off by default; the demo
     // flips it (F12). When on, RenderNow draws the HUD text in the top-right and
     // keeps requesting frames so the numbers update live.
     bool hudVisible_ = false;
 
-    // WP-07 §S4: dirty-rect partial redraw state.
+    // Dirty-rect partial redraw state.
     // fullDrawRequired_: set after resize / DPI / theme / device-loss; forces a full
     //   clear for the next 2 frames so no partial redraw trusts content-surface
     //   pixels that those events left undefined.

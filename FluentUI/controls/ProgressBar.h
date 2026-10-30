@@ -4,7 +4,7 @@
 // current value via the host's per-frame tick. Indeterminate: a short accent
 // segment sweeps back and forth continuously (a busy indicator).
 //
-// ProgressBar is a RangeBase (roadmap §WP-06): RangeBase owns min_/max_/value_
+// ProgressBar is a RangeBase: RangeBase owns min_/max_/value_
 // and the coerce/change pipeline; ProgressBar defaults the range to [0,1] in its
 // constructor and adds indeterminate sweep animation + drawing. The range may be
 // changed with SetMinimum/SetMaximum (e.g. 0..100 to pass percentages directly):

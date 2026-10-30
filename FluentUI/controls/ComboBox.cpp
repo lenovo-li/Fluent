@@ -58,7 +58,8 @@ public:
         Invalidate();
     }
     // Bind to the ComboBox's shared items vector (not owned) — eliminates the
-    // WP-05 double storage. The pointer stays valid for the ComboBox's life
+    // old double storage (a second items copy in the list view). The pointer
+    // stays valid for the ComboBox's life
     // (the list view is owned by, and destroyed with, the ComboBox).
     void SetItemsRef(const std::vector<std::wstring>* items) { 
         items_ = items; 
@@ -357,7 +358,7 @@ ComboBox::~ComboBox() {
 }
 
 void ComboBox::OnAttachedToTree() {
-    // The framework injects the host on tree attach (roadmap §6.2), replacing the
+    // The framework injects the host on tree attach, replacing the
     // old manual Attach(WindowServices*). Cache the window for the attach period
     // (popup positioning + dismiss registration read it); it is cleared on detach.
     window_ = Context().window;
@@ -375,17 +376,17 @@ void ComboBox::OnAttachedToTree() {
     // wheel scroll, scrollbar fade/expand). Must precede SetContent below, which
     // injects the registry into the list view's context.
     popup_->SetParentAnimationClock(window_, Context().animations);
-    // Share the tree's resource caches with the dropdown content (§13.3).
+    // Share the tree's resource caches with the dropdown content.
     popup_->SetResourceCache(Context().resourceCache);
     // Apply any opacity set before attach (see SetPopupOpacity).
     popup_->SetCardOpacity(popupOpacity_);
     // Share the tree's stable theme snapshot so the dropdown + its rows theme
-    // identically to the parent (roadmap §11, WP-05).
+    // identically to the parent.
     popup_->SetTheme(Context().theme);
 
     // Create the list view content. It reads DWrite through the context PopupHost
-    // injects on SetContent (roadmap §6.2). The list binds to the shared base
-    // items_ vector (no copy — eliminates the WP-05 double storage).
+    // injects on SetContent. The list binds to the shared base
+    // items_ vector (no copy — the list view does not mirror the items).
     auto* list = new ComboListView();
     list->SetItemsRef(&items_);
     list->SetSelectedIndex(selectedIndex_);
@@ -826,7 +827,7 @@ void ComboBox::Render(const DrawingContext& dc) {
     // Chevron (down arrow) on the right. The glyph is a static "v" shape, so it
     // is built once as a unit-space path geometry in the shared cache and drawn
     // here positioned by a transform — instead of re-emitting line primitives
-    // every frame (roadmap §13.3, WP-04). Falls back to primitives if no cache.
+    // every frame. Falls back to primitives if no cache.
     float cx = bounds_.right() - 16.0f;
     float cy = bounds_.y + bounds_.h * 0.5f;
     ResourceCache* cache = Context().resourceCache;

@@ -1,4 +1,4 @@
-// RangeBaseTests.cpp — unit tests for RangeBase value management (WP-06 Stage 2).
+// RangeBaseTests.cpp — unit tests for RangeBase value management.
 
 #include "../framework/Test.h"
 #include "../../FluentUI/controls/Slider.h"

@@ -7,9 +7,9 @@
 // the screen bottom) the header, dismissed by clicking outside, selecting an
 // item, or pressing Esc.
 //
-// ComboBox is a Selector<std::wstring> (roadmap §WP-06): the item vector and
+// ComboBox is a Selector<std::wstring>: the item vector and
 // selected-index storage (+ clamp/dedup) live in the Selector/ItemsControl base.
-// The double storage of WP-05 (ComboBox::items_ mirrored into ComboListView::items_)
+// The former double storage (ComboBox::items_ mirrored into ComboListView::items_)
 // is eliminated — the list view now holds a pointer to the shared items_ vector.
 #pragma once
 
@@ -118,7 +118,7 @@ public:
     void OnKeyDownRouted(KeyEventArgs& e) override;
     void Render(const DrawingContext& dc) override;
 
-    // The focus ring is stroked OUTSIDE bounds_ (WP-07 §S4) — see FocusRingPadDip.
+    // The focus ring is stroked OUTSIDE bounds_ — see FocusRingPadDip.
     float VisualOverflowDip() const override;
 
 protected:

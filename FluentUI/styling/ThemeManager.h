@@ -1,4 +1,4 @@
-// ThemeManager.h — owns the one stable ThemeSnapshot for a window (roadmap §11).
+// ThemeManager.h — owns the one stable ThemeSnapshot for a window.
 //
 // The host holds a ThemeManager; it builds a snapshot from three inputs
 // (dark mode, high-contrast, resolved OS accent) and hands out a stable pointer

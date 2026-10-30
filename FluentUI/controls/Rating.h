@@ -67,7 +67,7 @@ public:
     void OnKeyDownRouted(KeyEventArgs& e) override;
 
     // The focus ring is stroked outside bounds_, so the dirty rect must cover it
-    // (WP-07 §S4) — declared unconditionally, including while unfocused, so the
+    // — declared unconditionally, including while unfocused, so the
     // frame where focus LEAVES still clears those pixels.
     float VisualOverflowDip() const override {
         return FocusRingPadDip(FocusRingSpec{});

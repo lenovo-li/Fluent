@@ -1,6 +1,6 @@
 // TreeView.h — Lightweight Fluent tree/list control for value-owned row data.
 //
-// TreeView is a Selector<TreeViewRow> (roadmap §WP-06): the row vector lives in
+// TreeView is a Selector<TreeViewRow>: the row vector lives in
 // the ItemsControl base as items_, and the selection index lives in the Selector
 // base as selectedIndex_ (a *row* index into items_). TreeView keeps its own
 // tree-specific derived state (visible rows, id→index maps, expand/collapse,
@@ -78,7 +78,7 @@ public:
     // restores the selection by id. Kept as SetRows for API compatibility.
     void SetRows(std::vector<TreeViewRow> rows);
 
-    // --- Incremental mutation API (WP-06 ergonomics) ---------------------------
+    // --- Incremental mutation API -------------------------------------------
     // Add/remove/modify individual nodes without reading/writing the whole vector.
     // All methods preserve the selection by id and trigger OnItemsChanged (which
     // rebuilds indices + visible rows). The caller still supplies id/parentId, but

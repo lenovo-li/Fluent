@@ -1,15 +1,15 @@
-// InputManager.h — hit-testing, event routing, and pointer capture (roadmap §9).
+// InputManager.h — hit-testing, event routing, and pointer capture.
 //
 // The window's job shrinks to translating raw Win32 messages into DIP points +
 // modifier bits and feeding them here (PointerMoved / PointerPressed / ...); this
 // class decides everything else, so the host contains no control-type knowledge.
 //
-// Routing (§9.2): a pointer event hit-tests to the deepest element, builds the
+// Routing: a pointer event hit-tests to the deepest element, builds the
 // target..root chain, tunnels Preview root->target, then bubbles the main phase
 // target->root; a handler setting args.handled stops the remaining route. Key
 // events route the same way over the focused element's chain.
 //
-// Pointer capture (§9.3): a control (e.g. Button on press, Slider on drag) grabs
+// Pointer capture: a control (e.g. Button on press, Slider on drag) grabs
 // the pointer so subsequent moves/releases go only to it regardless of position;
 // capture is released on up, explicit release, window-deactivate, or the captured
 // element detaching — every path also delivers a canceling release so the control
@@ -108,7 +108,7 @@ public:
     // across roots, then HitTestDeep within. (The old NativeWindowHost::ElementAt.)
     UIElement* HitTest(Point p) const;
 
-    // Right-click target resolution (WP-03 follow-up): hit-test the deepest
+    // Right-click target resolution: hit-test the deepest
     // element at `p`, then walk the Parent() chain and return the first element
     // that owns a context menu (so a child with none inherits its container's).
     // Null if nothing under the point has a menu anywhere up its chain.

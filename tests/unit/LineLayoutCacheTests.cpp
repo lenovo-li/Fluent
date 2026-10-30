@@ -267,7 +267,7 @@ TEST(LineLayoutCache, GetStaleDpiFlushesBeforeBuilding) {
 }
 
 // ---------------------------------------------------------------------------
-// minCover / prefix-clip (§1.5b-3)
+// minCover / prefix-clip
 // ---------------------------------------------------------------------------
 
 TEST(LineLayoutCache, GetWithMinCoverBuildsShortLayout) {
@@ -327,7 +327,7 @@ TEST(LineLayoutCache, GetCoverEndReturnsZeroForAbsentLine) {
 }
 
 // ---------------------------------------------------------------------------
-// Erase — single-entry invalidation for the append path (§2.1)
+// Erase — single-entry invalidation for the append path
 // ---------------------------------------------------------------------------
 
 TEST(LineLayoutCache, EraseDropsOnlyTheNamedLine) {

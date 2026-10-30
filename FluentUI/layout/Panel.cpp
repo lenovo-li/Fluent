@@ -102,7 +102,7 @@ void Panel::ArrangeChild(FrameworkElement* child, const RectDip& slot) {
 
 void Panel::Render(const DrawingContext& dc) {
     OnRenderBackground(dc);
-    // WP-07 §S3: viewport culling — skip children outside the dirty/clip hint.
+    // Viewport culling — skip children outside the dirty/clip hint.
     // This covers two scenarios:
     //   1. Partial redraw: the host narrows ClipHint to the dirty rect union;
     //      children entirely outside it need no render call.
@@ -165,7 +165,7 @@ void Panel::CollectDirtyBounds(std::vector<RectDip>& out) {
     // The panel itself contributes its bounds when its own flags are set (e.g. a
     // background/theme change on the panel). Each child is asked independently so
     // a dirty leaf deep in the tree adds only its own (small) rect, not the whole
-    // panel — that is what keeps the partial-redraw region tight (WP-07 §S4).
+    // panel — that is what keeps the partial-redraw region tight.
     if (IsVisible() && Any(Dirty())) out.push_back(VisualBounds());
     // A collapsed child may retain dirty flags while hidden, but it produces no
     // pixels until reveal, so keep its stale rect out of the invalidate union.

@@ -1,4 +1,4 @@
-// BenchMain.cpp — FluentUIBench entry point (roadmap §18.2).
+// BenchMain.cpp — FluentUIBench entry point.
 //
 // Runs the registered benchmark scenes (optionally filtered by a substring
 // passed as argv[1], matched against the scene name) and prints a table of

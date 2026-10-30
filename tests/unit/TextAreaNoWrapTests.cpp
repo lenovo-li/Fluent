@@ -560,7 +560,7 @@ TEST(TextAreaNoWrap, IndexDescribesTextNotTheComposedDisplayString) {
 }
 
 // ---------------------------------------------------------------------------
-// Horizontal scroll extent (§1.5b-2)
+// Horizontal scroll extent
 // ---------------------------------------------------------------------------
 
 TEST(TextAreaNoWrap, HorizontalExtentIsZeroInWrapMode) {
@@ -603,7 +603,7 @@ TEST(TextAreaNoWrap, HorizontalExtentResetsOnTextChange) {
 }
 
 // ---------------------------------------------------------------------------
-// Long-line prefix clipping (§1.5b-3)
+// Long-line prefix clipping
 // ---------------------------------------------------------------------------
 
 TEST(TextAreaNoWrap, LongLineLayoutIsBounded) {

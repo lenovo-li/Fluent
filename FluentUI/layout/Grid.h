@@ -31,7 +31,7 @@ public:
     void SetColumnSpacing(float dip) { colSpacing_ = dip; }
     void SetRowSpacing(float dip) { rowSpacing_ = dip; }
 
-    // --- Runtime track access (GridSplitter, roadmap §5) ----------------------
+    // --- Runtime track access (GridSplitter) ----------------------
     //
     // A GridSplitter has to read the CURRENT track definitions and write new ones
     // as the user drags, which the Add*/Set* API above cannot express (it only

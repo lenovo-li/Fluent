@@ -1,4 +1,4 @@
-// PopupGeometry.h — pure anchor-rect geometry for popup-owning controls (WP-06).
+// PopupGeometry.h — pure anchor-rect geometry for popup-owning controls.
 //
 // ComboBox (HeaderScreenRect) and MenuBar (ItemScreenRect) computed the same
 // thing: given the owner window's screen rect, a child sub-rect in DIPs, and the

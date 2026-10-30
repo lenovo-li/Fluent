@@ -1,5 +1,5 @@
 // DeviceLostController.h — the state machine + HRESULT classifier for GPU device
-// loss recovery (roadmap §17). D3D/D2D can drop the device at any time (driver
+// loss recovery. D3D/D2D can drop the device at any time (driver
 // reset, GPU TDR, remote-session transition, hybrid-GPU switch); when that
 // happens every device-bound resource (swap chains, target bitmaps, brushes)
 // must be released and rebuilt while the element tree keeps its logical state
@@ -24,7 +24,7 @@ enum class DeviceStatus {
     Transient, // a non-fatal failure (e.g. occluded / a stale target); retry next frame without a rebuild
 };
 
-// Classify a present/draw HRESULT (roadmap §17). Device-removal / reset and
+// Classify a present/draw HRESULT. Device-removal / reset and
 // D2DERR_RECREATE_TARGET are "Lost" (rebuild required). DXGI_STATUS_OCCLUDED and
 // a plain E_FAIL from a transient target are "Transient" (retry, no rebuild). S_OK
 // (and other success codes) are "Ok".

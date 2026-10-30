@@ -8,7 +8,7 @@
 #   python scripts/check_source_lists.py
 #   python scripts/check_source_lists.py --verbose   # also print matched count
 #
-# Intended for CI; see plan.md §4.6.
+# Intended for CI.
 #
 # WHY THIS EXISTS. CMakeLists.txt and FluentUI.vcxproj are two independent hand-
 # maintained source lists. CLAUDE.md says "new sources must be registered in

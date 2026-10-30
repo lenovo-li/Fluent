@@ -1,4 +1,4 @@
-// GridSplitter.h — Resizable divider between Grid tracks (roadmap §5).
+// GridSplitter.h — Resizable divider between Grid tracks.
 //
 // A GridSplitter is a thin draggable bar placed between two Grid columns or rows.
 // Dragging it redistributes size between the two adjacent tracks as a zero-sum

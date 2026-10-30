@@ -1,13 +1,12 @@
-// Bench.h — tiny benchmark-scene registry for FluentUIBench (roadmap §18.2).
+// Bench.h — tiny benchmark-scene registry for FluentUIBench.
 //
-// FluentUIBench is the standalone performance harness the roadmap requires. It
-// hosts the ten scenarios from §18.2. WP-00's job is to make the harness exist,
-// register every scenario, and actually run the ones whose cost is pure CPU /
+// FluentUIBench is the standalone performance harness. It registers every
+// benchmark scenario and actually runs the ones whose cost is pure CPU /
 // logic (layout, dirty-flag propagation, active-animation ticking, measure
 // cache, idle detection). Scenarios that need a live swap chain / GPU (visual
 // stress, DPI lab, input latency) are registered as stubs that print exactly
-// what a real Windows+GPU run must measure — the roadmap forbids faking GPU
-// numbers (§20.4), so those print "requires GPU" instead of a fabricated value.
+// what a real Windows+GPU run must measure. GPU numbers are never faked, so
+// those print "requires GPU" instead of a fabricated value.
 //
 // A scene is a name + a function that runs it and fills a Result. `main` runs
 // all scenes (or a substring-filtered subset) and prints a table. Keeping this

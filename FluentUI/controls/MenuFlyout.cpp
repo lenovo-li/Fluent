@@ -440,8 +440,8 @@ void MenuFlyout::OpenRoot(const RECT& anchor) {
         TraceMsg(kTag, "OpenRoot: PopupHost::Create failed");
         return;
     }
-    level.popup->SetResourceCache(ctx_.resourceCache);  // share caches (§13.3)
-    level.popup->SetTheme(ctx_.theme);            // share theme snapshot (§11)
+    level.popup->SetResourceCache(ctx_.resourceCache);  // share caches
+    level.popup->SetTheme(ctx_.theme);            // share theme snapshot
     level.popup->SetLightDismiss(false);  // the flyout manages the whole chain
     ApplyOpacityTo(level);                // before Open: Open paints the first frame
     level.popup->SetContent(level.list.get());
@@ -511,8 +511,8 @@ void MenuFlyout::OpenSubmenu(int levelIndex, int itemIndex) {
         TraceMsg(kTag, "OpenSubmenu: PopupHost::Create failed");
         return;
     }
-    level.popup->SetResourceCache(ctx_.resourceCache);  // share caches (§13.3)
-    level.popup->SetTheme(ctx_.theme);            // share theme snapshot (§11)
+    level.popup->SetResourceCache(ctx_.resourceCache);  // share caches
+    level.popup->SetTheme(ctx_.theme);            // share theme snapshot
     level.popup->SetLightDismiss(false);
     ApplyOpacityTo(level);                // before Open: Open paints the first frame
     level.popup->SetContent(level.list.get());

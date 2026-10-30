@@ -145,14 +145,14 @@ public:
     // A panel must re-measure when its own Measure bit is set OR any descendant
     // needs it: a child's changed desired size feeds the panel's MeasureOverride.
     // Without this, MeasureCached would reuse the panel's stale size after a
-    // deeply-nested control changed (roadmap §6.2).
+    // deeply-nested control changed.
     bool NeedsRemeasure() const override { return AnyDirtyInSubtree(DirtyFlags::Measure); }
 
     void Measure(float availW, float availH) override;
     void Arrange(const RectDip& finalRect) override;
 
 protected:
-    // Propagate the tree context into / out of the owned children (roadmap §6.3).
+    // Propagate the tree context into / out of the owned children.
     // The base UIElement lifecycle calls these: on attach after this panel's own
     // OnAttachedToTree (self first, then subtree), on detach before it (subtree
     // first, then self), so ordering matches WPF's mount/unmount.

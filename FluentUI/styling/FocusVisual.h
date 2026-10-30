@@ -1,4 +1,4 @@
-// FocusVisual.h — the shared Fluent focus ring (roadmap §11, WP-05).
+// FocusVisual.h — the shared Fluent focus ring.
 //
 // Every focusable control drew its own accent outline just outside its bounds
 // (Button: bounds inflated 2, corner kCorner+2; CheckBox: box inflated 3, corner
@@ -44,7 +44,7 @@ inline D2D1_ROUNDED_RECT FocusRingRect(const RectDip& content,
 
 // How far outside the content rect the ring actually puts pixels: the inset, plus
 // the half of the centered stroke that falls outward, plus a pixel of antialiasing.
-// A focusable control MUST inflate its CollectDirtyBounds by this (WP-07 §S4) —
+// A focusable control MUST inflate its CollectDirtyBounds by this —
 // otherwise a partial redraw clips the ring's outer edge and, once focus moves on,
 // leaves the outer edge behind as residue. The redraw region is exactly this frame's
 // dirty union, so anything a control paints outside its layout bounds has to be

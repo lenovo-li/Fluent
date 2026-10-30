@@ -10,7 +10,7 @@ void Visual::InvalidateDirty(DirtyFlags flags) {
     dirty_ |= ExpandDirty(flags);
 
     // A Measure invalidation means the desired size may have changed, so any
-    // subclass measure cache must be dropped (roadmap §6.2). Visual keeps no
+    // subclass measure cache must be dropped. Visual keeps no
     // measure state itself, so it delegates to the hook UIElement overrides —
     // keeping the layer boundary clean.
     if (Has(flags, DirtyFlags::Measure)) OnMeasureInvalidated();

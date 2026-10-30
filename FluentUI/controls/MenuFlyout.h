@@ -166,7 +166,7 @@ public:
     // forwards its own Context() here once attached. The flyout attaches each list
     // view to this context, so the list's inherited Dwrite() works at measure time
     // (before PopupHost re-injects its own context on SetContent). Replaces the old
-    // manual SetDWrite + Attach(WindowServices*) pair (roadmap §6.2).
+    // manual SetDWrite + Attach(WindowServices*) pair.
     void SetContext(const UIContext& ctx) { ctx_ = ctx; window_ = ctx.window; }
 
     // Replace the menu items. Closes the menu if open.

@@ -11,7 +11,7 @@ namespace fluent {
 // verifying reuse/invalidation without exposing it in the product API.
 struct TextBlockTestPeer;
 
-// Semantic type ramp role (roadmap §11). A TextBlock either follows a role —
+// Semantic type ramp role. A TextBlock either follows a role —
 // resolving its font size from the theme's TypographyTokens (Caption 12 / Body 14
 // / Subtitle 20 / Title 28) so a theme change re-sizes it — or keeps an explicit
 // SetFontSize override. Default is Body. Custom keeps whatever SetFontSize set.
@@ -26,7 +26,7 @@ public:
     // wheel scrolls it, and the pointer selects text.
     TextBlock() = default;
 
-    // DWrite is no longer injected per-control (roadmap §6.2): the text context is
+    // DWrite is no longer injected per-control: the text context is
     // read from the tree UIContext (Context().dwrite) once the element is attached.
     // Opt into focus + wheel/arrow scrolling + text selection (I-beam cursor).
     void SetSelectable(bool on) { selectable_ = on; SetFocusable(on); }
@@ -94,7 +94,7 @@ public:
 
     // Consume the wheel when there is something to scroll, so the event does not
     // keep bubbling to a parent scroller. Arrow/Page/Home/End scroll while focused.
-    // I-beam cursor when selectable. All routed (WP-03).
+    // I-beam cursor when selectable. All routed.
     void OnPointerWheelChanged(PointerEventArgs& e) override;
     void OnKeyDownRouted(KeyEventArgs& e) override;
     HCURSOR Cursor() const override;
@@ -111,7 +111,7 @@ public:
 
 protected:
     // DWrite becomes available on attach: re-measure so a TextBlock built and
-    // sized before it joined the tree lays out its text now (roadmap §6.2/§6.3).
+    // sized before it joined the tree lays out its text now.
     void OnAttachedToTree() override { InvalidateMeasure(); }
     void OnBoundsChanged() override;
 
@@ -119,7 +119,7 @@ private:
     void UpdateMetrics();
     // Returns a text layout for the current content at the current bounds width,
     // reusing a cached IDWriteTextLayout when none of the inputs that define it
-    // changed (roadmap §6.3). Render + UpdateMetrics + hit-testing all call this,
+    // changed. Render + UpdateMetrics + hit-testing all call this,
     // several times per frame, so rebuilding the layout each time was a per-frame
     // DWrite hot spot. The cache is keyed on the full set of layout inputs and
     // self-invalidates on any mismatch, so setters need no special handling.
@@ -178,7 +178,7 @@ private:
     // HitTestPoint per move (cheap: it hits the already-built layout, not O(document)).
     bool pointerOverText_ = false;
 
-    // Cached layout + the key it was built from (roadmap §6.3). Mutable because
+    // Cached layout + the key it was built from. Mutable because
     // CreateLayout() is const (called from Render/hit-test) but memoizes here.
     mutable ComPtr<IDWriteTextLayout> cachedLayout_;
     mutable LayoutKey cachedKey_;

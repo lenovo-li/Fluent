@@ -1,4 +1,4 @@
-// PerformanceCountersTests.cpp — unit tests for the WP-00 diagnostics surface
+// PerformanceCountersTests.cpp — unit tests for the diagnostics surface
 // (FrameStats / ScopedTimer / QPC helpers). Pure logic: no window, no GPU.
 
 #include "../framework/Test.h"

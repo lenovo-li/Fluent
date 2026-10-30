@@ -82,7 +82,7 @@ public:
 
     // Start a one-shot decelerate OffsetY tween (physical pixels) on the compositor
     // thread — smooth scrolling that keeps settling even while the UI thread is
-    // blocked (roadmap §11.6). Replaces any prior animation/static value on OffsetY.
+    // blocked. Replaces any prior animation/static value on OffsetY.
     // The caller seeds `fromPx` with the CURRENT visual offset (evaluated via QPC)
     // so a mid-flight retarget does not jump. Holds `toPx` after `durationSec`.
     virtual void StartOffsetYTween(float fromPx, float toPx,

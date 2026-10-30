@@ -1,4 +1,4 @@
-// AnimatedValue.h — a scalar eased on the UI-thread animation tick (roadmap §26).
+// AnimatedValue.h — a scalar eased on the UI-thread animation tick.
 //
 // Every self-drawn control that animates a 0..1 (or value-space) quantity on the
 // host's per-frame tick repeated the same three lines: an exponential approach

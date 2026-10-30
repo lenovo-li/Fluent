@@ -1,4 +1,4 @@
-// UIElement.h — the input / layout / lifecycle layer (roadmap §5.2).
+// UIElement.h — the input / layout / lifecycle layer.
 //
 // Adds to Visual everything about *being laid out and interacted with*:
 //   * bounds (the arranged rect, DIPs) + hit-testing,
@@ -33,7 +33,7 @@ enum class VisualState { Normal, Hover, Pressed, Disabled };
 class UIElement : public Visual {
 public:
     // Detaches from any live context so a destroyed element never leaves a
-    // dangling registration behind (roadmap §6.1 rule 4). RAII on contextSubs_
+    // dangling registration behind. RAII on contextSubs_
     // already cancels subscriptions on destruction; this also drops the element
     // from the host's animation set. Non-virtual work only — the derived layers
     // are already gone by the time this runs, so it must not dispatch the
@@ -108,7 +108,7 @@ public:
     // *when* the hook runs. FrameworkElement overrides it to clamp.
     virtual void ApplySizeConstraints() {}
 
-    // Measure short-circuit cache (roadmap §6.2). Panels call this on children
+    // Measure short-circuit cache. Panels call this on children
     // instead of Measure() directly: when not Measure-dirty and the constraint
     // matches the last measure, the cached desired size is reused and the
     // (possibly expensive) virtual Measure() is skipped.
@@ -156,7 +156,7 @@ public:
     }
 
     // Append the bounds (window DIPs) of every element in this subtree whose own
-    // dirty flags are set (WP-07 §S4). The host unions these into the frame's
+    // dirty flags are set. The host unions these into the frame's
     // dirty region for a partial redraw. A leaf adds itself when dirty; a Panel
     // overrides to recurse (a Panel is included when its own flags are set, e.g.
     // a background change, and its dirty descendants are added independently).
@@ -323,7 +323,7 @@ public:
         }
     }
 
-    // --- Context menu (WP-03 follow-up) -----------------------------------
+    // --- Context menu -----------------------------------
     // The menu shown when this element is right-clicked. On a right-click the host
     // walks the Parent() chain from the hit element and opens the first element's
     // menu it finds (so a child with no menu inherits its container's).
@@ -450,7 +450,7 @@ public:
     void OnPointerEnter();
     void OnPointerLeave();
 
-    // --- Routed input (WP-03, roadmap §9.2) -------------------------------
+    // --- Routed input ---------------------------------------
     // The InputManager drives these. A pointer/key event walks the element chain
     // in two passes: Preview tunnels root->target (a parent can pre-empt), then
     // the main phase bubbles target->root (a child handles first, an unhandled
@@ -523,7 +523,7 @@ public:
         OnTextInput(ch);
     }
 
-    // Whether this element participates in hit-testing (roadmap §9.1). A false
+    // Whether this element participates in hit-testing. A false
     // value makes the pointer pass through to whatever is behind it, even though
     // the element still renders. Disabled state is separate (a disabled element can
     // still be hit, it just swallows the event) — both must hold for HitTest to pass.
@@ -542,7 +542,7 @@ public:
     // Per-frame animation (e.g. smooth scrolling). WantsAnimationTick() reports
     // whether motion is left; OnAnimationTick advances it. CollectAnimations
     // appends the currently-animating elements so the host ticks only the active
-    // set (roadmap §6.1), never the whole tree.
+    // set, never the whole tree.
     virtual bool WantsAnimationTick() const { return false; }
     virtual void OnAnimationTick(float dtSec) { UNREFERENCED_PARAMETER(dtSec); }
     virtual void CollectAnimations(std::vector<UIElement*>& out) {
@@ -558,14 +558,14 @@ public:
     // if there is no caret.
     virtual bool CaretRectDip(RectDip& out) const { UNREFERENCED_PARAMETER(out); return false; }
 
-    // --- Tree attachment lifecycle (roadmap §6.2 / §6.3) ------------------
+    // --- Tree attachment lifecycle ------------------
     // The framework calls AttachToContext when this element joins a live tree
     // (host root registered, or panel child added under an attached parent) and
     // DetachFromContext when it leaves. An element reads services via the
     // protected Context() only while attached, and its subscriptions +
     // animation registration are released automatically on detach.
     //
-    // Attach order (§6.3): store context -> OnAttachedToTree -> recurse to
+    // Attach order: store context -> OnAttachedToTree -> recurse to
     // children. Detach order is the reverse: recurse to children ->
     // OnDetachedFromTree -> release subscriptions + drop from the animation set
     // -> clear context. Re-attaching an already-attached element detaches it from
@@ -598,7 +598,7 @@ protected:
     // Services for the currently-attached tree. Valid only between
     // OnAttachedToTree and OnDetachedFromTree; reading it while detached returns
     // the empty default. Controls use this instead of caching raw service
-    // pointers (roadmap §6.2: no service pointer outlives the attach period).
+    // pointers (no service pointer outlives the attach period).
     const UIContext& Context() const { return context_; }
 
     // Convenience accessors for the two services controls reach for most often,
@@ -607,7 +607,7 @@ protected:
     DWriteContext* Dwrite() const { return context_.dwrite; }
     WindowServices* Window() const { return context_.window; }
 
-    // The current theme snapshot for this element's tree (roadmap §11, WP-05).
+    // The current theme snapshot for this element's tree.
     // Reads design tokens (colors / spacing / typography). While attached it
     // returns the host's stable snapshot; while detached (or in a headless test
     // that wired no theme) it returns a shared static default snapshot, so a
@@ -670,7 +670,7 @@ protected:
     // default so a container (Panel/Border) on the bubble route never presses.
     void SetClickable(bool c) { clickable_ = c; }
 
-    // The single click hook for the routed gesture (WP-03): fired by the base
+    // The single click hook for the routed gesture: fired by the base
     // OnPointerReleased when a clickable element is released inside after its own
     // press. `e.position` is the up point in window DIPs (used by hit-region
     // controls like TreeView). The single click hook of the routed input model.
@@ -695,7 +695,7 @@ protected:
     SizeDip desired_;  // output of Measure
 
 private:
-    // Measure cache (roadmap §6.2). cachedDesired_ is the desired size from the
+    // Measure cache. cachedDesired_ is the desired size from the
     // last real Measure at (lastAvailW_, lastAvailH_); measureCacheValid_ gates
     // reuse. Cleared via OnMeasureInvalidated whenever Measure is invalidated.
     SizeDip cachedDesired_;
@@ -703,7 +703,7 @@ private:
     float lastAvailH_ = 0.0f;
     bool measureCacheValid_ = false;
 
-    // Tree attachment (roadmap §6.2). context_ is the injected service set while
+    // Tree attachment. context_ is the injected service set while
     // attached (empty default otherwise); attached_ gates the attach hooks so a
     // double attach/detach is a no-op. contextSubs_ owns registrations tied to the
     // current attach period — cleared on detach so nothing outlives the tree.

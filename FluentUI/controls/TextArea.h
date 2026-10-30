@@ -139,7 +139,7 @@ public:
         return lines_.LineCount();
     }
 
-    // --- Wrapped virtualization surface (§3) ---------------------------------
+    // --- Wrapped virtualization surface ---------------------------------
     // How many paragraphs have had their real wrapped height measured, versus how many
     // exist. Exposed because "cost is O(visible), not O(document)" is a claim about work
     // NOT done, and nothing in the rendered output can show it: a version that measured
@@ -202,7 +202,7 @@ public:
     // The line height in DIPs (font metric, DPI-independent). Always > 0.
     float LineHeightDip() const { return LineHeight(); }
 
-    // --- High-throughput log append (§2) -------------------------------------
+    // --- High-throughput log append -------------------------------------
     // Append to the end of the buffer without touching anything that describes the
     // text already there. This is the whole log path: a hardware source producing
     // thousands of lines a second calls this (via LogSink, off-thread), and the cost
@@ -256,7 +256,7 @@ public:
     void SetMaxLines(size_t n);
     size_t MaxLines() const { return maxLines_; }
 
-    // --- Tail following (§2.4) ------------------------------------------------
+    // --- Tail following ------------------------------------------------
     // When enabled and the view is at the bottom, an append scrolls to the new bottom
     // (classic `tail -f`). Scrolling up detaches; scrolling back to the bottom
     // re-attaches. Default off, so no existing TextArea changes behaviour.
@@ -330,7 +330,7 @@ public:
     // the line is not cached. Public because it is the ONLY observable that proves the
     // prefix clip actually bounded the layout: the draw loop is unreachable headless
     // (null DC), so without this a regression that built the full 50 KB layout every
-    // frame would leave the suite green — the exact failure mode §1.5b-3 guards.
+    // frame would leave the suite green — the exact failure mode the prefix-clip test guards.
     size_t LineLayoutCoverEnd(size_t lineNumber) const {
         return lineLayouts_.GetCoverEnd(lineNumber);
     }
@@ -491,7 +491,7 @@ private:
     // positions inside it are line-local: add LineTopDip(i) to get content space.
     // `minCover` is the minimum character count the layout must span; pass kFullLine
     // (default) for a complete layout, or a smaller value in draw paths that only
-    // need the visible prefix (§1.5b-3).
+    // need the visible prefix.
     IDWriteTextLayout* LineLayout(size_t lineNumber,
                                   size_t minCover = LineLayoutCache::kFullLine) const;
     // A line's characters as a slice of text_ — no copy, at any document size.
@@ -555,7 +555,7 @@ private:
     mutable float compositionLayoutWidth_ = -1.0f;
     mutable std::wstring compositionLayoutText_;
 
-    // --- Log state (§2) ------------------------------------------------------
+    // --- Log state ------------------------------------------------------
     // Line cap for the ring buffer; 0 = uncapped. See SetMaxLines.
     size_t maxLines_ = 0;
     // Is tail following armed at all (the caller's setting)?
@@ -567,7 +567,7 @@ private:
     // a manual gesture before it works, which nobody expects.
     bool followingTail_ = true;
 
-    // --- Wrap virtualization state (§3) --------------------------------------
+    // --- Wrap virtualization state --------------------------------------
     // Visual-line count per paragraph: measured where a paragraph has been drawn,
     // estimated elsewhere. This is what replaced the whole-document layout's measured
     // height as the source of the scroll extent.

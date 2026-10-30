@@ -1,5 +1,5 @@
-// ThemeOverrideTests.cpp — unit tests for the A0 user override layer
-// (win11-polish-and-roadmap.md phase A0). Pure logic: BuildSnapshot layers the
+// ThemeOverrideTests.cpp — unit tests for the user theme override layer.
+// Pure logic: BuildSnapshot layers the
 // override fields over the Win11 defaults; nothing here needs a window.
 //
 // Coverage:
@@ -121,7 +121,8 @@ TEST(ThemeOverride, OverridesSurviveLightDarkFlip) {
 TEST(ThemeOverride, AccentOverrideMirrorsCustomAccentPath) {
     // Deliberate parity with useCustomAccent: hover/pressed/focusStroke all
     // follow the accent value. Do not "improve" this — both routes must
-    // behave identically (see plan A0 note).
+    // behave identically, or the same accent would look different
+    // depending on which setting supplied it.
     ThemeInputs viaOverrides{};
     viaOverrides.colors.accent = Rgb(0x00AA55);
     ThemeSnapshot a = BuildSnapshot(viaOverrides, 1);

@@ -1,5 +1,5 @@
-// BorderTests.cpp — unit tests for the Border single-child decorator (WP-02
-// Step 3). Pure logic: no HWND / D2D / DWrite. Verifies the layout contract
+// BorderTests.cpp — unit tests for the Border single-child decorator.
+// Pure logic: no HWND / D2D / DWrite. Verifies the layout contract
 // (measure adds inset, arrange insets the child), the single-child ownership +
 // replacement, and that attach/detach propagates to the child.
 

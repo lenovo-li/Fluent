@@ -1,4 +1,4 @@
-// FocusManagerTests.cpp — the single focus authority (WP-03). Pure logic:
+// FocusManagerTests.cpp — the single focus authority. Pure logic:
 // SetFocus single-truth (element bits follow), Tab order with wrap, detach clears
 // focus, basic directional navigation, FocusChanged event payload.
 

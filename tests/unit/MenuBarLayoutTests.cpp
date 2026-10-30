@@ -1,5 +1,4 @@
-// MenuBarLayoutTests.cpp — MenuBar title clamping when the bar is too narrow
-// (WP-07 §S4 follow-up).
+// MenuBarLayoutTests.cpp — MenuBar title clamping when the bar is too narrow.
 //
 // MenuBar::Measure takes min(availW, sum-of-title-widths), so a window too narrow for
 // every title leaves the bar shorter than its content — while Render laid titles out

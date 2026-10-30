@@ -1,5 +1,5 @@
-// DrawingContextCounterTests.cpp — headless tests for the WP-07 DrawingContext
-// additions: ClipHint plumbing and DpiScale accessor. The drawOps increment
+// DrawingContextCounterTests.cpp — headless tests for the DrawingContext
+// diagnostics hooks: ClipHint plumbing and DpiScale accessor. The drawOps increment
 // requires a real GPU device context and is verified by code inspection + the
 // manual smoke test; only GPU-free behaviour is tested here.
 

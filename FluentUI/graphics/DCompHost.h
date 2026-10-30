@@ -91,7 +91,7 @@ public:
     HRESULT Commit();
 
     // Release every device-bound object (content surface, DComp device / target /
-    // visuals) for device-loss recovery (roadmap §17). After the shared D2DContext
+    // visuals) for device-loss recovery. After the shared D2DContext
     // is rebuilt in place, the host calls Initialize() again to recreate this
     // host's composition tree + content surface from the fresh device.
     void Reset();

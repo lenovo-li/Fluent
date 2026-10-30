@@ -16,7 +16,7 @@
 // factory, which is device-independent, so it survives device loss.
 //
 // INPUT. Click selects. When focused, Up/Down move a keyboard cursor and Enter/Space
-// select it (DESIGN §3.3); the focus ring marks the cursor only after keyboard use. Tooltip: the framework tracks tooltips per element, so the
+// select it; the focus ring marks the cursor only after keyboard use. Tooltip: the framework tracks tooltips per element, so the
 // rail swaps its tooltip text to the hovered item's label; the text shown is the one
 // current when the hover delay elapses.
 //

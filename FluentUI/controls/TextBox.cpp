@@ -94,7 +94,7 @@ std::wstring TextBox::SanitizeInput(std::wstring s) const {
 ComPtr<IDWriteTextLayout> TextBox::CreateLayout(const std::wstring& s) const {
     if (!Dwrite()) return {};
 
-    // Route through the shared, epoch-versioned layout cache (roadmap §13.3):
+    // Route through the shared, epoch-versioned layout cache:
     // Render + CaretX + HitIndex + ClampScroll all lay out the same string each
     // frame, so caching keyed on (text, size, height) turns 4-6 identical builds
     // per frame into one. The key uses a fixed unbounded width (single line never

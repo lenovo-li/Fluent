@@ -203,7 +203,7 @@ void Grid::ArrangeOverride(const RectDip& content) {
     std::vector<float> colOff = TrackOffsets(colSizes, colSpacing_, content.x);
     std::vector<float> rowOff = TrackOffsets(rowSizes, rowSpacing_, content.y);
 
-    // Cache resolved sizes for GridSplitter runtime queries (roadmap §5).
+    // Cache resolved sizes for GridSplitter runtime queries.
     resolvedCols_ = colSizes;
     resolvedRows_ = rowSizes;
 
@@ -221,7 +221,7 @@ void Grid::ArrangeOverride(const RectDip& content) {
 }
 
 // ---------------------------------------------------------------------------
-// Runtime track resizing (roadmap §5 — GridSplitter)
+// Runtime track resizing (used by GridSplitter)
 // ---------------------------------------------------------------------------
 
 void Grid::SetColumnAt(size_t i, GridLength w) {

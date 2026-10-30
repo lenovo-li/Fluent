@@ -1,4 +1,4 @@
-// DirtyRegion.h — pure partial-redraw planner (roadmap §14, WP-07 §S4).
+// DirtyRegion.h — pure partial-redraw planner.
 //
 // Extracted from NativeWindowHost::RenderNow so the "full vs partial redraw"
 // decision is a pure function of its inputs and can be unit-tested headless (no

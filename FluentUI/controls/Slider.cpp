@@ -11,7 +11,7 @@ namespace fluent {
 namespace {
 constexpr float kTrackH  = 4.0f;   // track height (DIP)
 constexpr float kThumbR  = 8.0f;   // thumb radius (DIP)
-constexpr float kAnimTau = 0.04f;  // fill animation time constant (s) — kept local; ProgressBar WP-06
+constexpr float kAnimTau = 0.04f;  // fill animation time constant (s) — kept local; ProgressBar defines its own (0.05)
 // Horizontal padding so the thumb never draws outside bounds_ — it must be at
 // least the thumb's visual radius (including drag scale and focus ring), or the
 // left/right edges get clipped. The old value (kThumbR = 8) was too small:

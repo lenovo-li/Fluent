@@ -2,7 +2,7 @@
 
 #include "NativeWindowHost.h"
 #include "../Application.h"
-#include "DirtyRegion.h"  // WP-07 §S4: pure partial-redraw planner
+#include "DirtyRegion.h"  // pure partial-redraw planner
 #include "../styling/ThemeTokens.h"
 #include "../diagnostics/PerformanceCounters.h"  // QpcNow for the animation clock
 #include "../diagnostics/DebugHud.h"              // on-screen perf HUD formatting
@@ -25,11 +25,11 @@ const char* kTag = "NativeWindowHost";
 const wchar_t* kClassName = L"FluentUI.NativeWindowHost";
 
 // DWM backdrop / dark-mode / caption attributes now live in WindowAppearance
-// (roadmap §12) — this window drives them through theme_.Appearance().
+// — this window drives them through theme_.Appearance().
 
 constexpr float kCaptionBtnWidthDip = 46.0f;
 constexpr float kCaptionGlyphDip = 10.0f;
-// WP-07 §S4: above this fraction of the window, a partial redraw is not worth the
+// Above this fraction of the window, a partial redraw is not worth the
 // bookkeeping — just clear + repaint the whole frame. Below it, clip + partial
 // present. 0.6 keeps the common small-change frames (hover, caret, one control)
 // on the cheap path while large scrolls / theme flips take the full path.
@@ -102,7 +102,7 @@ void NativeWindowHost::Close() {
 }
 
 // Ask any active popup to close before the window and its elements are torn
-// down (§5.5): while the elements are still alive we invoke the dismiss hook so
+// down: while the elements are still alive we invoke the dismiss hook so
 // the owning control runs its normal close path (hiding the popup window and
 // resetting its Subscription). Idempotent — safe if no popup is open.
 void NativeWindowHost::CloseActivePopups() {
@@ -260,8 +260,8 @@ HRESULT NativeWindowHost::Create(HINSTANCE hInst, const wchar_t* title,
     RecreateWindowIcon();
 
     // Build the service context now that the device / DWrite are up, so any
-    // element registered in OnCreated is attached with a fully-wired context
-    // (roadmap §6.2). Elements read services through Context() instead of the
+    // element registered in OnCreated is attached with a fully-wired context.
+    // Elements read services through Context() instead of the
     // old manual SetDWrite / Attach(WindowServices*) calls.
     context_.window = this;
     context_.dwrite = &graphics_.DWrite();
@@ -269,14 +269,14 @@ HRESULT NativeWindowHost::Create(HINSTANCE hInst, const wchar_t* title,
     context_.hwnd = hwnd_;
     context_.dpiScale = DpiScale();
     context_.resourceCache = &graphics_.Cache();
-    // Hand the tree the host's stable theme snapshot (roadmap §11, WP-05). The
+    // Hand the tree the host's stable theme snapshot. The
     // pointer never changes for the window's lifetime — a theme change overwrites
     // the snapshot in place (ThemeManager::Set*) and bumps its generation, so the
     // parked pointer stays valid. The app sets the initial mode via SetDarkMode /
     // FollowSystemTheme before or after Create; the manager defaults to light.
     context_.theme = &theme_.Manager().Snapshot();
 
-    // Wire the input routing (WP-03) via InputHost, which encapsulates the
+    // Wire the input routing via InputHost, which encapsulates the
     // InputManager, FocusManager, and ClickCounter.
     input_.Initialize(hwnd_, &context_, &elements_,
                       &NativeWindowHost::InvalidateThunk, this);
@@ -348,7 +348,7 @@ HRESULT NativeWindowHost::InitGraphics(UINT pixelW, UINT pixelH) {
 void NativeWindowHost::ApplyMica() {
     // Resolve the requested material against the live environment (OS build /
     // composition / transparency / high-contrast / RDP) and apply it with a solid
-    // fallback (roadmap §12.2). The resolution also tells us whether high-contrast
+    // fallback. The resolution also tells us whether high-contrast
     // is forcing a solid, opaque window — feed that into the theme so controls
     // paint legibly, and re-seed the dark title bar through the resolver.
     ResolvedBackdrop r = theme_.Appearance().ApplyBackdrop(requestedBackdrop_);
@@ -390,13 +390,13 @@ void NativeWindowHost::ApplyTheme() {
     ApplyDarkTitleBar();
     RecreateControlBrushes();
     // Bump the resource-cache epoch so any theme-dependent cached resource is
-    // rebuilt on next use rather than reused stale (roadmap §13.3). For WP-04
-    // inputs no cached layout actually depends on theme, so this is a cheap,
-    // forward-looking backstop that becomes load-bearing with WP-05 typography.
+    // rebuilt on next use rather than reused stale. Cached layouts depend on
+    // theme through the typography tokens controls measure with (e.g.
+    // Button/CheckBox read typography.bodySize).
     graphics_.Cache().BumpEpoch();
     for (UIElement* e : elements_)
         if (e) e->OnThemeChanged();
-    // WP-07 §S4: a theme flip repaints every control + the caption chrome — force
+    // A theme flip repaints every control + the caption chrome — force
     // a full clear so no partial redraw leaves stale-colored pixels behind.
     fullDrawRequired_ = 2u;
     Render();
@@ -456,7 +456,7 @@ void NativeWindowHost::AddElement(UIElement* e) {
     if (!e) return;
     elements_.push_back(e);
     // Attach the element (and its subtree) to the live service context so it gets
-    // DWrite / device / popup registration without any manual wiring (§6.2/§6.3).
+    // DWrite / device / popup registration without any manual wiring.
     // Guarded on graphicsReady_ so a stray pre-InitGraphics call is a no-op;
     // AddElement is normally called from OnCreated, after the context is built.
     if (graphicsReady_) e->AttachToContext(context_);
@@ -500,7 +500,7 @@ void NativeWindowHost::UpdateAnimationTimer() {
     // Rebuild the active-animation set from the element tree (a leaf adds itself
     // when it wants a tick; panels recurse). This runs at discrete triggers —
     // input events and program state changes — not every frame, so the timer
-    // only ever ticks elements that are actually animating (roadmap §6.1). Arm
+    // only ever ticks elements that are actually animating. Arm
     // the clock iff something wants a tick; the scheduler owns the edge logic.
     //
     // Auxiliary roots (open PopupHost content) have no FrameHost of their own and
@@ -520,7 +520,7 @@ void NativeWindowHost::UpdateAnimationTimer() {
     frame_.Scheduler().SetWanted(!frame_.Anims().Empty());
 }
 
-// Coalesce a frame request (roadmap §14.3). The old input path called Render()
+// Coalesce a frame request. The old input path called Render()
 // which painted immediately; now Render() forwards here and the actual paint
 // (RenderNow) happens once per message loop turn via RunDueFrame. Modal paths
 // that run the *system* pump (drag-resize, WM_DPICHANGED) still call RenderNow
@@ -544,7 +544,7 @@ void NativeWindowHost::RunDueFrame() {
     frame_.Scheduler().EndFrame();
 }
 
-// THE animation clock (roadmap §6.1 / §14). Called once per message-loop turn.
+// THE animation clock. Called once per message-loop turn.
 // While the clock is armed (something is animating), advance the active set by
 // the real QPC elapsed time and request the next frame so the loop keeps
 // cycling — paced by the loop's FrameWaitTimeoutMs() wait, i.e. at the display's
@@ -586,7 +586,7 @@ void NativeWindowHost::RenderNow(FrameReason reason) {
     if (rendering_) return;
     rendering_ = true;
 
-    // Record metrics for this frame (roadmap §18.3). The reason/dirty counts are
+    // Record metrics for this frame. The reason/dirty counts are
     // sampled into lastFrameStats_ for a Debug HUD; direct RenderNow callers
     // (OnSize/OnDpiChanged/anim tick) pass their own reason so the HUD shows why
     // each frame happened. cpuFrameMs is timed manually (QPC) so it is finalised
@@ -606,7 +606,7 @@ void NativeWindowHost::RenderNow(FrameReason reason) {
     graphics_.Cache().ResetFrameStats();
     const int64_t frameStartQpc = QpcNow();
 
-    // --- Dirty analysis (WP-07 §S1/§S4) -----------------------------------
+    // --- Dirty analysis -----------------------------------------------------
     // Walk the tree once: does anything need a re-measure, and what are the
     // bounds of every element whose own dirty flags are set? The dirty-bounds
     // union drives the partial-redraw decision; its size is the accurate
@@ -648,7 +648,7 @@ void NativeWindowHost::RenderNow(FrameReason reason) {
     const bool captionChanged =
         (hotCaption_ != prevHotCaption_) || (pressedCaption_ != prevPressedCaption_);
 
-    // --- Decide full vs partial redraw (WP-07 §S4) ------------------------
+    // --- Decide full vs partial redraw -------------------------------------
     // Delegated to the pure PlanRedraw helper (DirtyRegion.h) so the decision is
     // testable headless. Partial is unsafe on warm-up frames, on any layout change
     // (Measure/Arrange can move bounds anywhere), or when the caption chrome
@@ -691,7 +691,7 @@ void NativeWindowHost::RenderNow(FrameReason reason) {
                                                    static_cast<float>(netOffset.y)));
 
     // One reusable solid brush per frame, shared by every element via the
-    // DrawingContext (roadmap §5.3.1 / §13.2): controls draw through typed methods
+    // DrawingContext: controls draw through typed methods
     // that set this one brush's color, instead of each creating its own per frame.
     ComPtr<ID2D1SolidColorBrush> brush;
     if (FAILED(dc->CreateSolidColorBrush(D2D1::ColorF(0, 0, 0), brush.GetAddressOf()))) {
@@ -717,7 +717,7 @@ void NativeWindowHost::RenderNow(FrameReason reason) {
             hint = &redrawDip;
         }
 
-        // Window BASE FILL (roadmap §12.2). The content surface is premultiplied
+        // Window BASE FILL. The content surface is premultiplied
         // alpha over the DWM material, so a cleared frame is see-through by
         // design — correct only while a material actually exists. Without one
         // (pre-Win11, composition off, RDP, high contrast, or BackdropKind::None)
@@ -770,12 +770,12 @@ void NativeWindowHost::RenderNow(FrameReason reason) {
     prevPressedCaption_ = pressedCaption_;
     if (fullDrawRequired_ > 0) --fullDrawRequired_;
 
-    // Sample resource-cache diagnostics for this frame (roadmap §18.3).
+    // Sample resource-cache diagnostics for this frame.
     const CacheStats& cs = graphics_.Cache().Stats();
     lastFrameStats_.textLayoutsNew = cs.misses;
     lastFrameStats_.textLayoutCacheHits = cs.hits;
 
-    // Finalise the CPU frame time and feed the P95/P99 ring (WP-07 §S2).
+    // Finalise the CPU frame time and feed the P95/P99 ring.
     const int64_t frameEndQpc = QpcNow();
     lastFrameStats_.cpuFrameMs = QpcToMs(frameEndQpc - frameStartQpc);
     diagnostics_.Frames().Push(static_cast<float>(lastFrameStats_.cpuFrameMs));
@@ -904,7 +904,7 @@ void NativeWindowHost::RenderNow(FrameReason reason) {
 
     rendering_ = false;
 
-    // Classify the present result (roadmap §17): a lost device triggers a rebuild
+    // Classify the present result: a lost device triggers a rebuild
     // on the way out of the frame (not mid-paint). Done after rendering_ is
     // cleared so RecoverDevice's follow-up repaint is not suppressed as reentrant.
     if (deviceLost_.NotifyFrameResult(ClassifyDeviceHResult(endHr)))
@@ -1006,7 +1006,7 @@ void NativeWindowHost::LogSessionEvent(const char* category,
     if (sessionLogEnabled_) diagnostics_.Log().RecordEvent(category, detail, SessionClockSec());
 }
 
-// Draw the on-screen performance HUD (roadmap §18.3). Text is built by the pure
+// Draw the on-screen performance HUD. Text is built by the pure
 // FormatHudLines (diagnostics/DebugHud.h) from last frame's stats + the interval
 // ring percentiles; here we just lay out a translucent panel + the lines in the
 // top-right corner. DIP space (caller left the transform at the DPI scale).
@@ -1098,7 +1098,7 @@ bool NativeWindowHost::RecoverDevice() {
 
     deviceLost_.EndRebuild(true);
     Trace(kTag, "device rebuilt", S_OK);
-    // WP-07 §S4: fresh content surface — force a full clear for the next 2 frames.
+    // Fresh content surface — force a full clear for the next 2 frames.
     fullDrawRequired_ = 2u;
     RenderNow(FrameReason::Paint);
     return true;
@@ -1324,7 +1324,7 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
             // own popup). WA_INACTIVE with lp=popup HWND means popup is showing.
             if (LOWORD(wp) == WA_INACTIVE) {
                 // Release any pointer capture with a canceling release so a control
-                // pressed when focus left doesn't stay stuck pressed (§9.3).
+                // pressed when focus left doesn't stay stuck pressed.
                 input_.Input().OnWindowDeactivated();
                 // Break the click streak. Otherwise clicking away and quickly back to
                 // the same spot resumes the old streak, so one click in the new
@@ -1451,7 +1451,7 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
             float s = 96.0f / dpi_;
             POINT screen = {px, py};
             ClientToScreen(hwnd_, &screen);
-            // Per-control context menu (WP-03 follow-up): the element under the
+            // Per-control context menu: the element under the
             // cursor (or the nearest ancestor that owns one) opens its own menu.
             // Only if nothing in the chain has a menu do we fall back to the
             // subclass hook (a window-level background menu).
@@ -1564,7 +1564,7 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_KEYDOWN:
         case WM_SYSKEYDOWN: {
             UINT vk = static_cast<UINT>(wp);
-            // F12 toggles the on-screen performance HUD (roadmap §18.3). A global
+            // F12 toggles the on-screen performance HUD. A global
             // diagnostics shortcut handled before element routing, so it works
             // regardless of focus.
             if (vk == VK_F12) { ToggleHud(); return 0; }
@@ -1820,11 +1820,11 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
             modalHeartbeat_.Stop();
             // Close any active popup while the owning elements are still alive and
             // the HWND is valid, so a control never tears down mid-dismiss
-            // (roadmap §5.5, single deterministic shutdown path).
+            // (single deterministic shutdown path).
             CloseActivePopups();
             OnDestroying();
             // Detach every registered root while it is still alive and the window
-            // members (anim registry, device) are valid (roadmap §6.3). This
+            // members (anim registry, device) are valid. This
             // releases context-scoped subscriptions and drops animations now, and
             // clears each element's context so a later element destructor (if it
             // outlives the window) never dereferences the by-then-dead registry.
@@ -1945,7 +1945,7 @@ void NativeWindowHost::ApplyPendingResize() {
         graphics_.Comp().Resize(pixelW_, pixelH_);  // CLAUDE.md #7: resize in place, no rebuild
     const int64_t afterCompResize = QpcNow();
 
-    // WP-07 §S4: a resized content surface has undefined pixels in the newly exposed
+    // A resized content surface has undefined pixels in the newly exposed
     // area — force a full clear for the next 2 frames so no partial redraw trusts them.
     fullDrawRequired_ = 2u;
 
@@ -2078,15 +2078,15 @@ void NativeWindowHost::OnDpiChanged(UINT newDpi, const RECT* suggested) {
     // a different refresh rate — re-query it so frame pacing follows the new panel.
     InvalidateRefreshHz();
     // Keep the injected context's DPI current so anything reading Context() after
-    // a monitor change sees the new scale (roadmap §6.2). Existing attached
+    // a monitor change sees the new scale. Existing attached
     // elements cache the context by value; they still get OnDpiChanged below for
     // the per-DPI resource refresh.
     context_.dpiScale = DpiScale();
-    // Bump the resource-cache epoch on a DPI change too (roadmap §13.3): DIP-space
+    // Bump the resource-cache epoch on a DPI change too: DIP-space
     // layouts are DPI-independent so nothing rebuilds today, but a future
     // rasterized/realized resource keyed by DPI would — the backstop is free.
     graphics_.Cache().BumpEpoch();
-    // WP-07 §S4: a DPI change repositions/resizes and rebuilds layout — force a
+    // A DPI change repositions/resizes and rebuilds layout — force a
     // full clear for the next 2 frames (same reason as OnSize).
     fullDrawRequired_ = 2u;
     if (suggested) {

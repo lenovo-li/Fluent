@@ -1,4 +1,4 @@
-// FocusManager.h — the single keyboard-focus authority (roadmap §9.4, WP-03).
+// FocusManager.h — the single keyboard-focus authority.
 //
 // Before this, the window owned a `focused_` pointer and flipped element focus
 // bits directly, so "who is focused" was really tracked in two places (the window

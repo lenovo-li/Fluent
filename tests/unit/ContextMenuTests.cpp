@@ -1,4 +1,4 @@
-// ContextMenuTests.cpp — per-element context-menu resolution (WP-03 follow-up).
+// ContextMenuTests.cpp — per-element context-menu resolution.
 // Pure logic: SetContextMenu ownership, ContextMenuOwnerAt walks the parent chain
 // to the first element that owns a menu, owner-context fed on attach.
 

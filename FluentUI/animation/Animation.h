@@ -20,7 +20,7 @@ constexpr double kScrollDuration = 0.30;   // smooth-scroll settle (decelerate)
 // AddCubic evaluates DIRECTLY in value space. The SAME struct is used to (a) build
 // the IDCompositionAnimation and (b) evaluate the curve on the UI thread (Eval)
 // so a control's hit-test / scrollbar read the identical value the compositor is
-// showing — otherwise a click mid-animation would hit the wrong place (§11.10).
+// showing — otherwise a click mid-animation would hit the wrong place.
 // Outside [0, durationSec] the value is clamped to `from` (t<=0) / `to` (t>=dur).
 struct DecelerateCubic {
     double d = 0.0;   // constant  (= from)
@@ -52,7 +52,7 @@ struct DecelerateCubic {
 };
 
 // Build a one-shot decelerate OffsetY tween (physical pixels) for smooth
-// scrolling on the compositor thread (roadmap §11.6). Uses DecelerateCubic so the
+// scrolling on the compositor thread. Uses DecelerateCubic so the
 // curve matches the UI-thread evaluator exactly. Holds `toPx` after the duration.
 // Returns nullptr on failure (caller falls back to SetOffset). `durationSec`
 // defaults to the standard scroll settle.
@@ -61,7 +61,7 @@ ComPtr<IDCompositionAnimation> MakeOffsetTween(IDCompositionDevice2* device,
                                                double durationSec = kScrollDuration);
 
 // Build an INFINITELY looping there-and-back offset sweep for an indeterminate
-// ProgressBar segment (roadmap Plan B / §9.3). The returned animation drives a
+// ProgressBar segment. The returned animation drives a
 // visual's OffsetX from `minX` to `maxX` and back with a smooth ease-in-out,
 // one full cycle every `cycleSec` seconds, forever — evaluated on the DComp
 // compositor thread, so it keeps sweeping even while the UI thread is busy

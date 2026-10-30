@@ -1,5 +1,5 @@
-// ThemeChangeInvalidationTests.cpp — the WP-05 acceptance rule (roadmap §26
-// rule 7): a THEME (color) change must invalidate Render only, never Measure —
+// ThemeChangeInvalidationTests.cpp — the theme invalidation rule:
+// a THEME (color) change must invalidate Render only, never Measure —
 // the desktop layout does not change when the palette flips light/dark, so
 // forcing a whole-tree re-Measure would be wrong (and expensive). A TYPOGRAPHY
 // change (font size / role) genuinely changes desired sizes, so it DOES set

@@ -25,7 +25,7 @@ void MenuBar::OnAttachedToTree() {
     flyout_ = std::make_unique<MenuFlyout>();
     // The flyout is not a visual-tree child (the bar owns it directly), so it
     // does not get a context automatically — hand it the bar's tree context so
-    // its list views read DWrite / the window through Context() (roadmap §6.2).
+    // its list views read DWrite / the window through Context().
     flyout_->SetContext(Context());
 
     // Keep the open menu alive when a click lands on one of our titles: the bar's

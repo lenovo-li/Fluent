@@ -1,4 +1,4 @@
-// Selector.h — template base for selection-capable items controls (WP-06).
+// Selector.h — template base for selection-capable items controls.
 //
 // Selector<TItem> owns two layers of selection state:
 //

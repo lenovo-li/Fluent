@@ -4,10 +4,10 @@
 // into the window content surface via Render(). The highlight tint fades in
 // and out on the UI thread through the per-frame animation tick (the same
 // mechanism as ToggleSwitch's knob), so a small control does not own its own
-// DComp surface (roadmap §13.4/§26 forbid a Surface per small control). DWrite is
-// injected through the tree UIContext (roadmap §6.2), not a manual call.
+// DComp surface (a composition surface per small control is deliberately avoided). DWrite is
+// injected through the tree UIContext, not a manual call.
 //
-// Button is the canonical ButtonBase (roadmap §WP-06): ButtonBase supplies the
+// Button is the canonical ButtonBase: ButtonBase supplies the
 // text label (via ContentControl), the focusable+clickable setup, and the shared
 // click / Space / Enter activation funnelled to OnActivate(); Button just raises
 // its Click event there and paints the accent/standard chrome + tint.
@@ -87,7 +87,7 @@ public:
     // containers (the StackPanel star-removal exposed this).
     void Measure(float availW, float availH) override;
 
-    // The focus ring is stroked OUTSIDE bounds_ (WP-07 §S4) — see FocusRingPadDip.
+    // The focus ring is stroked OUTSIDE bounds_ — see FocusRingPadDip.
     float VisualOverflowDip() const override;
 
     // Highlight tint animates on the UI thread: run a tick while the current

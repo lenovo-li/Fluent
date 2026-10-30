@@ -1,4 +1,4 @@
-// ButtonBase.h — the shared "activatable control" primitive (roadmap §WP-06).
+// ButtonBase.h — the shared "activatable control" primitive.
 //
 // Button, RadioButton and ToggleButton (CheckBox / ToggleSwitch) all opened with
 // the identical four lines
@@ -29,7 +29,7 @@ public:
         SetClickable(true);
     }
 
-    // Space/Enter activate when the control has keyboard focus (routed, §9.2).
+    // Space/Enter activate when the control has keyboard focus (routed).
     void OnKeyDownRouted(KeyEventArgs& e) override {
         if (e.vk == VK_SPACE || e.vk == VK_RETURN) {
             OnActivate();

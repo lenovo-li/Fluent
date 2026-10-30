@@ -1,6 +1,6 @@
 // PopupState.h — explicit popup lifecycle state + pure transition rules.
 //
-// Phase B1 of the popup-lifetime refactor (roadmap §5.5) replaces the implicit
+// Phase B1 of the popup-lifetime refactor replaces the implicit
 // `bool open_` on PopupHost with a four-state machine so intermediate states
 // (Opening / Closing) are representable and re-entrancy during close is guarded.
 //

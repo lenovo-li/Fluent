@@ -1,15 +1,15 @@
-// Scenes.cpp — the FluentUIBench scenarios (roadmap §18.2).
+// Scenes.cpp — the FluentUIBench scenarios.
 //
-// Ten scenes are registered. The ones whose cost is pure CPU/logic run for real
+// Scenes are registered at the bottom of this file. The ones whose cost is pure CPU/logic run for real
 // against the FluentUI core (layout, dirty propagation, active-animation
 // ticking, measure cache, idle detection) and report timings measured with the
 // diagnostics ScopedTimer. The ones that fundamentally need a live swap chain,
 // GPU, or interactive window (visual/text raster stress, resize, popup HWND
 // churn, DPI lab, theme raster, input latency) are registered as honest stubs:
 // they describe what a real Windows+GPU run must measure and report `measured =
-// false` rather than fabricate a number (roadmap §20.4 forbids faking GPU data).
+// false` rather than fabricate a number: a made-up GPU figure is worse than none.
 //
-// As later work packages land the real pipeline, a stub is replaced by a scene
+// When the real pipeline for a stub can be driven from here, the stub is replaced by a scene
 // that drives the actual window — the harness shape does not change.
 
 #include "Bench.h"
@@ -132,7 +132,7 @@ Result TextStress() {
 Result TreeVirtualization() {
     Result r;
     r.measured = false;
-    r.note = "Virtualization not implemented yet (roadmap WP-07). Target: 100k "
+    r.note = "Virtualization not implemented yet. Target: 100k "
              "data rows must not create 100k UIElements — visual element count "
              "should track visible rows. Scene activates once TreeView "
              "virtualizes.";
@@ -142,7 +142,7 @@ Result TreeVirtualization() {
 // ---- 4. Animation Stress: active-set tick ---------------------------------
 
 Result AnimationStress() {
-    // The roadmap's key perf property: per-frame cost is O(active animations),
+    // The framework's key perf property: per-frame cost is O(active animations),
     // not O(tree). Build a large tree where only some leaves animate, collect
     // the active set once, then tick it many times and measure.
     constexpr int kTotal = 5000;
@@ -317,7 +317,7 @@ Result ThemeLab() {
     Result r;
     r.measured = false;
     r.note = "Requires GPU raster: Light/Dark/Mica/Acrylic/high-contrast visual "
-             "regression. Theme *token* resolution timing lands with WP-05.";
+             "regression. Theme *token* resolution is not timed by this scene.";
     return r;
 }
 
@@ -327,14 +327,14 @@ Result InputLatency() {
     Result r;
     r.measured = false;
     r.note = "Requires a live window: pointer-down to corresponding Present, "
-             "measured with the frame-latency waitable object (roadmap §14.4).";
+             "measured with the frame-latency waitable object.";
     return r;
 }
 
 // ---- 10. Idle Test --------------------------------------------------------
 
 Result IdleTest() {
-    // Pure-logic proxy for the idle property (roadmap §14.2): with nothing dirty
+    // Pure-logic proxy for the idle property: with nothing dirty
     // and no active animations, the scheduler must report "no frame needed". We
     // model that here: an empty active set after Collect means the host would
     // disarm its timer and Present nothing. A real 30-second idle Present-count
@@ -361,14 +361,14 @@ Result IdleTest() {
                   idle ? "stay idle (no Present)" : "request a frame");
     r.metric = msgbuf;
     r.note = "Logic proxy for idle. Full 30s idle Present-count test needs the "
-             "window (roadmap §18.5) — verify no periodic Render/Present.";
+             "window — verify no periodic Render/Present.";
     return r;
 }
 
-// ---- 11. Frame coalescing (WP-01) -----------------------------------------
+// ---- 11. Frame coalescing -----------------------------------------
 
 Result FrameCoalescing() {
-    // The core WP-01 property (roadmap §14.3): many invalidations between two
+    // The core frame-scheduler property: many invalidations between two
     // frames merge into ONE pending frame. We simulate an input event that
     // dirties several properties, then a render turn, and confirm only one frame
     // is serviced no matter how many requests arrived.
@@ -404,7 +404,7 @@ Result FrameCoalescing() {
 
 } // namespace
 
-// Registration (order = §18.2 order).
+// Registration (order = the numbered scene sections above).
 REGISTER_SCENE("ControlsGrid", "Layout cost for 1,000 stacked controls", ControlsGrid);
 REGISTER_SCENE("TextStress", "CJK/Latin mixed wrapping text", TextStress);
 REGISTER_SCENE("TreeVirtualization", "100k data rows", TreeVirtualization);

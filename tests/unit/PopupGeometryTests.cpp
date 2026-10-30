@@ -1,5 +1,5 @@
 // PopupGeometryTests.cpp — unit tests for the pure popup/scroll helpers extracted
-// in WP-06 Stage 4 (AnchorScreenRect + EnsureVisibleOffset).
+// for headless testing (AnchorScreenRect + EnsureVisibleOffset).
 
 #include "../framework/Test.h"
 #include "../../FluentUI/services/PopupGeometry.h"

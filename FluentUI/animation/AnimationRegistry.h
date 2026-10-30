@@ -1,5 +1,5 @@
 // AnimationRegistry.h — the active set of currently-animating elements
-// (roadmap §6.1: "Active animation list, forbid scanning the whole tree every
+// ("Active animation list, forbid scanning the whole tree every
 // frame").
 //
 // The host rebuilds this set at discrete trigger points — input events or

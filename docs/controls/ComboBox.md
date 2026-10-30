@@ -29,8 +29,8 @@ Visual
                       └─ ComboBox   (final)
 ```
 
-`Selector<std::wstring>` (roadmap §WP-06)：项目向量与选中索引存储（+ 钳制/去重）
-在 `Selector`/`ItemsControl` 基类里。WP-05 的双重存储（`ComboBox::items_` 镜像到
+`Selector<std::wstring>`：项目向量与选中索引存储（+ 钳制/去重）
+在 `Selector`/`ItemsControl` 基类里。早期的双重存储（`ComboBox::items_` 镜像到
 `ComboListView::items_`）已消除 —— 列表视图现在持有共享 `items_` 向量的指针。
 
 **命名空间**: `fluent`

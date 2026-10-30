@@ -375,7 +375,7 @@ int TreeView::VisibleIndexByRow(int rowIndex) const
 int TreeView::HitRow(float dipY) const
 {
     // Use the EFFECTIVE offset (the in-flight position, mid-tween) so a click during a
-    // smooth scroll hits the row actually under the cursor (roadmap §11.10).
+    // smooth scroll hits the row actually under the cursor.
     float y = dipY - bounds_.y + CurrentOffset();
     int visibleIndex = static_cast<int>(y / rowHeight_);
     return (visibleIndex >= 0 && visibleIndex < static_cast<int>(visibleRows_.size()))

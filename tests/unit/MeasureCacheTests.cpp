@@ -1,5 +1,5 @@
 // MeasureCacheTests.cpp — unit tests for the Element measure short-circuit cache
-// (M1, roadmap §6.2). Pure logic (no HWND/D2D): verifies MeasureCached reuses the
+// (M1). Pure logic (no HWND/D2D): verifies MeasureCached reuses the
 // cached desired size when the constraint is unchanged and nothing is dirty, and
 // re-runs the virtual Measure() on a constraint change, an InvalidateMeasure, or a
 // size-affecting setter. Panels re-measure when any descendant is dirty.

@@ -1,5 +1,5 @@
 // SessionLog.h — in-memory diagnostic capture for a whole app session
-// (roadmap §18.3 diagnostics; companion to FrameStats / FrameRing / DebugHud).
+// (companion to FrameStats / FrameRing / DebugHud).
 //
 // Purpose: record the user's operations (resize, click, toggle) and per-frame
 // performance while the app runs, then serialize a readable report the app

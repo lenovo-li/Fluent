@@ -1,5 +1,5 @@
 // DWriteFormatTests.cpp — component tests for DWriteContext::Format's immutable
-// full-key cache (roadmap §5.3.2). Needs a real DirectWrite factory (no D3D /
+// full-key cache. Needs a real DirectWrite factory (no D3D /
 // HWND), so this is a "component" test rather than a pure unit test.
 //
 // The bug this locks down: Format() used to key only on (size, weight) and hand

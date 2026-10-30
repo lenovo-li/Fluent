@@ -229,7 +229,7 @@ void TextArea::EnsureLineIndex() const {
 }
 
 // ---------------------------------------------------------------------------
-// Wrapped virtualization (§3)
+// Wrapped virtualization
 // ---------------------------------------------------------------------------
 
 // The seed for "how many characters fit on one visual line" before anything has been
@@ -237,8 +237,8 @@ void TextArea::EnsureLineIndex() const {
 // drawn frame measures every visible paragraph and feeds the rolling average, and the
 // estimates that remain describe text nobody is looking at.
 //
-// fontSize * 0.5 as an average advance width is the same rough figure §1.5b-3 uses for
-// its prefix-clip estimate — being consistent about the guess means the two are wrong in
+// fontSize * 0.5 as an average advance width is the same rough figure the NoWrap prefix clip uses for
+// its estimate — being consistent about the guess means the two are wrong in
 // the same direction rather than fighting each other.
 float TextArea::SeedCharsPerLine() const {
     const float avgGlyphW = std::max(1.0f, EffectiveFontSize() * 0.5f);
@@ -327,7 +327,7 @@ IDWriteTextLayout* TextArea::WrapParagraphLayout(size_t p) const {
 
     const unsigned gen = Context().theme ? Context().theme->generation : 0u;
     // The cache is keyed by paragraph number and its layout box is the wrap width, both
-    // set in EnsureWrapExtent. minCover is deliberately kFullLine: the §1.5b-3 prefix
+    // set in EnsureWrapExtent. minCover is deliberately kFullLine: the prefix
     // clip is a NOWRAP optimization (there, characters past the visible columns are off
     // to the right and genuinely unneeded). Under Wrap those same characters flow onto
     // the NEXT visual line and are on screen, so clipping the layout would delete visible
@@ -557,7 +557,7 @@ bool TextArea::LayoutWidthKnown() const {
     return bounds_.w > kPadX + kScrollReserve;
 }
 
-// NOTE: EnsureLayout() is GONE, and its absence is the point of §3.
+// NOTE: EnsureLayout() is GONE, and its absence is the point of per-paragraph Wrap virtualization.
 //
 // It used to build one IDWriteTextLayout over the whole buffer, which is what gave Wrap
 // its two hard ceilings: content past maxHeight (100000 DIP, ~5000 wrapped lines) was
@@ -760,7 +760,7 @@ float TextArea::MaxOffsetDip() const {
 }
 
 // ---------------------------------------------------------------------------
-// High-throughput log append (§2)
+// High-throughput log append
 // ---------------------------------------------------------------------------
 
 void TextArea::AppendText(std::wstring_view s) {
@@ -819,7 +819,7 @@ void TextArea::AppendText(std::wstring_view s) {
         // the extent map is built from. So take the ordinary full invalidation.
         //
         // OnTextLayoutDirty rather than InvalidateLayout(): the latter only sets
-        // layoutDirty_, which since §3 no longer covers the line index or the paragraph
+        // layoutDirty_, which no longer covers the line index or the paragraph
         // extent map. Appending under Wrap with only that flag set left the paragraph
         // model describing the PREVIOUS text — the paragraph count did not grow, so the
         // new text was outside the document as far as scrolling and hit-testing were

@@ -234,8 +234,8 @@ void PopupHost::SetContent(UIElement* content) {
     if (content_ && content_->IsAttached()) content_->DetachFromContext();
     content_ = content;
     // Inject the popup's service context so tree-attached content (e.g. a tooltip
-    // TextBlock) reads DWrite through Context() instead of a manual SetDWrite
-    // (roadmap §6.2). The popup shares the parent's device-level DWrite AND, if
+    // TextBlock) reads DWrite through Context() instead of a manual SetDWrite.
+    // The popup shares the parent's device-level DWrite AND, if
     // parentWindow_ is set, the parent's AnimationRegistry — so popup content can
     // use smooth scrolling, scrollbar fade, and other UIElement animations without
     // this lightweight window needing its own FrameHost.
@@ -246,8 +246,8 @@ void PopupHost::SetContent(UIElement* content) {
         ctx.hwnd = hwnd_;
         ctx.dpiScale = DpiScale();
         ctx.input = &input_;  // content grabs capture through the popup's router
-        ctx.resourceCache = resourceCache_;  // share the parent's caches (§13.3)
-        ctx.theme = theme_;                  // share the parent's stable snapshot (§11)
+        ctx.resourceCache = resourceCache_;  // share the parent's caches
+        ctx.theme = theme_;                  // share the parent's stable snapshot
         // Share the parent window's AnimationRegistry. The parent collects content_
         // as an auxiliary root while the popup is open (RegisterAuxAnimationRoot in
         // Open) and ticks it on its own clock; a tick's Invalidate() lands in
@@ -305,7 +305,7 @@ void PopupHost::Render() {
     // area; corners outside the rounded rect stay transparent (DComp
     // ALPHA_MODE_PREMULTIPLIED) so the rounding reads cleanly against whatever is
     // behind the window. One brush is created per frame and shared with the
-    // content element (roadmap §5.3.1).
+    // content element.
     ComPtr<ID2D1SolidColorBrush> brush;
     if (FAILED(dc->CreateSolidColorBrush(pal.cardFill, brush.GetAddressOf()))) {
         comp_.EndContentFrame();

@@ -8,7 +8,7 @@
 // or a future alternative host can implement the same small surface.
 //
 // This is not a cross-platform abstraction — it only narrows the compile-time
-// and lifetime coupling between a control and its host window (roadmap §5.4).
+// and lifetime coupling between a control and its host window.
 #pragma once
 
 #include "../fl_common.h"

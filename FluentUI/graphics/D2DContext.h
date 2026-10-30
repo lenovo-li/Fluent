@@ -28,7 +28,7 @@ public:
 
     bool Valid() const { return d2dContext_ != nullptr; }
 
-    // Release the whole device stack (device-loss recovery, roadmap §17). Called
+    // Release the whole device stack (device-loss recovery). Called
     // by the host before re-Initialize()ing IN PLACE so borrowers that hold this
     // D2DContext* (PopupHost / TooltipService) keep a valid pointer across the
     // rebuild — only the COM objects inside are swapped, not the D2DContext.
@@ -41,7 +41,7 @@ public:
         d3dDevice_.Reset();
     }
 
-    // Read the reason a device was removed, for the recovery trace (roadmap §17).
+    // Read the reason a device was removed, for the recovery trace.
     // S_OK if the device is still valid or not yet created.
     HRESULT DeviceRemovedReason() const {
         return d3dDevice_ ? d3dDevice_->GetDeviceRemovedReason() : S_OK;

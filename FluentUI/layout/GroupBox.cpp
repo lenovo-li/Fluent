@@ -53,7 +53,7 @@ void GroupBox::Measure(float availW, float availH) {
             const float layoutW = (availW > 0.0f) ? availW : 1000.0f;
             constexpr float kLayoutH = 1000.0f;
 
-            // Through the shared layout cache (roadmap §13.3) rather than a fresh
+            // Through the shared layout cache rather than a fresh
             // CreateTextLayout on every Measure. A GroupBox re-measures on every
             // frame of a resize drag (the constraint changes, so MeasureCached
             // cannot short-circuit), and the header string is what determines this

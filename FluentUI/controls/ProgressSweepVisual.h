@@ -1,5 +1,5 @@
 // ProgressSweepVisual.h — the compositor-thread sweep for an indeterminate
-// ProgressBar (Plan B / roadmap §9.3).
+// ProgressBar.
 //
 // An indeterminate ProgressBar shows a short accent segment sliding back and
 // forth. Historically that motion was advanced on the UI thread every frame

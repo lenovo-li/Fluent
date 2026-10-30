@@ -6,7 +6,7 @@
 // no compositor visual is needed. Space/Enter or a click toggles; an Toggled
 // event reports the new state. An optional label sits to the right.
 //
-// ToggleSwitch is a ToggleButton (roadmap §WP-06): ToggleButton supplies the
+// ToggleSwitch is a ToggleButton: ToggleButton supplies the
 // checked bool, Toggle(), and click/Space/Enter → OnActivate() funnelling.
 // ToggleSwitch keeps its own public IsOn()/SetOn()/Toggled() names (thin aliases
 // over ToggleButton's IsChecked/SetChecked, so zero caller changes) and adds the
@@ -46,7 +46,7 @@ public:
     void Measure(float availW, float availH) override;
 
     // The focus ring is stroked OUTSIDE the track, which sits at the left edge of
-    // bounds_ (WP-07 §S4).
+    // bounds_.
     float VisualOverflowDip() const override {
         return kFocusRingGap + kFocusRingStroke * 0.5f + 1.0f;
     }
@@ -55,7 +55,7 @@ protected:
     // Raise the public Toggled event when the user toggles (ToggleButton hook).
     void OnToggleChanged(bool newState) override { toggled_.Raise(*this, newState); }
     // DWrite arrives with the tree context; re-measure once attached so the label
-    // width is known (roadmap §6.2 — no manual SetDWrite).
+    // width is known (DWrite comes from the attached UIContext — no manual SetDWrite).
     void OnAttachedToTree() override { InvalidateMeasure(); }
 
 private:

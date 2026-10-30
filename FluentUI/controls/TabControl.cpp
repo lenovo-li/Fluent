@@ -674,7 +674,7 @@ void TabControl::MeasureHeaders() {
     constexpr DWRITE_FONT_WEIGHT kWeights[] = {DWRITE_FONT_WEIGHT_NORMAL,
                                                DWRITE_FONT_WEIGHT_SEMI_BOLD};
 
-    // Prefer the shared cache (roadmap §13.3) when the tree has one: two tab
+    // Prefer the shared cache when the tree has one: two tab
     // controls showing the same header text, or a re-measure after an AddTab that
     // only appended, then cost a hash lookup instead of a DWrite build. Falls back
     // to building directly when detached from a cache-carrying host.

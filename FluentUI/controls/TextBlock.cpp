@@ -84,8 +84,8 @@ ComPtr<IDWriteTextLayout> TextBlock::CreateLayout() const
         return {};
     }
 
-    // Reuse the cached layout when every input that defines it is unchanged
-    // (roadmap §6.3). This is the whole point: Render/UpdateMetrics/hit-testing
+    // Reuse the cached layout when every input that defines it is unchanged.
+    // This is the whole point: Render/UpdateMetrics/hit-testing
     // call CreateLayout several times per frame, and rebuilding the DWrite layout
     // each time is the hot spot.
     const float fontSize = ResolveTypographySize();

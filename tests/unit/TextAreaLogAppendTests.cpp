@@ -1,4 +1,4 @@
-// TextAreaLogAppendTests.cpp — the high-throughput log path on TextArea (§2).
+// TextAreaLogAppendTests.cpp — the high-throughput log path on TextArea.
 //
 // Phase 2 of text virtualization: AppendText, the ring-buffer line cap, and tail
 // following. What separates this from the phase-1 tests is that almost nothing here is
@@ -239,7 +239,7 @@ TEST(TextAreaLogAppend, AppendEvictsTheCachedLayoutOfTheGrownLine) {
     // LineLayoutCoverEnd is the direct observable — 0 means "not cached".
     //
     // The caret is parked on line 0 on purpose. AppendText re-syncs the scroll extent,
-    // which warms the CARET's line (§1.5b-2's high-water-mark warming); with the caret on
+    // which warms the CARET's line (the high-water-mark warming); with the caret on
     // the last line that warming would rebuild the entry at its new length and both the
     // correct and the broken version would report 6.
     Fixture f;
@@ -290,10 +290,10 @@ TEST(TextAreaLogAppend, AppendDoesNotShrinkTheHorizontalRange) {
     // OnTextLayoutDirty resets the high-water mark (correct: an edit can delete the
     // widest line). An append cannot — it only lengthens lines or adds new ones — so
     // resetting would make the horizontal thumb shrink and regrow on every batch, the
-    // reverse-jump §1.5b deliberately avoided.
+    // reverse-jump the high-water mark exists to avoid.
     //
     // THE CARET MUST BE ON A NARROW LINE for this to test anything. AppendText re-syncs
-    // the extent, and ScrollExtentXDip warms the mark from the CARET's line (§1.5b-2, so
+    // the extent, and ScrollExtentXDip warms the mark from the CARET's line (so
     // typing at column 300 is not snapped back to column 0). With the caret left on the
     // wide line — where SetText puts it — that warming restores the mark to the same
     // value, so a version that resets it looks identical. Confirmed by mutation: the reset

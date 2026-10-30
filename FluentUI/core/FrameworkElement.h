@@ -1,4 +1,4 @@
-﻿// FrameworkElement.h — the WPF-style layout-property layer (roadmap §5.3).
+﻿// FrameworkElement.h — the WPF-style layout-property layer.
 //
 // Adds the common layout inputs (Width/Height, Margin, H/V alignment) and turns
 // the abstract Measure/Arrange from UIElement into concrete default leaf behavior
@@ -8,7 +8,7 @@
 // Layer boundary: FrameworkElement owns "how big / where in my slot", not
 // "what's inside me" (that's Control's Padding/Background) and not children
 // (that's Panel). Every property setter routes through SetProperty so a change
-// dirties exactly Measure (see roadmap §7.2).
+// dirties exactly Measure.
 #pragma once
 
 #include "UIElement.h"
@@ -36,7 +36,7 @@ public:
     float Width() const { return width_; }
     float Height() const { return height_; }
 
-    // Min/Max size constraints (roadmap §4 gap A). std::nullopt = "no constraint"
+    // Min/Max size constraints. std::nullopt = "no constraint"
     // (default: min = 0, max = +infinity). A change dirties Measure so the element
     // and its parent re-measure. The clamp runs at the end of Measure (see
     // ClampDesiredSize), so it applies to the base leaf layout; controls that

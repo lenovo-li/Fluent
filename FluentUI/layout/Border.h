@@ -1,6 +1,6 @@
 // Border.h — a single-child decorator that draws a background fill, an optional
 // stroked border, and rounded corners, then lays its child out inside its padding
-// (roadmap §5.5 / the layout primitives list). WPF's Border.
+// (one of the layout primitives). WPF's Border.
 //
 // Border owns exactly one child (unique_ptr) and forwards the whole element
 // contract to it: attach/detach, render (after painting its own chrome), hit-test,
@@ -78,7 +78,7 @@ public:
     bool NeedsRemeasure() const override { return AnyDirtyInSubtree(DirtyFlags::Measure); }
 
 protected:
-    // Propagate the tree context to the single child (roadmap §6.3).
+    // Propagate the tree context to the single child.
     void AttachChildren(const UIContext& ctx) override {
         if (content_) content_->AttachToContext(ctx);
     }

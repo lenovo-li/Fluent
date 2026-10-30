@@ -1,5 +1,5 @@
 // TextBlockLayoutCacheTests.cpp — component tests for TextBlock's cached
-// IDWriteTextLayout (M2, roadmap §6.3). Needs a real DirectWrite factory (no
+// IDWriteTextLayout (M2). Needs a real DirectWrite factory (no
 // D3D / HWND), so this is a "component" test like DWriteFormatTests.
 //
 // CreateLayout() memoizes the layout keyed on the full set of inputs (text,
@@ -34,7 +34,7 @@ DWriteContext& Ctx() {
 }
 
 // A configured TextBlock with a valid layout width (CreateLayout needs bounds).
-// DWrite is now injected through the tree UIContext (roadmap §6.2) instead of a
+// DWrite is now injected through the tree UIContext instead of a
 // manual SetDWrite: build a context carrying the DWrite pointer and attach it.
 // Returns a pointer to avoid moving the TextBlock: UIElement now has Event<>
 // members which are not movable (Phase 1), so TextBlock is also not movable.

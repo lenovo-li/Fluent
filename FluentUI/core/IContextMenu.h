@@ -1,4 +1,4 @@
-// IContextMenu.h — abstract per-element context menu (roadmap §9, WP-03 follow-up).
+// IContextMenu.h — abstract per-element context menu.
 //
 // A UIElement can own a context menu shown on right-click. The concrete menu
 // (MenuFlyout) lives in controls/ and depends on core/, so core/ must not depend
@@ -8,7 +8,7 @@
 //
 // The framework feeds the owner's service context (window/DWrite/HWND) to the
 // menu when the element attaches, so a control's menu needs no manual wiring —
-// the same "attach injects services" rule as the rest of the tree (§6.2).
+// the same "attach injects services" rule as the rest of the tree.
 #pragma once
 
 namespace fluent {

@@ -1,4 +1,4 @@
-// ThemeTokens.h — the Fluent design-system token set (roadmap §11).
+// ThemeTokens.h — the Fluent design-system token set.
 //
 // This replaces the old flat `Palette` struct (12 loose colors + a dark bool)
 // and the constants scattered across every control's anonymous namespace
@@ -27,7 +27,7 @@
 
 namespace fluent {
 
-// Free helper: D2D1_COLOR_F has no operator== (a known WP-02 pain point), so
+// Free helper: D2D1_COLOR_F has no operator== (a known pain point), so
 // token comparisons and tests use this instead of a raw field compare.
 inline bool NearlyEqual(const D2D1_COLOR_F& a, const D2D1_COLOR_F& b,
                         float eps = 0.0001f) {
@@ -67,7 +67,7 @@ inline D2D1_COLOR_F FlattenOver(const D2D1_COLOR_F& src, const D2D1_COLOR_F& dst
     };
 }
 
-// Semantic color roles (roadmap §11.1). Each is a resolved D2D color for the
+// Semantic color roles. Each is a resolved D2D color for the
 // current mode — a control asks for the role it needs (textPrimary, accent…)
 // rather than picking a light/dark literal. controlFillHover/Pressed are kept
 // as explicitly named tokens (NOT renamed Secondary/Tertiary) so the light->
@@ -125,7 +125,7 @@ struct ColorTokens {
     D2D1_COLOR_F rowFillAlternate;   // zebra striping for dense tables
 };
 
-// Sizing/spacing tokens in DIPs (roadmap §11.3). All device-independent; the
+// Sizing/spacing tokens in DIPs. All device-independent; the
 // host multiplies by DPI at draw time. Replaces per-control kCorner/gap/height.
 struct SpacingTokens {
     float controlHeightSmall;
@@ -140,7 +140,7 @@ struct SpacingTokens {
     float borderWidth;
 };
 
-// Type ramp (roadmap §11). Sizes in DIP; DirectWrite fonts are DIP-based so a
+// Type ramp. Sizes in DIP; DirectWrite fonts are DIP-based so a
 // DPI change does not require rebuilding the font object. The default values
 // match today's hard-coded sizes exactly (caption 12 / body 14 / etc.).
 struct TypographyTokens {
@@ -226,7 +226,7 @@ struct ColorOverrides {
     std::optional<D2D1_COLOR_F> rowFillAlternate;
 };
 
-// Motion constants (roadmap §11). Today's animations are all exponential easing
+// Motion constants. Today's animations are all exponential easing
 // on a time constant (Button tint, CheckBox fade); only those time constants are
 // real. Duration/bezier fields are reserved with NO consumer yet — do not build
 // a motion system around them.

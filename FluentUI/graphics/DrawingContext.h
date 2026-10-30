@@ -1,11 +1,11 @@
 // DrawingContext.h — the thin Windows-specific drawing layer handed to
-// Element::Render (roadmap §13.2). It is deliberately NOT a cross-platform
+// Element::Render. It is deliberately NOT a cross-platform
 // virtual renderer: it wraps the frame's Direct2D device context plus the one
 // reusable solid-color brush the host creates per frame, and exposes typed,
 // color-taking draw calls so a control never touches the raw brush or repeats
 // the SetColor + draw dance.
 //
-// WP-07 additions:
+// Per-frame diagnostics and partial-redraw support:
 //   * `drawOps` counter: optional pointer incremented on each draw call,
 //     filling FrameStats.drawOps to track GPU work per frame.
 //   * `clipHint`: optional dirty-region rect in DIPs. Panel::Render skips
@@ -93,7 +93,7 @@ public:
     // The host builds one per frame from the frame device context, the single
     // shared solid brush it created on that context, and the DPI scale.
     // `drawOps` (optional): pointer to a counter incremented on each draw call,
-    //   filling FrameStats.drawOps (WP-07 §S1).
+    //   filling FrameStats.drawOps.
     // `clipHint` (optional): the dirty region in DIPs; Panel::Render skips
     //   children outside it. For a full frame omit / pass nullptr (default =
     //   effectively unbounded so every element is visited).
@@ -232,7 +232,7 @@ public:
     // --- Accessors --------------------------------------------------------
     float DpiScale() const { return dpiScale_; }
 
-    // The dirty region hint in DIPs (WP-07 §S3). Panel::Render skips children
+    // The dirty region hint in DIPs. Panel::Render skips children
     // whose bounds don't intersect this rect. Defaults to effectively unbounded
     // (all children visited) for a full-frame draw; the host narrows it on a
     // partial-redraw frame to the dirty rect union.
@@ -251,8 +251,8 @@ private:
     ID2D1DeviceContext* dc_ = nullptr;       // frame device context (host-owned)
     ID2D1SolidColorBrush* brush_ = nullptr;  // shared brush; set via the methods
     float dpiScale_ = 1.0f;                  // dpi / 96
-    uint32_t* drawOps_ = nullptr;            // WP-07: per-frame draw-call counter
-    RectDip clipHint_;                       // WP-07: dirty region for Panel culling
+    uint32_t* drawOps_ = nullptr;            // per-frame draw-call counter
+    RectDip clipHint_;                       // dirty region for Panel culling
     float opacity_ = 1.0f;                   // alpha multiplier for every color
 };
 

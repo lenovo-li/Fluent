@@ -1,4 +1,4 @@
-// RangeBase.h — the shared value-range primitive (roadmap §WP-06).
+// RangeBase.h — the shared value-range primitive.
 //
 // Slider and ProgressBar both maintain a scalar value bounded by [min, max] with
 // identical clamping semantics, and both eased their fill toward the current value

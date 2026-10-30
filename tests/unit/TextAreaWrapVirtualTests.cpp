@@ -1,4 +1,4 @@
-// TextAreaWrapVirtualTests.cpp — wrapped virtualization on TextArea (§3).
+// TextAreaWrapVirtualTests.cpp — wrapped virtualization on TextArea.
 //
 // Phase 3 replaced Wrap's single whole-document IDWriteTextLayout with per-paragraph
 // layouts plus an estimated extent that corrects itself as paragraphs are drawn. What

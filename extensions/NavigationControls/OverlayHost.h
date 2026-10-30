@@ -18,7 +18,7 @@
 // cycle the card's Tab stops (the details box when shown, then the buttons) and
 // never walk back into the page underneath.
 //   Esc   -> Secondary when a secondary button exists, else Dismissed when there is
-//            any button; ignored in the button-less Progress state (DESIGN §2.4).
+//            any button; ignored in the button-less Progress state.
 //   Enter -> on a focused button, that button. On the overlay itself, Primary only
 //            when it is the ONLY button (OK states); Confirm needs an explicit pick.
 //

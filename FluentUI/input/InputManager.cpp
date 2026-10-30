@@ -224,7 +224,7 @@ void InputManager::CapturePointer(UIElement* e) {
     captured_ = e;
     // Take OS-level capture so WM_LBUTTONUP still arrives when the pointer leaves
     // the window: without it, a press-drag-outside-release never delivers the up
-    // and the control stays stuck in Pressed state (§9.3 completion).
+    // and the control stays stuck in Pressed state.
     if (hwnd_) ::SetCapture(hwnd_);
 }
 
@@ -242,7 +242,7 @@ void InputManager::ReleaseCapture(UIElement* e) {
 void InputManager::OnWindowDeactivated() {
     if (captured_) {
         // Deliver a canceling release off-bounds so the control leaves its pressed
-        // state without registering a click (roadmap §9.3), then drop capture.
+        // state without registering a click, then drop capture.
         UIElement* c = captured_;
         captured_ = nullptr;
         // Release OS capture too. Don't check GetCapture() here — deactivation
