@@ -7,9 +7,16 @@
 **开始任何工作前，先完整阅读 `CLAUDE.md`。** 以下内容只是 Hermes 特有的
 补充，不重复 CLAUDE.md 的任何条目；两边冲突时以 CLAUDE.md 为准。
 
+**架构说明已拆到 `.claude/rules/`。** Claude Code 会按每个文件 frontmatter 里的
+`paths:` 自动加载，Hermes 不会。动手前查 CLAUDE.md「Architecture」一节的表格，
+按要改的目录手动读对应的 rules 文件（例如改 `FluentUI/controls/` 至少读
+`element-model.md`、`rendering.md`、`theming.md`、`control-non-negotiables.md`）。
+`.claude/skills/*/SKILL.md` 是流程说明（验证、新控件、断点规程），也可直接阅读照做；
+`.claude/agents/` 是 Claude Code 子 agent 定义，Hermes 可忽略。
+
 ## 长任务与断点恢复
 
-CLAUDE.md 末尾规定了 `.claude/TASK_STATE.md` 的维护规程。Hermes 同样遵守：
+`.claude/TASK_STATE.md` 的完整维护规程在 `.claude/skills/task-state/SKILL.md`。Hermes 同样遵守：
 
 - 多步任务开始时读 `.claude/TASK_STATE.md`；有实质进展时在原地更新它。
 - 断点恢复顺序：读 TASK_STATE.md → `git status --short` → 看相关 diff →

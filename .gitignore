@@ -361,8 +361,14 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
-# Claude Code local config / internal worktrees (tool artifacts, not source)
-.claude/
+# Claude Code local config / internal worktrees stay ignored (TASK_STATE.md, settings.local.json, worktrees); the shared agent setup below is committed
+.claude/*
+!.claude/agents/
+!.claude/rules/
+!.claude/skills/
+!.claude/hooks/
+!.claude/agent-memory/
+!.claude/settings.json
 /TestPicture
 
 # CMake 构建目录与本机预设。注意上面的 VisualStudio.gitignore 只忽略了

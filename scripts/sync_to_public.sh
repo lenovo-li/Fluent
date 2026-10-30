@@ -122,7 +122,7 @@ find . -type f \( -name "*.h" -o -name "*.cpp" -o -name "*.py" \) -exec sed -i \
 if [[ -f ".gitignore" ]]; then
     sed -i \
         -e '/Claude Code local config/d' \
-        -e '/^\.claude\//d' \
+        -e '/^!\{0,1\}\.claude\//d' \
         ".gitignore"
 fi
 
