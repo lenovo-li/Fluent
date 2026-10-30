@@ -98,6 +98,7 @@ set(FLUENTUI_SOURCES
     FluentUI/window/GraphicsHost.cpp
     FluentUI/window/InputHost.cpp
     FluentUI/window/FrameHost.cpp
+    FluentUI/window/HudOverlay.cpp
     FluentUI/window/ThemeHost.cpp
     FluentUI/window/DiagnosticsHost.cpp
     FluentUI/window/DialogHost.cpp

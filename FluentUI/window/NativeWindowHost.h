@@ -46,9 +46,14 @@ namespace fluent {
 
 struct ThemeChangedArgs {};
 class Application;
+class HudOverlay;
 
 class NativeWindowHost : public WindowServices, public IDropTarget {
 public:
+    // Out of line (with the destructor) because hud_ is a unique_ptr to a type this
+    // header only forward-declares; an implicit constructor would need its destructor
+    // in every translation unit that constructs a window.
+    NativeWindowHost();
     virtual ~NativeWindowHost();
 
     // Create and show the window. clientWDip/clientHDip are the initial client
@@ -360,8 +365,11 @@ public:
     // Ring of the last 120 frame INTERVALS (ms) — real cadence for FPS/jank.
     const FrameRing<120>& FrameIntervalStats() const { return diagnostics_.Intervals(); }
 
-    // Toggle / query the on-screen performance HUD. When shown,
-    // the window keeps repainting so the numbers stay live.
+    // Toggle / query the on-screen performance HUD (F12). The HUD runs on its own
+    // thread with its own composition target (window/HudOverlay.h): showing it
+    // neither keeps this window repainting nor forces full redraws, so the numbers
+    // describe the app's real frames. It updates ~10x a second even while the UI
+    // thread is stalled, and then says so.
     void SetHudVisible(bool on);
     bool HudVisible() const { return hudVisible_; }
     void ToggleHud() { SetHudVisible(!hudVisible_); }
@@ -670,7 +678,6 @@ private:
     void RecreateWindowIcon();
     void DrawWindowIcon(ID2D1DeviceContext* dc);
     void DrawStandardTitle(ID2D1DeviceContext* dc);
-    void DrawHud(ID2D1DeviceContext* dc);  // on-screen perf HUD
 
     // Apply a saved placement onto the centered startup rect (DPI rescale +
     // multi-monitor validation). No-op when `restore` is null/invalid.
@@ -873,14 +880,6 @@ private:
     // Metrics for the most recently serviced frame, filled by
     // RenderNow and exposed via LastFrameStats() for a Debug HUD / diagnostics.
     FrameStats lastFrameStats_;
-    // Snapshot of the PREVIOUS fully-completed frame's stats. The HUD is drawn
-    // mid-frame (before this frame's renderMs/presentMs/cpuFrameMs/drawOps are
-    // finalised), so reading lastFrameStats_ from DrawHud shows this frame's
-    // just-reset (zero) values. The HUD reads this completed snapshot instead;
-    // RenderNow copies lastFrameStats_ into it at end-of-frame. Since the HUD
-    // forces a repaint every frame, it continuously shows the prior frame's real
-    // numbers.
-    FrameStats prevFrameStats_;
     // Cost (ms) of the animation tick that ran in PumpAnimations, carried to the next
     // frame's stats. The tick happens OUTSIDE RenderNow, so cpuFrameMs cannot include
     // it — and it is where a control's compositor surface refill runs (the dominant
@@ -970,10 +969,14 @@ private:
     // mean and is the number a user comparing against a frame budget expects to read.
     int64_t lastFrameStartQpc_ = 0;  // 0 = no previous frame yet (paint immediately)
 
-    // On-screen performance HUD toggle. Off by default; the demo
-    // flips it (F12). When on, RenderNow draws the HUD text in the top-right and
-    // keeps requesting frames so the numbers update live.
+    // On-screen performance HUD. Off by default; the demo flips it (F12). When on,
+    // hud_ owns the HUD thread and RenderNow publishes one snapshot per painted
+    // frame to it; nothing else on the UI thread changes. Null while off, so a
+    // window that never opens the HUD pays nothing for it.
+    std::unique_ptr<HudOverlay> hud_;
     bool hudVisible_ = false;
+    uint64_t paintedFrames_ = 0;  // frames painted since creation, for the HUD
+    void PublishHud(int64_t frameEndQpc);
 
     // Dirty-rect partial redraw state.
     // fullDrawRequired_: set after resize / DPI / theme / device-loss; forces a full

@@ -1,0 +1,1 @@
+- [Untested NativeWindowHost behavior](untested-nativewindowhost-behavior.md) — RenderNow/setter decision changes rarely have tests; only the extracted pure helper does

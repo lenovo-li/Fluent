@@ -186,6 +186,7 @@
     <ClInclude Include="window\FramePacing.h" />
     <ClInclude Include="window\FrameWaiter.h" />
     <ClInclude Include="window\ModalFrameHeartbeat.h" />
+    <ClInclude Include="window\HudOverlay.h" />
     <ClInclude Include="WindowRegistry.h" />
     <ClInclude Include="services\PopupState.h" />
     <ClInclude Include="services\TooltipService.h" />
@@ -196,6 +197,7 @@
     <ClInclude Include="diagnostics\PerformanceCounters.h" />
     <ClInclude Include="diagnostics\FrameRing.h" />
     <ClInclude Include="diagnostics\DebugHud.h" />
+    <ClInclude Include="diagnostics\HudFeed.h" />
     <ClInclude Include="diagnostics\SessionLog.h" />
   </ItemGroup>
   <ItemGroup>
@@ -280,6 +282,7 @@
     <ClCompile Include="window\GraphicsHost.cpp" />
     <ClCompile Include="window\InputHost.cpp" />
     <ClCompile Include="window\FrameHost.cpp" />
+    <ClCompile Include="window\HudOverlay.cpp" />
     <ClCompile Include="window\ThemeHost.cpp" />
     <ClCompile Include="window\DiagnosticsHost.cpp" />
     <ClCompile Include="window\Window.cpp" />

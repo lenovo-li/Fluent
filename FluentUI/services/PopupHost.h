@@ -33,7 +33,8 @@ namespace fluent {
 // future PopupHost user) passes through, so no control has to remember to do it.
 //
 // WM_APP+n is the documented range for application-private messages. WM_APP+17 is
-// ModalFrameHeartbeat's tick, WM_APP+18 the tray callback (window/TrayIcon.h) —
+// ModalFrameHeartbeat's tick, WM_APP+18 the tray callback (window/TrayIcon.h), WM_APP+20
+// the HUD ping (window/HudOverlay.h) —
 // keep the list consistent when adding another.
 constexpr UINT WM_FLUENT_POPUP_OPENED = WM_APP + 19;
 

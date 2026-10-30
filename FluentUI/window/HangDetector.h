@@ -85,7 +85,9 @@ public:
 
     bool IsRunning() const { return running_; }
 
-    // 当前停顿时长（毫秒）。任何线程都可以读，主要给测试和 HUD 用。
+    // 当前停顿时长（毫秒）。任何线程都可以读，主要给测试用。HUD 不用它：
+    // 空闲窗口本来就不产帧，「距上一帧多久」分不清空闲和卡死，HUD 改用 ping
+    // （diagnostics/HudFeed.h）。
     double StalledMs() const {
         const int64_t last = lastBeatQpc_.load(std::memory_order_relaxed);
         if (last == 0) return 0.0;

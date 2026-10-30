@@ -5,7 +5,7 @@
 #include "DirtyRegion.h"  // pure partial-redraw planner
 #include "../styling/ThemeTokens.h"
 #include "../diagnostics/PerformanceCounters.h"  // QpcNow for the animation clock
-#include "../diagnostics/DebugHud.h"              // on-screen perf HUD formatting
+#include "HudOverlay.h"                           // off-thread F12 performance HUD
 #include <dwmapi.h>
 #include <windowsx.h>
 #include <shellscalingapi.h>
@@ -52,7 +52,12 @@ constexpr UINT kAnimIntervalMs = 10;
 constexpr UINT kTooltipDelayMs = 500;  // hover dwell before a tooltip appears
 } // namespace
 
+NativeWindowHost::NativeWindowHost() = default;
+
 NativeWindowHost::~NativeWindowHost() {
+    // The HUD thread reads hwnd_ geometry and posts to it; join it before the HWND
+    // goes. Normally WM_DESTROY already did (this is the safety net, like the rest).
+    if (hud_) hud_->Stop();
     if (controlBgBrush_) DeleteObject(controlBgBrush_);
     // A live HWND here means the owner never closed the window before destroying the
     // object (typical of a tray app that keeps the window hidden until process exit,
@@ -652,13 +657,11 @@ void NativeWindowHost::RenderNow(FrameReason reason) {
     // Delegated to the pure PlanRedraw helper (DirtyRegion.h) so the decision is
     // testable headless. Partial is unsafe on warm-up frames, on any layout change
     // (Measure/Arrange can move bounds anywhere), or when the caption chrome
-    // changed — collapse those into forceFull.
-    // HUD sits top-right and repaints from last frame's stats every frame; a
-    // partial redraw could clip it out or leave stale digits, so force full while
-    // it is visible.
+    // changed — collapse those into forceFull. The HUD is deliberately NOT a reason:
+    // it lives on its own composition target (HudOverlay.h), so it neither needs
+    // nor may cause a full redraw — that would make it measure a different program.
     const bool forceFull =
-        (fullDrawRequired_ > 0) || measureDirty || arrangeDirty || captionChanged ||
-        hudVisible_;
+        (fullDrawRequired_ > 0) || measureDirty || arrangeDirty || captionChanged;
     const RedrawPlan plan = PlanRedraw(dirtyDip, wDip, hDip, s,
                                        pixelW_, pixelH_, kPartialRedrawMaxCoverage,
                                        forceFull);
@@ -746,7 +749,6 @@ void NativeWindowHost::RenderNow(FrameReason reason) {
         DrawWindowIcon(dc);
         DrawStandardTitle(dc);
         DrawCaptionButtons(dc, s);
-        if (hudVisible_) DrawHud(dc);
         lastFrameStats_.drawOps = drawOps;
     }  // partialClip pops here (before SetTransform / present)
 
@@ -780,10 +782,7 @@ void NativeWindowHost::RenderNow(FrameReason reason) {
     lastFrameStats_.cpuFrameMs = QpcToMs(frameEndQpc - frameStartQpc);
     diagnostics_.Frames().Push(static_cast<float>(lastFrameStats_.cpuFrameMs));
 
-    // Snapshot the now-complete stats for the HUD to read next frame (the HUD is
-    // drawn mid-frame, before these fields are filled, so it must read the prior
-    // completed frame — see prevFrameStats_).
-    prevFrameStats_ = lastFrameStats_;
+    ++paintedFrames_;
 
     // Session diagnostic capture (in-memory, zero-alloc, no I/O; never requests a
     // frame). Uses the interval since the previous painted frame as the real
@@ -850,6 +849,10 @@ void NativeWindowHost::RenderNow(FrameReason reason) {
     // the default configuration a user hits a hang in.
     diagnostics_.Hang().Beat();
 
+    // Hand the finished frame to the HUD thread (no-op while it is off). After both
+    // ring pushes, so the HUD sees this frame's cost and interval.
+    if (hud_) PublishHud(frameEndQpc);
+
     // PACING REFERENCE: the START of this frame, deliberately NOT frameEndQpc.
     //
     // The deadline for the next frame is "one refresh after this one began". Pacing
@@ -875,16 +878,9 @@ void NativeWindowHost::RenderNow(FrameReason reason) {
     // coarse and precise paths can never disagree about whether a frame is due.
     lastFrameStartQpc_ = frameStartQpc;
 
-    // Keep the HUD live: request the next frame so the numbers update even when
-    // nothing else is dirty. This makes the window continuously repaint while the
-    // HUD is on (that is the point — you are watching the frame rate), paced by
-    // the frame-latency waitable. Toggling the HUD off returns to idle.
-    if (hudVisible_) RequestFrame(FrameReason::Paint);
-
     // Will the loop go straight into another frame, or block waiting for input? This
     // is what decides whether the NEXT frame's interval is a cadence sample (see the
-    // interval-ring guard above). Sampled here, after the HUD's self-request, so that
-    // request counts: with the HUD open the loop genuinely never idles. A pending
+    // interval-ring guard above). A pending
     // frame, a live animation or an unapplied resize each mean the next frame follows
     // directly and the gap to it is real cadence rather than a wait for input.
     loopWasContinuous_ = frame_.Scheduler().NeedsFrame() || IsAnimating() || resizePending_;
@@ -914,10 +910,29 @@ void NativeWindowHost::RenderNow(FrameReason reason) {
 void NativeWindowHost::SetHudVisible(bool on) {
     if (hudVisible_ == on) return;
     hudVisible_ = on;
-    // Turning it on: kick a frame so it appears immediately (and RenderNow then
-    // keeps re-requesting). Turning it off: one more frame to erase it, after
-    // which nothing re-requests and the window returns to idle.
-    RequestFrame(FrameReason::Paint);
+    // No frame request either way: the HUD draws on its own target and thread, so
+    // this window's content is unaffected by it appearing or disappearing.
+    if (on) {
+        hud_ = std::make_unique<HudOverlay>();
+        hud_->Start(hwnd_);
+        // Seed it with the last frame so an idle window does not show "waiting for
+        // first frame" until something happens to repaint.
+        if (paintedFrames_ > 0) PublishHud(lastFrameQpc_);
+    } else if (hud_) {
+        hud_->Stop();  // joins; the thread releases its target, removing the HUD
+        hud_.reset();
+    }
+}
+
+void NativeWindowHost::PublishHud(int64_t frameEndQpc) {
+    HudSnapshot snap;
+    snap.stats = lastFrameStats_;
+    snap.cpu = diagnostics_.Frames();
+    snap.interval = diagnostics_.Intervals();
+    snap.frameCount = paintedFrames_;
+    snap.lastFrameEndQpc = frameEndQpc;
+    snap.titleBarHeightDip = TitleBarHeightDip();
+    hud_->Publish(snap);
 }
 
 // --- Session diagnostic log ------------------------------------------------
@@ -1004,56 +1019,6 @@ void NativeWindowHost::EnableHangDetector(bool on, double thresholdMs,
 void NativeWindowHost::LogSessionEvent(const char* category,
                                      const std::string& detail) {
     if (sessionLogEnabled_) diagnostics_.Log().RecordEvent(category, detail, SessionClockSec());
-}
-
-// Draw the on-screen performance HUD. Text is built by the pure
-// FormatHudLines (diagnostics/DebugHud.h) from last frame's stats + the interval
-// ring percentiles; here we just lay out a translucent panel + the lines in the
-// top-right corner. DIP space (caller left the transform at the DPI scale).
-void NativeWindowHost::DrawHud(ID2D1DeviceContext* dc) {
-    if (!graphics_.DWrite().Valid()) return;
-
-    HudPercentiles iv;
-    iv.p50Ms = diagnostics_.Intervals().Percentile(50);
-    iv.p95Ms = diagnostics_.Intervals().Percentile(95);
-    iv.p99Ms = diagnostics_.Intervals().Percentile(99);
-    iv.maxMs = diagnostics_.Intervals().Max();
-    // CPU-cost percentiles from frameRing_ (already fed every frame, previously never
-    // displayed). These are what survive a bimodal distribution: a burst of trivial
-    // frames can drag the interval P50 — and therefore the FPS reading — down to a
-    // fraction of a millisecond, but it cannot pull P99/Max off a 900ms frame.
-    HudCpuPercentiles cpu;
-    cpu.p50Ms = diagnostics_.Frames().Percentile(50);
-    cpu.p99Ms = diagnostics_.Frames().Percentile(99);
-    cpu.maxMs = diagnostics_.Frames().Max();
-    const std::string ascii = FormatHudLines(prevFrameStats_, iv, cpu);
-    const std::wstring text(ascii.begin(), ascii.end());  // ASCII-only, safe widen
-
-    IDWriteTextFormat* fmt =
-        graphics_.DWrite().Format(12.0f, DWRITE_FONT_WEIGHT_NORMAL,
-                       DWRITE_TEXT_ALIGNMENT_LEADING,
-                       DWRITE_PARAGRAPH_ALIGNMENT_NEAR);
-    if (!fmt) return;
-
-    // Panel: top-right, fixed size, a few DIP in from the frame. Sized for the seven
-    // lines FormatHudLines emits (the CPU-percentile line was added to make a bimodal
-    // frame-time distribution visible, and the async-layout line tracks worker behavior
-    // during resize drags) at the widest — the tick/rsz/draw line.
-    const float panelW = 250.0f, panelH = 105.0f, margin = 8.0f;
-    const float right = ClientWidthDip() - margin;
-    const float top = margin + TitleBarHeightDip();  // below the caption band
-    RectDip panel{right - panelW, top, panelW, panelH};
-
-    ComPtr<ID2D1SolidColorBrush> bg;
-    if (SUCCEEDED(dc->CreateSolidColorBrush(D2D1::ColorF(0, 0, 0, 0.55f), bg.GetAddressOf()))) {
-        D2D1_ROUNDED_RECT rr{{panel.x, panel.y, panel.right(), panel.bottom()}, 4.0f, 4.0f};
-        dc->FillRoundedRectangle(rr, bg.Get());
-    }
-    ComPtr<ID2D1SolidColorBrush> fg;
-    if (SUCCEEDED(dc->CreateSolidColorBrush(D2D1::ColorF(0.6f, 1.0f, 0.6f, 1.0f), fg.GetAddressOf()))) {
-        D2D1_RECT_F tr{panel.x + 6.0f, panel.y + 4.0f, panel.right() - 6.0f, panel.bottom() - 4.0f};
-        dc->DrawTextW(text.c_str(), static_cast<UINT32>(text.size()), fmt, tr, fg.Get());
-    }
 }
 
 bool NativeWindowHost::RecoverDevice() {
@@ -1611,6 +1576,13 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
             }
             break;  // default arrow / resize cursors
 
+        case WM_FLUENT_HUD_PING:
+            // Liveness ping from the HUD thread (HudFeed.h). Acknowledge and return
+            // without touching the frame scheduler: answering must not itself cause
+            // work, or the HUD would perturb the idle it is reporting on.
+            if (hud_) hud_->AcknowledgePing(wp);
+            return 0;
+
         case WM_FLUENT_MODAL_TICK:
             // High-resolution modal heartbeat (ModalFrameHeartbeat.h). Posted from a
             // waitable-timer thread at the display refresh rate while a SYSTEM modal
@@ -1818,6 +1790,9 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
             // destroyed from inside a drag (an owner closing it), so this is the
             // backstop rather than the usual path.
             modalHeartbeat_.Stop();
+            // Same for the HUD thread: it posts pings to hwnd_ and owns a composition
+            // target bound to it, which must be released before the window goes.
+            if (hud_) hud_->Stop();
             // Close any active popup while the owning elements are still alive and
             // the HWND is valid, so a control never tears down mid-dismiss
             // (single deterministic shutdown path).

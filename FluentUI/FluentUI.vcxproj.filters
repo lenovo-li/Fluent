@@ -138,6 +138,7 @@
     <ClInclude Include="window\FramePacing.h"><Filter>window</Filter></ClInclude>
     <ClInclude Include="window\FrameWaiter.h"><Filter>window</Filter></ClInclude>
     <ClInclude Include="window\ModalFrameHeartbeat.h"><Filter>window</Filter></ClInclude>
+    <ClInclude Include="window\HudOverlay.h"><Filter>window</Filter></ClInclude>
     <ClInclude Include="WindowRegistry.h" />
     <ClInclude Include="services\PopupState.h"><Filter>services</Filter></ClInclude>
     <ClInclude Include="services\TooltipService.h"><Filter>services</Filter></ClInclude>
@@ -148,6 +149,7 @@
     <ClInclude Include="diagnostics\PerformanceCounters.h"><Filter>diagnostics</Filter></ClInclude>
     <ClInclude Include="diagnostics\FrameRing.h"><Filter>diagnostics</Filter></ClInclude>
     <ClInclude Include="diagnostics\DebugHud.h"><Filter>diagnostics</Filter></ClInclude>
+    <ClInclude Include="diagnostics\HudFeed.h"><Filter>diagnostics</Filter></ClInclude>
     <ClInclude Include="diagnostics\SessionLog.h"><Filter>diagnostics</Filter></ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -230,6 +232,7 @@
     <ClCompile Include="window\GraphicsHost.cpp"><Filter>window</Filter></ClCompile>
     <ClCompile Include="window\InputHost.cpp"><Filter>window</Filter></ClCompile>
     <ClCompile Include="window\FrameHost.cpp"><Filter>window</Filter></ClCompile>
+    <ClCompile Include="window\HudOverlay.cpp"><Filter>window</Filter></ClCompile>
     <ClCompile Include="window\ThemeHost.cpp"><Filter>window</Filter></ClCompile>
     <ClCompile Include="window\DiagnosticsHost.cpp"><Filter>window</Filter></ClCompile>
     <ClCompile Include="window\Window.cpp"><Filter>window</Filter></ClCompile>

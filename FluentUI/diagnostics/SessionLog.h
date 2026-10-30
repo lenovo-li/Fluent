@@ -32,7 +32,7 @@ namespace fluent {
 // What the UI thread was doing when a frame was recorded. Drives the per-phase
 // summary ("does resizing jank, and which stage — layout/render/present?").
 enum class SessionPhase : uint8_t {
-    Idle,       // steady repaint with nothing special (e.g. HUD live-refresh)
+    Idle,       // a frame with no animation, resize or DPI change behind it
     Animating,  // an AnimationRegistry tick drove the frame
     Resizing,   // inside the system modal loop with a pending resize
     Moving,     // inside the system modal loop, position-only (no resize)

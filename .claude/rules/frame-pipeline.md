@@ -36,6 +36,22 @@ chain's `Present1` did, so without it the loop free-runs (measured ~1927 fps on 
 120 Hz panel, invisible on screen but burning a core and corrupting every
 diagnostic number).
 
+**The HUD runs off the UI thread.** `window/HudOverlay.h` draws it on its own
+thread, device and *topmost* DComp target (the content target is the non-topmost
+one), ~10 Hz. The UI thread only publishes a snapshot at the end of each painted
+frame (`diagnostics/HudFeed.h`). Two consequences when reading it:
+
+- **Opening it changes nothing it measures.** It does not request frames and does
+  not force full redraws (it used to do both, so its numbers described its own
+  continuous full-window repaint). An idle window therefore stays idle: the frame
+  lines freeze at the last active stretch and the bottom line says `idle 2.5s`. To
+  read FPS, make the window work — scroll, drag, animate.
+- **The bottom line is liveness, not frame data.** The HUD thread posts a ping
+  (`WM_FLUENT_HUD_PING`, one in flight at most) and shows the round trip. An
+  unanswered ping past 250 ms shows `UI STALLED N ms` while the stall is still
+  happening, which the frame rings cannot do — they are written by the thread that
+  is stuck. Frame age is not used for this because an idle window paints nothing.
+
 **Reading the HUD (F12) when frames are slow.** Frame times under real load are
 often *bimodal*: a few catastrophic frames interleaved with a burst of trivial
 ones. Three things exist because of that, and the reasoning is worth keeping:
