@@ -697,7 +697,10 @@ void DataGrid::OnPointerPressed(PointerEventArgs& e) {
     const float dipX = e.position.x, dipY = e.position.y;
 
     // Vertical scrollbar drag: press anywhere in the hover strip, not just the narrow thumb.
+    // Both scrollbar branches commit a live edit first, for the reason SetVerticalOffset
+    // gives: scrolling does not re-Arrange, so the editor would stay put over another row.
     if (scroll_.HitBarRegion(dipX, dipY)) {
+        if (editingRow_ >= 0) CommitEdit();
         if (!scroll_.HitThumb(dipX, dipY)) {
             // Off-thumb press: center the thumb on the pointer before dragging.
             const RectDip thumb = scroll_.ThumbRect();
@@ -717,6 +720,7 @@ void DataGrid::OnPointerPressed(PointerEventArgs& e) {
 
     // Horizontal scrollbar drag.
     if (scroll_.HitHBarRegion(dipX, dipY)) {
+        if (editingRow_ >= 0) CommitEdit();
         if (!scroll_.HitHThumb(dipX, dipY)) {
             const RectDip hTrack = scroll_.HTrackRect();
             const RectDip hThumb = scroll_.HThumbRect();
@@ -944,7 +948,10 @@ void DataGrid::OnPointerLeft() {
 
 void DataGrid::OnPointerWheelChanged(PointerEventArgs& e) {
     // Animated, so the wheel feels like the rest of the framework's scrolling; AnimateBy
-    // accumulates against the pending target so spinning builds momentum.
+    // accumulates against the pending target so spinning builds momentum. Commit a live
+    // edit first (see SetVerticalOffset): the wheel used to scroll the rows out from
+    // under an editor that stayed where it was.
+    if (editingRow_ >= 0) CommitEdit();
     scroll_.AnimateBy(-static_cast<float>(e.wheelDelta) / 120.0f *
                       kWheelStepRows * rowHeight_);
     e.handled = true;

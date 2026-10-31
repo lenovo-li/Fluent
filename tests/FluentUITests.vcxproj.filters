@@ -68,6 +68,7 @@
     <ClCompile Include="unit\FrameRingTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\DebugHudTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\HudFeedTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\FileDialogFilterTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\DirtyRegionTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\DirtyBoundsOverflowTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ElementOpacityTests.cpp"><Filter>unit</Filter></ClCompile>

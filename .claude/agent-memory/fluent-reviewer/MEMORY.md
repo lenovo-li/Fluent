@@ -1,1 +1,2 @@
 - [Untested NativeWindowHost behavior](untested-nativewindowhost-behavior.md) — RenderNow/setter decision changes rarely have tests; only the extracted pure helper does
+- [Detach teardown frees a dispatching popup](detach-destroys-dispatching-popup.md) — popup_/content reset in OnDetachedFromTree can UAF when an app handler detaches mid-event

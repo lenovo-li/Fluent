@@ -420,6 +420,13 @@ public:
     // Set by the owning window's focus manager — do not call directly; use the
     // window's SetFocusElement so the previously focused element is cleared.
     void SetFocused(bool f);
+    // FocusManager only, when the focused element leaves the tree: reset the bit
+    // WITHOUT OnFocusChanged / LostFocus, because the element may be mid-teardown.
+    // Without it the bit stayed true after detach, so focusing the element again
+    // hit SetFocused's `focused_ == f` early return and no GotFocus, OnFocusChanged
+    // or visual-state change ran — and IsFocused() disagreed with the manager, which
+    // a UI Automation HasKeyboardFocus query would read.
+    void ClearFocusOnDetach() { focused_ = false; }
 
     // --- Drag and drop ----------------------------------------------------
     // Install a drop handler. The host (NativeWindowHost) registers ONE COM

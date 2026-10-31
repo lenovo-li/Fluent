@@ -80,11 +80,13 @@ void FocusManager::MoveDirectional(FocusDirection dir) {
 
 void FocusManager::OnElementDetached(UIElement* e) {
     // Clear focus if the detaching element holds it. Do NOT call SetFocused(false)
-    // on `e` through SetFocus — it may be mid-teardown; just drop the pointer and
-    // notify. (The element's own bool is irrelevant once it is leaving the tree.)
+    // on `e` — it may be mid-teardown, so no OnFocusChanged / LostFocus runs. Its
+    // bit is still reset (ClearFocusOnDetach): a bit left true made the next
+    // SetFocus on the re-attached element a silent no-op inside SetFocused.
     if (focused_ != e) return;
     UIElement* old = focused_;
     focused_ = nullptr;
+    e->ClearFocusOnDetach();
     FocusChangedArgs args{old, nullptr};
     focusChanged_.Raise(*this, args);
 }

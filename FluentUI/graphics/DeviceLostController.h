@@ -32,13 +32,24 @@ DeviceStatus ClassifyDeviceHResult(HRESULT hr);
 
 // The recovery lifecycle. A frame runs while Healthy; a Lost classification moves
 // it to Lost; the host then rebuilds the device (Rebuilding) and, on success,
-// returns to Healthy. A failed rebuild keeps it in Lost so the next frame retries
-// (bounded by the host's own retry budget).
+// returns to Healthy. A failed rebuild keeps it in Lost; the host schedules the next
+// attempt itself (DeviceRebuildRetryDelayMs), since a window without a device paints
+// no frames that could trigger one.
 enum class DeviceState {
     Healthy,
     Lost,
     Rebuilding,
 };
+
+// Delay (ms) before rebuild attempt number `failedAttempts + 1` after that many
+// consecutive failures: 250, 500, 1000, 2000, then 4000 for good. A rebuild usually
+// fails because the driver is still resetting (a TDR or a driver update), which takes
+// from a fraction of a second to several; retrying immediately in a loop would spin
+// the UI thread against it, and giving up leaves the window blank for good.
+inline unsigned DeviceRebuildRetryDelayMs(unsigned failedAttempts) {
+    const unsigned shift = failedAttempts > 4 ? 4 : (failedAttempts == 0 ? 0 : failedAttempts - 1);
+    return 250u << shift;
+}
 
 class DeviceLostController {
 public:

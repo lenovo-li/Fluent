@@ -169,7 +169,9 @@ inline bool FrameIsNearestOpportunity(double remainingMs, double gapMs) {
 // magnitude, because a slow frame is genuinely slow for as long as it takes.
 //
 // Continuity is a property of the scheduler at the end of the previous frame (was a
-// frame pending, an animation live, a resize unapplied), so the host samples it there
+// frame pending, an animation live, a resize unapplied, or — inside the system modal
+// loop — a mouse move already queued, because there the next WM_SIZE does not exist
+// yet when the frame ends), so the host samples it there
 // and passes it in. Then a 3-second frame is kept, a 3-second idle is dropped, and
 // there is no load at which the two get confused.
 //

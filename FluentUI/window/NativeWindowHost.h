@@ -783,6 +783,8 @@ private:
     // GPU device-loss state machine. Fed each frame's present/draw
     // HRESULT; when it flips to Lost the frame loop runs RecoverDevice().
     DeviceLostController deviceLost_;
+    // Consecutive failed rebuilds, for DeviceRebuildRetryDelayMs. Reset on success.
+    unsigned deviceRebuildFailures_ = 0;
 
     // The window's theme authority. Owns the one stable
     // ThemeSnapshot handed to the tree via context_.theme; its pointee is
@@ -926,12 +928,18 @@ private:
     // The phase to stamp the current frame with, from modal/anim/resize state.
     SessionPhase CurrentSessionPhase(FrameReason reason) const;
 
-    // Monitor refresh (Hz) for frame pacing, 0 until first queried. Refreshed on DPI
-    // change / device rebuild since those can follow a monitor switch. Cached because
-    // pacing needs it every loop turn and EnumDisplaySettings is not free.
+    // Refresh rate (Hz) of the monitor the window is ON, 0 until first queried.
+    // Cached because pacing reads it every loop turn and EnumDisplaySettings is not
+    // free. Re-queried when the window lands on another monitor (WM_MOVE compares
+    // refreshMonitor_), on WM_DISPLAYCHANGE (mode switch) and on WM_DPICHANGED.
     int refreshHz_ = 0;
-    int RefreshHz();          // cached query; 0 if it cannot be determined
-    void InvalidateRefreshHz() { refreshHz_ = 0; }
+    HMONITOR refreshMonitor_ = nullptr;  // monitor refreshHz_ was read from
+    // Pacing rate: the monitor's rate, capped at 144 only inside the system modal
+    // move/size loop (see the definition for why). 60 if it cannot be determined.
+    int RefreshHz();
+    void InvalidateRefreshHz() { refreshHz_ = 0; refreshMonitor_ = nullptr; }
+    // WM_MOVE / WM_DISPLAYCHANGE: drop the cache if the window changed monitor.
+    void TrackRefreshMonitor();
 
     int64_t lastFrameQpc_ = 0;  // 0 = no previous frame yet (skip first interval)
     // Was there pending work when the previous frame ended — i.e. did the loop go

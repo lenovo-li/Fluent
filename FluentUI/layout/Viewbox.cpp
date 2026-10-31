@@ -114,6 +114,21 @@ void Viewbox::Render(const DrawingContext& dc) {
         D2D1::Matrix3x2F::Translation(bounds_.x, bounds_.y);
     TransformGuard xform(dc.Dc(), m);
 
+    // The clip hint is in WINDOW DIPs (the dirty-rect union, mapped forward by
+    // CollectDirtyBounds below), but the content culls against its children's
+    // UNSCALED bounds. Passing it through unmapped culled the wrong children on a
+    // partial redraw — a shrunk Viewbox skipped rows that were dirty and on screen,
+    // leaving them cleared and unpainted. Map it back through the inverse scale,
+    // widened by a pixel for the same rounding reason as CollectDirtyBounds. An
+    // unbounded hint (full frame) stays unbounded.
+    const RectDip& h = dc.ClipHint();
+    const bool unbounded = h.w >= 1e9f || h.h >= 1e9f;
+    const DrawingContext inner = (unbounded || scaleX_ == 0.0f || scaleY_ == 0.0f)
+        ? dc
+        : dc.WithMappedClipHint(RectDip{bounds_.x + (h.x - bounds_.x) / scaleX_,
+                                        bounds_.y + (h.y - bounds_.y) / scaleY_,
+                                        h.w / scaleX_, h.h / scaleY_}.inflated(1.0f));
+
     // UniformToFill scales past at least one edge by construction, so the overflow
     // has to be clipped or it paints over the Viewbox's siblings. Clipping is
     // applied under the transform, so the rect is expressed in the child's
@@ -123,10 +138,10 @@ void Viewbox::Render(const DrawingContext& dc) {
                        D2D1::RectF(bounds_.x, bounds_.y,
                                    bounds_.x + bounds_.w / scaleX_,
                                    bounds_.y + bounds_.h / scaleY_));
-        content_->RenderWithOpacity(dc);
+        content_->RenderWithOpacity(inner);
         return;
     }
-    content_->RenderWithOpacity(dc);
+    content_->RenderWithOpacity(inner);
 }
 
 // Hit-testing has to undo what Render's transform did: the pointer arrives in

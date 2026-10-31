@@ -103,3 +103,14 @@ TEST(DeviceLost, MultipleRecoveriesCounted) {
     EXPECT_EQ(c.RecoveryCount(), 3u);
     EXPECT_TRUE(c.IsHealthy());
 }
+
+// Failed rebuilds back off 250 -> 500 -> 1000 -> 2000 -> 4000 ms and stay at 4000,
+// so a long driver reset is retried for good instead of abandoned or spun on.
+TEST(DeviceLost, RebuildRetryBacksOffAndCaps) {
+    EXPECT_EQ(DeviceRebuildRetryDelayMs(1), 250u);
+    EXPECT_EQ(DeviceRebuildRetryDelayMs(2), 500u);
+    EXPECT_EQ(DeviceRebuildRetryDelayMs(3), 1000u);
+    EXPECT_EQ(DeviceRebuildRetryDelayMs(4), 2000u);
+    EXPECT_EQ(DeviceRebuildRetryDelayMs(5), 4000u);
+    EXPECT_EQ(DeviceRebuildRetryDelayMs(50), 4000u);
+}

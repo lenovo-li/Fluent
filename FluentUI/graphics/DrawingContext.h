@@ -139,6 +139,34 @@ public:
         return out;
     }
 
+    // A copy whose clip hint is narrowed to its intersection with `r` (window DIPs).
+    // For a container that clips its children to a viewport: without it a panel
+    // nested inside a scroller sees the frame's hint (unbounded on a full frame) and
+    // its own bounds, which span the whole scrolled content, so nothing gets culled
+    // and every row of a 10000-row StackPanel is drawn to be clipped away. The hint
+    // only ever narrows, so a partial-redraw frame keeps its dirty-rect culling.
+    [[nodiscard]] DrawingContext WithClipHint(const RectDip& r) const {
+        DrawingContext out = *this;
+        const float x1 = (clipHint_.x > r.x) ? clipHint_.x : r.x;
+        const float y1 = (clipHint_.y > r.y) ? clipHint_.y : r.y;
+        const float x2 = (clipHint_.right() < r.right()) ? clipHint_.right() : r.right();
+        const float y2 = (clipHint_.bottom() < r.bottom()) ? clipHint_.bottom() : r.bottom();
+        // Disjoint -> a rect far outside everything, so intersects() is false for any
+        // child (a zero-size rect placed at x1/y1 could still touch one).
+        out.clipHint_ = (x2 > x1 && y2 > y1) ? RectDip{x1, y1, x2 - x1, y2 - y1}
+                                              : RectDip{-1e9f, -1e9f, 0.0f, 0.0f};
+        return out;
+    }
+
+    // A copy whose clip hint is REPLACED by `r` — for a container that draws its
+    // content under a transform (Viewbox), where the frame's window-space hint must
+    // be mapped into the content's own space rather than intersected with it.
+    [[nodiscard]] DrawingContext WithMappedClipHint(const RectDip& r) const {
+        DrawingContext out = *this;
+        out.clipHint_ = r;
+        return out;
+    }
+
     // `color` with this context's opacity folded into its alpha. Exposed so a
     // control that must reach past the typed helpers (a composited surface
     // building its own context) can stay consistent.

@@ -40,6 +40,12 @@ constexpr UINT WM_FLUENT_POPUP_OPENED = WM_APP + 19;
 
 class PopupHost {
 public:
+    // Inset (DIP) between the card edge and the content on every side. The content is
+    // arranged into (w - 2*kContentPadding) x (h - 2*kContentPadding), so a caller that
+    // sizes the popup from its content's natural size must add 2*kContentPadding to
+    // both dimensions or the content is cut off by that much.
+    static constexpr float kContentPadding = 8.0f;
+
     ~PopupHost();
 
     // Create the popup window (hidden). hInstParent, hwndOwner from the parent
@@ -167,6 +173,9 @@ private:
     UINT pixelW_ = 0, pixelH_ = 0;
     PopupState state_ = PopupState::Closed;
     bool graphicsReady_ = false;
+    // The D2D device comp_ was built on. Held (not just compared by address) so the old
+    // device cannot be freed and its address reused by the rebuilt one.
+    ComPtr<ID2D1Device> graphicsDevice_;
 
     D2DContext* d2d_ = nullptr;
     DWriteContext* dwrite_ = nullptr;

@@ -66,6 +66,12 @@ private:
     // Popup infrastructure (ComboBox pattern: PopupHost + content element).
     std::unique_ptr<PopupHost> popup_;
     std::shared_ptr<Calendar> calendar_;
+    // Calendar.SelectionChanged, held for the CALENDAR's lifetime rather than as a
+    // context subscription. A context subscription is released on detach but was only
+    // made when popup_ was created, so a re-attached picker (TabControl page switch)
+    // opened a calendar wired to nothing. Declared after calendar_ so it unregisters
+    // before the calendar is destroyed.
+    Subscription calendarSelectionSub_;
     bool popupOpen_ = false;
     WindowServices* window_ = nullptr;
 

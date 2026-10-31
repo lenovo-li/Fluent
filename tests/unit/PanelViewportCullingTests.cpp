@@ -9,6 +9,8 @@
 #include "../../FluentUI/layout/StackPanel.h"
 #include "../../FluentUI/graphics/DrawingContext.h"
 
+#include <vector>
+
 using namespace fluent;
 
 namespace {
@@ -193,4 +195,58 @@ TEST(PanelCulling, CollectDirtyBoundsReportsDirtyChildOnly) {
         EXPECT_NEAR(dirty[0].y, 40.0f, 0.001f);
         EXPECT_NEAR(dirty[0].h, 20.0f, 0.001f);
     }
+}
+
+// ---------------------------------------------------------------------------
+// DrawingContext::WithClipHint — the viewport a scroller passes to its content.
+//
+// ScrollPanel::Render itself is not reachable headless (it returns early without a
+// device), so these pin the two halves it is built from: the hint narrows by
+// intersection, and a nested StackPanel under the narrowed hint culls its rows.
+// ---------------------------------------------------------------------------
+
+// Narrowing intersects: it never widens what the frame already restricted.
+TEST(PanelCulling, WithClipHintIntersects) {
+    RectDip frame{0, 0, 100, 100};
+    DrawingContext dc = MakeDc(frame);
+    const RectDip h = dc.WithClipHint({50, 20, 200, 30}).ClipHint();
+    EXPECT_NEAR(h.x, 50.0f, 0.001f);
+    EXPECT_NEAR(h.y, 20.0f, 0.001f);
+    EXPECT_NEAR(h.right(), 100.0f, 0.001f);
+    EXPECT_NEAR(h.bottom(), 50.0f, 0.001f);
+}
+
+// Disjoint -> nothing intersects the result, including a child at the touching edge.
+TEST(PanelCulling, WithClipHintDisjointCullsEverything) {
+    RectDip frame{0, 0, 100, 100};
+    DrawingContext dc = MakeDc(frame);
+    const RectDip h = dc.WithClipHint({300, 300, 50, 50}).ClipHint();
+    EXPECT_FALSE(h.intersects(RectDip{0, 0, 100, 100}));
+    EXPECT_FALSE(h.intersects(RectDip{299, 299, 2, 2}));
+}
+
+// THE STRESS-PAGE CASE. A StackPanel inside a scroller has bounds spanning all of its
+// rows, so its own bounds cull keeps every row; only the viewport passed down as the
+// hint lets it skip the off-screen ones. Before ScrollPanel passed it, a 10000-row page
+// drew 10206 ops a frame with ~17 rows visible.
+TEST(PanelCulling, NestedStackPanelCullsToViewportHint) {
+    StackPanel content;
+    std::vector<RenderSpyLeaf*> rows;
+    for (int i = 0; i < 100; ++i) rows.push_back(content.Emplace<RenderSpyLeaf>());
+    content.SetBounds({0, -400, 100, 2000});          // scrolled: rows 20..24 on screen
+    for (int i = 0; i < 100; ++i) rows[i]->SetBounds({0, -400.0f + i * 20.0f, 100, 20});
+
+    RectDip unbounded{-1e9f, -1e9f, 2e9f, 2e9f};      // full frame
+    DrawingContext dc = MakeDc(unbounded);
+    const RectDip viewport{0, 0, 100, 100};
+    content.Render(dc.WithClipHint(viewport));
+
+    int drawn = 0;
+    for (auto* r : rows) drawn += r->rendered ? 1 : 0;
+    EXPECT_EQ(drawn, 5);
+    EXPECT_TRUE(rows[20]->rendered);
+    EXPECT_TRUE(rows[24]->rendered);
+    EXPECT_FALSE(rows[19]->rendered);
+    EXPECT_FALSE(rows[25]->rendered);
+    EXPECT_FALSE(rows[99]->rendered);
 }

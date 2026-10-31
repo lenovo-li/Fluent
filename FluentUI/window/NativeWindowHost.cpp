@@ -38,6 +38,7 @@ constexpr UINT_PTR kBlinkTimerId = 1;
 constexpr UINT_PTR kAnimTimerId = 2;
 constexpr UINT_PTR kTooltipTimerId = 3;
 constexpr UINT_PTR kSelfFrameTimerId = 4;
+constexpr UINT_PTR kDeviceRetryTimerId = 5;  // retry a failed device rebuild
 // Period for the LEGACY modal fallback timer (kAnimTimerId), used only when
 // ModalFrameHeartbeat could not start — i.e. no waitable timer, pre-Windows 10 1803.
 // 10 is USER_TIMER_MINIMUM: asking for less is silently clamped to it, so this is the
@@ -78,6 +79,7 @@ NativeWindowHost::~NativeWindowHost() {
         if (!destroying_) {
             destroying_ = true;
             KillTimer(hwnd_, kSelfFrameTimerId);
+            KillTimer(hwnd_, kDeviceRetryTimerId);
             if (dragDropRegistered_) {
                 RevokeDragDrop(hwnd_);
                 dragDropRegistered_ = false;
@@ -883,7 +885,22 @@ void NativeWindowHost::RenderNow(FrameReason reason) {
     // interval-ring guard above). A pending
     // frame, a live animation or an unapplied resize each mean the next frame follows
     // directly and the gap to it is real cadence rather than a wait for input.
-    loopWasContinuous_ = frame_.Scheduler().NeedsFrame() || IsAnimating() || resizePending_;
+    //
+    // INSIDE THE SYSTEM MODAL LOOP, ALSO QUEUED INPUT. During a resize drag the next
+    // WM_SIZE has not been generated yet when this frame ends: DefWindowProc turns the
+    // already-queued mouse move into it only after we return. So resizePending_ reads
+    // false at exactly the moment the drag is busiest, every interval of the drag was
+    // classified as idle and dropped, and the ring kept only the pre-drag frames. A
+    // stress-page drag measured rsz 327ms per frame while the HUD said FPS 66 and
+    // interval Max 18ms. A mouse move already waiting in the queue is the honest
+    // signal that the drag continues. Scoped to the modal loop because there the next
+    // mouse move is certain to become a WM_SIZE; in the normal loop a queued move over
+    // static content may not produce a frame, and counting it would fold the wait
+    // into the next sample.
+    const bool modalInputQueued =
+        inModalLoop_ && HIWORD(GetQueueStatus(QS_MOUSEMOVE | QS_MOUSEBUTTON)) != 0;
+    loopWasContinuous_ = frame_.Scheduler().NeedsFrame() || IsAnimating() ||
+                         resizePending_ || modalInputQueued;
 
     // Rebuild the animation set at the frame boundary, not only on input events.
     // A PROGRAMMATIC state change (e.g. TabControl::SetSelectedIndex from code, or
@@ -954,17 +971,49 @@ SessionPhase NativeWindowHost::CurrentSessionPhase(FrameReason reason) const {
 }
 
 int NativeWindowHost::RefreshHz() {
-    if (refreshHz_ != 0) return refreshHz_;
-    DEVMODEW dm{};
-    dm.dmSize = sizeof(dm);
-    if (EnumDisplaySettingsW(nullptr, ENUM_CURRENT_SETTINGS, &dm))
-        refreshHz_ = static_cast<int>(dm.dmDisplayFrequency);
-    // Cap at 144Hz: 240Hz is too aggressive for complex UI layout (5-6ms frames
-    // exceed the 4.17ms budget), and Windows DWM stops delivering WM_SIZE when it
-    // sees continuous overruns, producing 80-400ms pauses instead of smooth motion.
-    // 144Hz (6.94ms budget) tolerates the real frame cost and keeps DWM flowing.
-    if (refreshHz_ > 144) refreshHz_ = 144;
+    if (refreshHz_ == 0) {
+        // The window's OWN monitor. This used to pass nullptr to EnumDisplaySettings,
+        // which reads the primary display: a window on a 240Hz secondary panel next
+        // to a 60Hz primary was paced at 60, and the reverse painted four frames for
+        // every one the panel could show.
+        refreshMonitor_ = hwnd_ ? MonitorFromWindow(hwnd_, MONITOR_DEFAULTTONEAREST) : nullptr;
+        MONITORINFOEXW mi{};
+        mi.cbSize = sizeof(mi);
+        DEVMODEW dm{};
+        dm.dmSize = sizeof(dm);
+        const wchar_t* device =
+            (refreshMonitor_ && GetMonitorInfoW(refreshMonitor_, &mi)) ? mi.szDevice : nullptr;
+        if (EnumDisplaySettingsW(device, ENUM_CURRENT_SETTINGS, &dm))
+            refreshHz_ = static_cast<int>(dm.dmDisplayFrequency);
+        // 0 and 1 mean "hardware default"; pace at 60 rather than not at all.
+        if (refreshHz_ <= 1) refreshHz_ = 60;
+        FL_TRACEF(kTag, "refresh %d Hz (%ls)", refreshHz_, device ? device : L"primary");
+    }
+    // Cap at 144Hz ONLY inside the system modal move/size loop. That is where the
+    // cap came from: during a resize drag the frame includes a full relayout, 5-6ms
+    // frames overrun a 240Hz budget (4.17ms) every time, and DWM then stops
+    // delivering WM_SIZE, producing 80-400ms pauses instead of motion. It used to
+    // apply everywhere, which held a 240Hz panel to 144 for scrolling and animation
+    // too, where frames are a fraction of a millisecond and the budget is easily met.
+    if (inModalLoop_ && refreshHz_ > 144) return 144;
     return refreshHz_;
+}
+
+void NativeWindowHost::TrackRefreshMonitor() {
+    // MonitorFromWindow is a cheap user-mode lookup; WM_MOVE is not a hot path at
+    // the rate that matters (one per move step), so checking every time is fine and
+    // catches moves that never change DPI, which WM_DPICHANGED alone missed.
+    if (!hwnd_ || refreshHz_ == 0) return;
+    if (MonitorFromWindow(hwnd_, MONITOR_DEFAULTTONEAREST) == refreshMonitor_) return;
+    const int oldHz = RefreshHz();
+    InvalidateRefreshHz();
+    // Dragged across a monitor boundary mid-drag (same DPI, so no WM_DPICHANGED ends
+    // the modal loop): the heartbeat would keep ticking at the old panel's period for
+    // the rest of the drag while the yield test compares against the new one.
+    if (inModalLoop_ && modalHeartbeat_.IsRunning() && RefreshHz() != oldHz) {
+        modalHeartbeat_.Stop();
+        modalHeartbeat_.Start(hwnd_, RefreshIntervalMs(RefreshHz()));
+    }
 }
 
 unsigned NativeWindowHost::FrameWaitTimeoutMs() const {
@@ -1047,9 +1096,18 @@ bool NativeWindowHost::RecoverDevice() {
     HRESULT hr = graphics_.Rebuild(hwnd_, pixelW_, pixelH_);
     if (FAILED(hr)) {
         Trace(kTag, "device rebuild FAILED", hr);
-        deviceLost_.EndRebuild(false);  // stay Lost; retry on a later frame
+        deviceLost_.EndRebuild(false);  // back to Lost
+        // Schedule the retry explicitly. "A later frame" never comes: RenderNow returns
+        // at `!graphicsReady_` before any HRESULT is classified, and NotifyFrameResult
+        // only reports a Healthy -> Lost edge anyway, so nothing else calls this again
+        // and the window stayed blank (no content surface) until restart.
+        ++deviceRebuildFailures_;
+        if (hwnd_ && !destroying_)
+            SetTimer(hwnd_, kDeviceRetryTimerId,
+                     DeviceRebuildRetryDelayMs(deviceRebuildFailures_), nullptr);
         return false;
     }
+    deviceRebuildFailures_ = 0;
 
     // Re-point the context at the fresh cache.
     context_.resourceCache = &graphics_.Cache();
@@ -1173,6 +1231,8 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
             break;  // let DefWindowProc handle the actual move
 
         case WM_MOVE:
+            // Moved onto another monitor (possibly another refresh rate, same DPI).
+            TrackRefreshMonitor();
             // Dismiss active popup when the parent window moves.
             if (popupDismiss_) {
                 if (popupDismiss_(PopupDismissReason::Move, nullptr, 0, 0))
@@ -1642,6 +1702,13 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
 
         case WM_TIMER:
+            if (wp == kDeviceRetryTimerId) {
+                // One-shot: RecoverDevice re-arms it with a longer delay if this attempt
+                // fails too.
+                KillTimer(hwnd_, kDeviceRetryTimerId);
+                RecoverDevice();
+                return 0;
+            }
             if (wp == kBlinkTimerId && input_.Focus().Focused() && input_.Focus().Focused()->WantsBlink()) {
                 input_.Focus().Focused()->OnBlink();
                 Render();
@@ -1731,6 +1798,12 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
             }
             break;
 
+        case WM_DISPLAYCHANGE:
+            // A display mode switch (e.g. the user changed 240Hz -> 60Hz) keeps the
+            // window on the same monitor, so only an explicit re-query notices it.
+            InvalidateRefreshHz();
+            break;
+
         case WM_DEVICECHANGE:
             OnDeviceChange(wp, lp);
             return TRUE;
@@ -1773,6 +1846,7 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
             // after unwinding back out of the nested WM_DESTROY.
             destroying_ = true;
             KillTimer(hwnd_, kSelfFrameTimerId);
+            KillTimer(hwnd_, kDeviceRetryTimerId);
             // Revoke the OLE drop registration while hwnd_ is still valid. OLE holds
             // a BORROWED pointer to this object (AddRef/Release are no-ops — see the
             // header), so this must happen before the window object can go away or

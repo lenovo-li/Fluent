@@ -513,6 +513,35 @@ TEST(DataGrid, ScrollingWhileEditingCommitsTheEdit) {
     EXPECT_FALSE(grid.IsEditing());
 }
 
+// The WHEEL is the common way to scroll and it went around SetVerticalOffset (it animates
+// the scroller directly), so the edit stayed open and the editor floated over another row.
+TEST(DataGrid, WheelWhileEditingCommitsTheEdit) {
+    MockHost host;
+    DataGrid grid;
+    grid.AttachToContext(MakeCtx(host));
+    std::vector<DataGrid::Column> cols = {
+        {L"Task", 200.0f, DataGrid::Align::Left}
+    };
+    grid.SetColumns(std::move(cols));
+    grid.SetRowCount(50);
+    grid.SetCellProvider([](int r, int) { return L"Row" + std::to_wstring(r); });
+    grid.SetEditingEnabled(true);
+    grid.Measure(300.0f, 200.0f);
+    grid.Arrange(RectDip{0.0f, 0.0f, 300.0f, 200.0f});
+
+    grid.SetSelectedRow(0);
+    KeyEventArgs key{};
+    key.vk = VK_F2;
+    grid.OnKeyDownRouted(key);
+    EXPECT_TRUE(grid.IsEditing());
+
+    PointerEventArgs wheel{};
+    wheel.position = Point{10.0f, 60.0f};
+    wheel.wheelDelta = -120;
+    grid.OnPointerWheelChanged(wheel);
+    EXPECT_FALSE(grid.IsEditing());
+}
+
 // Clicking outside the edit overlay (e.g. a button) should commit the edit so the typed
 // value isn't lost. This requires a FocusManager to track focus changes.
 TEST(DataGrid, LosingFocusCommitsTheEdit) {

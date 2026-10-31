@@ -17,7 +17,7 @@ namespace {
 const char* kTag = "PopupHost";
 const wchar_t* kClassName = L"FluentUI.PopupHost";
 
-constexpr float kPadding = 8.0f;       // DIP, content inset from card edge
+constexpr float kPadding = PopupHost::kContentPadding;  // DIP, content inset from card edge
 
 #ifndef DWMWA_WINDOW_CORNER_PREFERENCE
 #define DWMWA_WINDOW_CORNER_PREFERENCE 33
@@ -88,6 +88,7 @@ HRESULT PopupHost::Create(HINSTANCE hInstParent, HWND hwndOwner,
 HRESULT PopupHost::InitGraphics(UINT pixelW, UINT pixelH) {
     FL_RETURN_IF_FAILED(kTag, comp_.Initialize(d2d_, hwnd_, pixelW, pixelH));
     graphicsReady_ = true;
+    graphicsDevice_ = d2d_->D2DDevice();
     TraceMsg(kTag, "InitGraphics: DCompHost initialized");
     return S_OK;
 }
@@ -144,11 +145,28 @@ HRESULT PopupHost::Open(const RECT& anchorScreenRect, float wDip, float hDip) {
     pixelW_ = std::max<UINT>(1, rc.right - rc.left);
     pixelH_ = std::max<UINT>(1, rc.bottom - rc.top);
 
-    // Initialize or resize the DComp composition target.
-    if (!graphicsReady_) {
-        FL_RETURN_IF_FAILED(kTag, InitGraphics(pixelW_, pixelH_));
-    } else {
-        FL_RETURN_IF_FAILED(kTag, comp_.Resize(pixelW_, pixelH_));
+    // Rebuild the composition target if the owner's device was replaced since it was
+    // made. NativeWindowHost::RecoverDevice rebuilds the shared D2DContext IN PLACE,
+    // and resident popups (tooltip, ComboBox, DatePicker) are created once and reused,
+    // so without this they kept a DComp device bound to the dead D2D device and never
+    // drew again. Checked here because every popup passes through Open, so no owner
+    // has to enumerate them after a device loss.
+    if (graphicsReady_ && graphicsDevice_.Get() != d2d_->D2DDevice()) {
+        TraceMsg(kTag, "Open: owner device was rebuilt; recreating composition target");
+        comp_.Reset();
+        graphicsReady_ = false;
+        graphicsDevice_.Reset();
+    }
+
+    // Initialize or resize the DComp composition target. A failure must return the
+    // popup to Closed: left in Opening, CanOpen and CanClose both refuse forever and
+    // the popup can neither open again nor be closed.
+    HRESULT ghr = graphicsReady_ ? comp_.Resize(pixelW_, pixelH_)
+                                 : InitGraphics(pixelW_, pixelH_);
+    if (FAILED(ghr)) {
+        Trace(kTag, "Open: composition target init/resize FAILED", ghr);
+        state_ = PopupState::Closed;
+        return ghr;
     }
 
     // Layout content to the card's interior (inset by padding).

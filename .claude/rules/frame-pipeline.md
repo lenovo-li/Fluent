@@ -61,7 +61,10 @@ ones. Three things exist because of that, and the reasoning is worth keeping:
   a 3-second idle from a 3-second *frame*. On a resize drag over a large document
   it discarded every real sample and reported four-digit FPS. It now asks the
   scheduler whether the loop was continuously busy
-  (`FrameIntervalIsCadenceSample`, fed by `loopWasContinuous_`).
+  (`FrameIntervalIsCadenceSample`, fed by `loopWasContinuous_`). Inside the modal
+  resize loop that includes a queued mouse move: the next `WM_SIZE` is generated
+  only after the frame returns, so `resizePending_` alone read every drag interval
+  as idle (HUD: FPS 66 / Max 18ms during 327ms resize frames).
 - **Cost that runs outside `RenderNow` needs its own carry-over field.**
   `cpuFrameMs` starts its clock inside `RenderNow`, so `PumpAnimations` (→
   `animationMs`) and `ApplyPendingResize` (→ `resizeMs`) are invisible to it. The

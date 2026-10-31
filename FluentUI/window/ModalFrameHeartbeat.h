@@ -78,9 +78,9 @@ public:
     bool IsRunning() const { return running_; }
 
     // Begin posting WM_FLUENT_MODAL_TICK to `hwnd` every `periodMs`. Idempotent:
-    // a second call while running is ignored (the period is fixed for the life of
-    // one drag, which is fine — the refresh rate cannot change mid-drag without a
-    // WM_DPICHANGED, and that ends the modal loop).
+    // a second call while running is ignored. To change the period mid-drag (the window
+    // crossed onto a monitor with another refresh rate but the same DPI), Stop() then
+    // Start() — NativeWindowHost::TrackRefreshMonitor does exactly that.
     void Start(HWND hwnd, double periodMs) {
         if (running_ || !hwnd) return;
 

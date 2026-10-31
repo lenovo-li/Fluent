@@ -876,7 +876,7 @@ size_t TextArea::TrimToMaxLines() {
         // index already knows it, so no scan is needed.
         bytes = lines_.LineRange(drop).first;
     } else {
-        // No index in Wrap mode, so count newlines. O(document), which is the same order
+        // Count newlines directly rather than build the index just to trim. O(document), which is the same order
         // Wrap already pays to re-lay-out after any change — it does not alter this
         // mode's cost profile, and the alternative (a cap that silently does nothing
         // under Wrap) is an API that lies.
@@ -905,6 +905,12 @@ size_t TextArea::TrimToMaxLines() {
         // O(visible) instead of O(1) — once per `maxLines_` lines appended.
         lineLayouts_.Clear();
         ++lineCacheClears_;
+    } else {
+        // Wrap keeps a line index and per-paragraph heights too, both now describing
+        // text that is gone. AppendText happened to be covered (it marks the layout
+        // dirty before trimming), but SetMaxLines on an existing document was not:
+        // the extent, paint and hit-test kept using the untrimmed paragraphs.
+        OnTextLayoutDirty();
     }
 
     // Caret and selection are absolute offsets into the buffer; everything before `bytes`

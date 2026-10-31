@@ -202,7 +202,8 @@ protected:
     void SyncImeAssociation();
 
     // Restores the IME association if this control suppressed it. FocusManager drops a
-    // detaching element's focus WITHOUT calling SetFocused(false), so OnFocusChanged
+    // detaching element's focus WITHOUT calling SetFocused(false) (it only resets the
+    // bit via ClearFocusOnDetach), so OnFocusChanged
     // never runs on that path and the window would otherwise stay IME-less.
     void OnDetachedFromTree() override;
 

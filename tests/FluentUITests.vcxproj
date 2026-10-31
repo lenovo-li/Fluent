@@ -175,6 +175,7 @@
     <ClCompile Include="unit\FrameRingTests.cpp" />
     <ClCompile Include="unit\DebugHudTests.cpp" />
     <ClCompile Include="unit\HudFeedTests.cpp" />
+    <ClCompile Include="unit\FileDialogFilterTests.cpp" />
     <ClCompile Include="unit\SessionLogTests.cpp" />
     <ClCompile Include="unit\DirtyRegionTests.cpp" />
     <ClCompile Include="unit\DirtyBoundsOverflowTests.cpp" />

@@ -25,7 +25,14 @@ void FileDialogBase::AddFilter(const std::wstring& name, const std::wstring& spe
     // Keep strings alive until Show (COMDLG_FILTERSPEC holds raw pointers).
     filterNames_.push_back(name);
     filterSpecs_.push_back(spec);
-    filters_.push_back({ filterNames_.back().c_str(), filterSpecs_.back().c_str() });
+    // Re-point EVERY entry, not just the new one. A push_back that reallocates moves
+    // the existing wstrings, and a short one ("Images", "*.png" — within MSVC's
+    // 7-wchar small-string buffer) lives inside the object, so its c_str() moves with
+    // it. Storing only the newest pointer left the earlier entries dangling, and the
+    // second AddFilter handed SetFileTypes freed memory.
+    filters_.clear();
+    for (size_t i = 0; i < filterNames_.size(); ++i)
+        filters_.push_back({ filterNames_[i].c_str(), filterSpecs_[i].c_str() });
 }
 
 std::wstring FileDialogBase::ShowDialog(HWND owner) {

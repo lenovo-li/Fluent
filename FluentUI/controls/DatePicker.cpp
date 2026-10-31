@@ -63,7 +63,7 @@ void DatePicker::OpenCalendar() {
         });
 
         // Wire SelectionChanged: calendar picks a date → close, update, fire event.
-        AddContextSubscription(
+        calendarSelectionSub_ = (
             calendar_->SelectionChanged().Subscribe(this, [](void* owner, Calendar&, RoutedEventArgs&) {
                 auto* self = static_cast<DatePicker*>(owner);
                 self->SetSelectedDate(self->calendar_->SelectedYear(),
@@ -99,8 +99,12 @@ void DatePicker::OpenCalendar() {
     // Calendar's internal metrics changed. Measure with unbounded space so
     // the calendar reports its ideal size.
     calendar_->Measure(1e6f, 1e6f);
-    float popupW = calendar_->Desired().w;
-    float popupH = calendar_->Desired().h;
+    // + the card inset on both sides: PopupHost arranges content inside it, so the
+    // natural size alone left the last column and row ~8 DIP short (ComboBox and
+    // MenuFlyout already add it).
+    const float pad = PopupHost::kContentPadding * 2.0f;
+    float popupW = calendar_->Desired().w + pad;
+    float popupH = calendar_->Desired().h + pad;
 
     if (SUCCEEDED(popup_->Open(anchor, popupW, popupH))) {
         popupOpen_ = true;
@@ -257,6 +261,12 @@ void DatePicker::OnAttachedToTree() {
 void DatePicker::OnDetachedFromTree() {
     ButtonBase::OnDetachedFromTree();
     CloseCalendar();
+    // popup_ and calendar_ are deliberately KEPT. This detach can run synchronously
+    // from inside the calendar's own dispatch — picking a date raises DateChanged, and
+    // an app handler that switches the TabControl page detaches this picker before the
+    // popup's WndProc and the calendar's Event::Raise have returned. Destroying them
+    // here freed both mid-call. The selection subscription is member-held
+    // (calendarSelectionSub_), so a kept calendar still works after re-attach.
     window_ = nullptr;
 }
 

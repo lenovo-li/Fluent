@@ -389,12 +389,20 @@ void ScrollPanel::Render(const DrawingContext& dc)
     // and a D2D transform on this device context cannot move it. The previous
     // revision translated here instead, so ordinary controls scrolled while
     // composited ones stayed nailed in place.
+    //
+    // Children get the viewport as their clip hint, not just a cull here: the usual
+    // child is ONE StackPanel whose bounds span the entire scrolled content, so
+    // culling it against the viewport keeps it, and its own cull (Panel::Render,
+    // bounds + hint) then keeps every row too. The stress page measured draw 10206
+    // for 10000 rows with ~17 on screen. Passing the viewport down makes the nested
+    // panel cull to what is visible.
+    const DrawingContext inner = dc.WithClipHint(bounds_);
     for (auto& child : children_) {
         if (!child || !child->IsVisible()) continue;
         // Cull against the viewport using on-screen bounds.
         const RectDip cb = child->VisualBounds();
         if (cb.bottom() < bounds_.y || cb.y > bounds_.bottom()) continue;
-        child->RenderWithOpacity(dc);
+        child->RenderWithOpacity(inner);
     }
 
     // Scrollbar on top of the content.

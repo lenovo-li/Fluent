@@ -3,8 +3,8 @@
 // Before this, the window owned a `focused_` pointer and flipped element focus
 // bits directly, so "who is focused" was really tracked in two places (the window
 // and each element's bool). FocusManager makes it one: it is the only code that
-// calls UIElement::SetFocused, so an element's IsFocused() can never disagree
-// with the manager. The window keeps its SetFocusElement entry point but forwards
+// calls UIElement::SetFocused (and, on detach, ClearFocusOnDetach), so an
+// element's IsFocused() can never disagree with the manager. The window keeps its SetFocusElement entry point but forwards
 // here; the caret-blink timer and IME follow the FocusChanged event.
 //
 // Navigation: MoveNext walks the tab order (CollectFocusables over the roots,

@@ -529,6 +529,23 @@ TEST(TextAreaLogAppend, CapAppliesUnderWrapToo) {
     EXPECT_TRUE(newlines + 1 <= size_t{5});
 }
 
+// Lowering the cap on an EXISTING Wrap document must rebuild the wrapped model, not just
+// the text: the scroll range has to match a document that only ever held the survivors.
+// Before the fix the paragraph-height table still described all 200 lines, so the view
+// could scroll far past the end of the 10 that remained.
+TEST(TextAreaLogAppend, LoweringTheCapUnderWrapShrinksTheScrollRange) {
+    Fixture trimmed;
+    if (!trimmed.Ready()) return;
+    trimmed.Open(Lines(200), TextWrapMode::Wrap);
+    const float before = trimmed.area.MaxOffsetDip();
+    trimmed.area.SetMaxLines(10);
+
+    Fixture fresh;
+    fresh.Open(Lines(10), TextWrapMode::Wrap);
+    EXPECT_TRUE(before > fresh.area.MaxOffsetDip() + 100.0f);  // premise: it was much taller
+    EXPECT_NEAR(trimmed.area.MaxOffsetDip(), fresh.area.MaxOffsetDip(), 1.0f);
+}
+
 TEST(TextAreaLogAppend, CapOfOneKeepsOnlyTheLastLine) {
     // Degenerate cap. Worth pinning because "drop count - max" arithmetic is where an
     // off-by-one would either keep two lines or empty the buffer entirely.
