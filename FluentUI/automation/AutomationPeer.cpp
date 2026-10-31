@@ -125,6 +125,24 @@ void UIElement::ReleaseAutomationPeer() {
     automation_->peer.reset();
 }
 
+void UIElement::OnObservedChildrenChanged() {
+    automation::IAutomationSite* site = context_.automation;
+    AutomationPeer* peer = AutomationPeerIfAny();
+    if (site && peer && peer->HasProvider()) site->QueueChildrenChanged(peer->Provider());
+}
+
+void UIElement::NotifyAutomationStructure() {
+    automation::IAutomationSite* site = context_.automation;
+    if (!site) return;
+    if (Visual* p = Parent()) {
+        // Only an observed parent (one with a peer) has a UIA view to correct.
+        if (p->IsObservingInvalidation()) static_cast<UIElement*>(p)->OnObservedChildrenChanged();
+        return;
+    }
+    // A window root. The site ignores this until a client has connected.
+    site->QueueChildrenChanged(nullptr);
+}
+
 void UIElement::OnObservedInvalidation() {
     if (automation_ && automation_->peer) automation_->peer->OnOwnerInvalidated();
 }

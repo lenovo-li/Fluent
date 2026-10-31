@@ -287,6 +287,11 @@ public:
         SysFreeString(n.bstrVal);
         return hr;
     }
+    HRESULT RaiseChildrenInvalidated(IUnknown* provider) override {
+        // Learn: pRuntimeId is used only for ChildRemoved; null for this type.
+        return UiaRaiseStructureChangedEvent(AsSimple(provider),
+                                             StructureChangeType_ChildrenInvalidated, nullptr, 0);
+    }
     void PostToHost(HWND hwnd, UINT msg) override {
         if (!PostMessageW(hwnd, msg, 0, 0))
             Trace("Uia", "PostMessage(flush) FAILED", HRESULT_FROM_WIN32(GetLastError()));

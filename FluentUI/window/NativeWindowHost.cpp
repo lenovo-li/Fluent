@@ -1264,6 +1264,13 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
         return appResult;
 
     switch (msg) {
+        case WM_SETFOCUS:
+            // The window got OS focus back (Alt+Tab, click from another app). The
+            // focus manager kept its element while inactive; UIA must hear about it
+            // again or Narrator stays silent on return. A null check without a client.
+            automation_.OnWindowFocused();
+            break;  // DefWindowProc as before
+
         case automation::WM_FLUENT_UIA_FLUSH:
             // Queued UIA actions, provider disconnects and events (AutomationHost.h).
             automation_.OnFlush();

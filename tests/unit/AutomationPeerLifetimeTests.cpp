@@ -86,9 +86,10 @@ TEST(AutomationPeerLifetime, InvokeIsPostedAndSurvivesHandlerDeletingTheButton) 
     EXPECT_EQ(clicks, 0);  // not run inside the COM call
     fx.host.OnFlush();
     EXPECT_EQ(clicks, 1);
-    // The button died in its own handler: no Invoked event for a dead element,
-    // and its provider is now frozen.
-    EXPECT_TRUE(fx.core.events.empty());
+    // The button died in its own handler: no Invoked event for a dead element
+    // (the parent's ChildrenInvalidated for the removal is expected), and its
+    // provider is now frozen.
+    for (int e : fx.core.events) EXPECT_NE(e, UIA_Invoke_InvokedEventId);
     EXPECT_EQ(inv->Invoke(), UIA_E_ELEMENTNOTAVAILABLE);
 }
 

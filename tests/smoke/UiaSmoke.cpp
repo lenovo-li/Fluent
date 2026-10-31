@@ -115,6 +115,44 @@ private:
 
 namespace {
 
+// Counts the events UIA core actually DELIVERS to a subscribed client: proves our
+// raises reach a real client (UiaClientsAreListening true, provider resolvable).
+class EventCounter final : public IUIAutomationFocusChangedEventHandler,
+                           public IUIAutomationStructureChangedEventHandler {
+public:
+    std::atomic<int> focus{0}, structure{0};
+    IFACEMETHODIMP_(ULONG) AddRef() override { return ++refs_; }
+    IFACEMETHODIMP_(ULONG) Release() override {
+        const ULONG r = --refs_;
+        if (!r) delete this;
+        return r;
+    }
+    IFACEMETHODIMP QueryInterface(REFIID riid, void** out) override {
+        if (riid == __uuidof(IUnknown) || riid == __uuidof(IUIAutomationFocusChangedEventHandler))
+            *out = static_cast<IUIAutomationFocusChangedEventHandler*>(this);
+        else if (riid == __uuidof(IUIAutomationStructureChangedEventHandler))
+            *out = static_cast<IUIAutomationStructureChangedEventHandler*>(this);
+        else {
+            *out = nullptr;
+            return E_NOINTERFACE;
+        }
+        AddRef();
+        return S_OK;
+    }
+    IFACEMETHODIMP HandleFocusChangedEvent(IUIAutomationElement*) override {
+        ++focus;
+        return S_OK;
+    }
+    IFACEMETHODIMP HandleStructureChangedEvent(IUIAutomationElement*, StructureChangeType,
+                                               SAFEARRAY*) override {
+        ++structure;
+        return S_OK;
+    }
+
+private:
+    std::atomic<ULONG> refs_{1};
+};
+
 ComPtr<IUIAutomationElement> FindById(IUIAutomation* uia, IUIAutomationElement* root,
                                       const wchar_t* id) {
     VARIANT v;
@@ -149,8 +187,24 @@ void RunClient(HWND hwnd) {
         ComPtr<IUIAutomation> uia;
         Check(SUCCEEDED(CoCreateInstance(__uuidof(CUIAutomation), nullptr, CLSCTX_INPROC_SERVER,
                                          IID_PPV_ARGS(&uia))), "CoCreateInstance(CUIAutomation)");
+        // The client thread starts as soon as Show() returns, before the UI thread
+        // enters its pump; on a busy machine (right after a build) the first
+        // WM_GETOBJECT can time out inside UIA. Wait for the window to answer
+        // messages, then retry the connection instead of failing the whole run.
+        WaitFor([&] {
+            DWORD_PTR r = 0;
+            return SendMessageTimeoutW(hwnd, WM_NULL, 0, 0, SMTO_ABORTIFHUNG, 200, &r) != 0;
+        }, 5000);
         ComPtr<IUIAutomationElement> root;
-        if (uia) uia->ElementFromHandle(hwnd, &root);
+        WaitFor([&] {
+            root.Reset();
+            if (uia) uia->ElementFromHandle(hwnd, &root);
+            BSTR f = nullptr;
+            const bool ours = root && SUCCEEDED(root->get_CurrentFrameworkId(&f)) && f &&
+                              wcscmp(f, L"FluentUI") == 0;
+            SysFreeString(f);
+            return ours;
+        }, 10000);
         Check(root != nullptr, "ElementFromHandle(window)");
         BSTR fw = nullptr;
         if (root) root->get_CurrentFrameworkId(&fw);
@@ -184,6 +238,16 @@ void RunClient(HWND hwnd) {
         BOOL same = FALSE;
         if (uia && hit && btn) uia->CompareElements(hit.Get(), btn.Get(), &same);
         Check(same == TRUE, "ElementFromPoint(button centre) == button");
+
+        // Event delivery: subscribe like Narrator/Accessibility Insights do.
+        ComPtr<EventCounter> events;
+        events.Attach(new EventCounter());
+        if (uia) {
+            uia->AddFocusChangedEventHandler(nullptr, events.Get());
+            if (root)
+                uia->AddStructureChangedEventHandler(root.Get(), TreeScope_Subtree, nullptr,
+                                                     events.Get());
+        }
 
         // Action-menu checks: Invoke, Toggle, SetValue through the real patterns.
         ComPtr<IUIAutomationInvokePattern> inv;
@@ -222,6 +286,12 @@ void RunClient(HWND hwnd) {
                   return chk && SUCCEEDED(chk->get_CurrentHasKeyboardFocus(&f)) && f;
               }),
               "SetFocus -> HasKeyboardFocus");
+        Check(WaitFor([&] { return events->focus.load() > 0; }), "FocusChanged event delivered");
+        // Window re-activation (Alt+Tab back): WM_SETFOCUS re-announces the focus.
+        const int focusBefore = events->focus.load();
+        PostMessageW(hwnd, WM_SETFOCUS, 0, 0);
+        Check(WaitFor([&] { return events->focus.load() > focusBefore; }),
+              "WM_SETFOCUS -> FocusChanged re-announced");
 
         // Removal under a real client: invoking a button that removes itself; the
         // element the client still holds must then report not-available.
@@ -239,6 +309,9 @@ void RunClient(HWND hwnd) {
               }),
               "removed element -> UIA_E_ELEMENTNOTAVAILABLE");
         Check(root && FindById(uia.Get(), root.Get(), L"doomed") == nullptr, "removed element gone from tree");
+        Check(WaitFor([&] { return events->structure.load() > 0; }),
+              "removal -> StructureChanged event delivered");
+        if (uia) uia->RemoveAllEventHandlers();
 
         // Close check: after the window closes, cached elements are dead, not hung.
         PostMessageW(hwnd, WM_CLOSE, 0, 0);

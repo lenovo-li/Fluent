@@ -56,6 +56,10 @@ public:
     virtual void QueueChanged(IUnknown* provider) = 0;
     virtual void QueueInvoked(IUnknown* provider) = 0;
     virtual void QueueSelected(IUnknown* provider) = 0;
+    // The exposed children of `provider` changed (added, removed, hidden, shown);
+    // null = the window root's children. Raised as ChildrenInvalidated, once per
+    // parent per flush, only while a client listens.
+    virtual void QueueChildrenChanged(IUnknown* parentProviderOrNull) = 0;
 };
 
 }  // namespace fluent::automation

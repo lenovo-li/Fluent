@@ -151,3 +151,85 @@ TEST(AutomationReviewFix, DisconnectsInsideSendMessageDoNotRepostForever) {
     fx.host.OnFlush();  // the next flush catches up
     EXPECT_EQ(fx.host.PendingDisconnects(), static_cast<size_t>(0));
 }
+
+// --- StructureChanged and window re-focus ------------------------------------
+
+namespace {
+size_t CountStructure(const RecordingCore& c, IUnknown* on) {
+    size_t n = 0;
+    for (size_t i = 0; i < c.structureOn.size(); ++i) n += c.structureOn[i] == on;
+    return n;
+}
+IUnknown* ProviderOf(UIElement* e) {
+    return e->AutomationPeerIfAny() ? e->AutomationPeerIfAny()->Provider() : nullptr;
+}
+}  // namespace
+
+TEST(AutomationStructure, AddRemoveHideRaiseChildrenInvalidatedOnceOnTheParent) {
+    UiaFixture fx;
+    fx.root->Emplace<Button>();
+    fx.Attach();
+    auto panel = Nav(fx.Connect().Get(), NavigateDirection_FirstChild);  // peer for root
+    IUnknown* rootProv = ProviderOf(fx.root.get());
+    EXPECT_TRUE(rootProv != nullptr);
+    fx.core.structureOn.clear();
+
+    // Each cause on its own (a hook missing for any one of them must fail here)...
+    auto* added = fx.root->Emplace<Button>();  // attach
+    fx.host.OnFlush();
+    EXPECT_EQ(CountStructure(fx.core, rootProv), static_cast<size_t>(1));
+    added->SetVisible(false);  // hide
+    fx.host.OnFlush();
+    EXPECT_EQ(CountStructure(fx.core, rootProv), static_cast<size_t>(2));
+    added->SetVisible(true);  // show
+    fx.host.OnFlush();
+    EXPECT_EQ(CountStructure(fx.core, rootProv), static_cast<size_t>(3));
+    fx.root->RemoveAt(0);  // detach
+    fx.host.OnFlush();
+    EXPECT_EQ(CountStructure(fx.core, rootProv), static_cast<size_t>(4));
+    // ...and a burst of all of them is ONE event per parent per flush.
+    auto* b = fx.root->Emplace<Button>();
+    b->SetVisible(false);
+    fx.root->Emplace<Button>();
+    fx.host.OnFlush();
+    EXPECT_EQ(CountStructure(fx.core, rootProv), static_cast<size_t>(5));
+}
+
+TEST(AutomationStructure, NoStructureEventsWithoutAClientOrForUnobservedParents) {
+    UiaFixture fx;
+    auto* inner = fx.root->Emplace<StackPanel>();
+    fx.Attach();
+    // No client yet: adding anywhere raises nothing and posts nothing.
+    inner->Emplace<Button>();
+    EXPECT_EQ(fx.core.flushPosts, 0);
+    // Client connected, but `inner` has no peer (never visited): still nothing.
+    fx.Connect();
+    inner->Emplace<Button>();
+    fx.host.OnFlush();
+    EXPECT_TRUE(fx.core.structureOn.empty());
+}
+
+TEST(AutomationStructure, WindowRefocusReannouncesTheFocusedElement) {
+    UiaFixture fx;
+    auto* btn = fx.root->Emplace<Button>();
+    fx.Attach();
+    fx.Connect();
+    fx.window.focused = btn;
+    fx.host.OnWindowFocused();
+    fx.host.OnFlush();
+    size_t focus = 0;
+    for (int e : fx.core.events) focus += e == UIA_AutomationFocusChangedEventId;
+    EXPECT_EQ(focus, static_cast<size_t>(1));
+    EXPECT_TRUE(btn->AutomationPeerIfAny() != nullptr);
+}
+
+TEST(AutomationStructure, WindowRefocusWithNothingFocusedAnnouncesTheRoot) {
+    UiaFixture fx;
+    fx.Attach();
+    fx.Connect();
+    fx.window.focused = nullptr;
+    fx.host.OnWindowFocused();
+    fx.host.OnFlush();
+    EXPECT_EQ(fx.core.events.size(), static_cast<size_t>(1));
+    EXPECT_TRUE(!fx.core.events.empty() && fx.core.events[0] == UIA_AutomationFocusChangedEventId);
+}

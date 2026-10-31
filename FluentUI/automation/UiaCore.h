@@ -42,6 +42,8 @@ public:
     virtual HRESULT RaiseIntChanged(IUnknown* provider, int propertyId, int oldV, int newV) = 0;
     virtual HRESULT RaiseStringChanged(IUnknown* provider, int propertyId, const wchar_t* oldV,
                                        const wchar_t* newV) = 0;
+    // UiaRaiseStructureChangedEvent(provider, StructureChangeType_ChildrenInvalidated).
+    virtual HRESULT RaiseChildrenInvalidated(IUnknown* provider) = 0;
     // PostMessageW(hwnd, msg, 0, 0) for the host's coalesced flush.
     virtual void PostToHost(HWND hwnd, UINT msg) = 0;
 };

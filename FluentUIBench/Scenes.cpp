@@ -22,6 +22,10 @@
 #include "../FluentUI/diagnostics/PerformanceCounters.h"
 #include "../FluentUI/controls/Expander.h"
 #include "../FluentUI/controls/ListBox.h"
+#include "../FluentUI/automation/AutomationHost.h"
+#include "../FluentUI/automation/AutomationPeer.h"
+#include "../FluentUI/automation/UiaCore.h"
+#include "../FluentUI/core/UIContext.h"
 
 #include <cstdio>
 #include <memory>
@@ -482,6 +486,161 @@ Result DirtyWalk() {
     return r;
 }
 
+// ---- 12b. UI Automation cost ---------------------------------------------------
+
+// A UIA core stand-in: counts what the host would ask of UIAutomationCore without
+// calling it. `listening` decides UiaClientsAreListening(). Nothing here creates a
+// window, so the scenes measure the framework's own UIA bookkeeping only.
+struct BenchUiaCore final : automation::IUiaCore {
+    bool listening = false;
+    size_t posts = 0, raised = 0;
+    LRESULT ReturnProvider(HWND, WPARAM, LPARAM, IUnknown*) override { return 1; }
+    HRESULT DisconnectProvider(IUnknown*) override { return S_OK; }
+    void ReleaseEventMap(HWND) override {}
+    bool InSendMessage() override { return false; }
+    bool ClientsAreListening() override { return listening; }
+    HRESULT RaiseEvent(IUnknown*, int) override { ++raised; return S_OK; }
+    HRESULT RaiseBoolChanged(IUnknown*, int, bool, bool) override { ++raised; return S_OK; }
+    HRESULT RaiseIntChanged(IUnknown*, int, int, int) override { ++raised; return S_OK; }
+    HRESULT RaiseStringChanged(IUnknown*, int, const wchar_t*, const wchar_t*) override { ++raised; return S_OK; }
+    HRESULT RaiseChildrenInvalidated(IUnknown*) override { ++raised; return S_OK; }
+    void PostToHost(HWND, UINT) override { ++posts; }
+};
+struct BenchUiaWindow final : automation::IAutomationWindow {
+    UIElement* root = nullptr;
+    size_t AutomationRootCount() const override { return 1; }
+    UIElement* AutomationRootAt(size_t) const override { return root; }
+    UIElement* AutomationFocusedElement() const override { return nullptr; }
+};
+
+// The DirtyWalk frame (poke one leaf, the two layout queries, collect, clear),
+// returning us/frame. `site` null = a tree with no automation at all (baseline).
+double BenchUiaFrames(automation::IAutomationSite* site, int frames, bool touchPeers,
+                      size_t* peersOut) {
+    constexpr int kSections = 20, kGroups = 10, kLeaves = 10;
+    StackPanel root;
+    std::vector<BenchPokeLeaf*> leaves;
+    for (int s = 0; s < kSections; ++s) {
+        auto* section = root.Emplace<StackPanel>();
+        for (int g = 0; g < kGroups; ++g) {
+            auto* group = section->Emplace<StackPanel>();
+            for (int l = 0; l < kLeaves; ++l) leaves.push_back(group->Emplace<BenchPokeLeaf>());
+        }
+    }
+    UIContext ctx;
+    ctx.automation = site;
+    root.AttachToContext(ctx);
+    root.UpdateLayout({0, 0, 800, 100000});
+    root.ClearDirtySubtree();
+    // A client that walked the whole tree once: every leaf has a peer + provider.
+    if (touchPeers)
+        for (auto* l : leaves)
+            if (auto* p = l->GetOrCreateAutomationPeer()) p->Provider();
+    if (peersOut) *peersOut = automation::AutomationPeer::LiveCount();
+    std::vector<RectDip> dirty;
+    double ms = 0.0;
+    {
+        ScopedTimer t(ms);
+        for (int f = 0; f < frames; ++f) {
+            leaves[(static_cast<size_t>(f) * 997u) % leaves.size()]->Poke();
+            (void)root.AnyDirtyInSubtree(DirtyFlags::Measure);
+            (void)root.AnyDirtyInSubtree(DirtyFlags::Arrange);
+            dirty.clear();
+            root.CollectDirtyBounds(dirty);
+            root.ClearDirtySubtree();
+        }
+    }
+    root.DetachFromContext();
+    return ms * 1000.0 / frames;
+}
+
+Result UiaNoClient() {
+    // The user's requirement: UIA must not cost the UI thread anything while no
+    // client (Narrator, Inspect, a test tool) is attached. Three trees, same frame:
+    //   baseline     no automation site at all (what the framework cost before UIA);
+    //   site, idle   the window's AutomationHost wired in, no client ever connected;
+    //   peers, gone  a client walked every element (all 2,000 leaves have peers) and
+    //                then stopped listening: the worst idle case, since peers outlive
+    //                the client that created them.
+    // Each run is repeated and the best kept, so scheduler noise does not decide.
+    constexpr int kFrames = 20000, kReps = 5;
+    BenchUiaCore core;
+    BenchUiaWindow win;
+    automation::AutomationHost host(core);
+    host.Bind(&win);
+    double base = 1e9, idle = 1e9, gone = 1e9;
+    size_t peers = 0;
+    for (int r = 0; r < kReps; ++r) {
+        base = std::min(base, BenchUiaFrames(nullptr, kFrames, false, nullptr));
+        idle = std::min(idle, BenchUiaFrames(&host, kFrames, false, nullptr));
+        gone = std::min(gone, BenchUiaFrames(&host, kFrames, true, &peers));
+    }
+    host.OnWindowDestroyed(nullptr);
+    Result res;
+    res.primaryMs = gone * kFrames / 1000.0;
+    res.perFrameMs = gone / 1000.0;
+    res.budgetFraction = 0.05;  // same order-of-magnitude gate as DirtyWalk
+    std::snprintf(msgbuf, sizeof(msgbuf),
+                  "us/frame: baseline %.3f | site, no client %.3f | %zu peers, client gone %.3f; "
+                  "flush posts=%zu (must be 0), UIA calls=%zu (must be 0)",
+                  base, idle, peers, gone, core.posts, core.raised);
+    res.metric = msgbuf;
+    res.note = "Headless: the host and peers are real, UIA core is a counter. Live check: "
+               "F12 HUD CPU Max with and without Inspect running is the same.";
+    return res;
+}
+
+Result UiaListening() {
+    // A client IS listening and has walked the tree: each invalidation of a leaf
+    // with a peer queues one re-check, coalesced per flush. Measures the per-frame
+    // bookkeeping (queue + one flush per frame) against the same tree.
+    constexpr int kFrames = 20000;
+    BenchUiaCore core;
+    core.listening = true;
+    BenchUiaWindow win;
+    automation::AutomationHost host(core);
+    host.Bind(&win);
+    StackPanel root;
+    std::vector<BenchPokeLeaf*> leaves;
+    for (int i = 0; i < 2000; ++i) leaves.push_back(root.Emplace<BenchPokeLeaf>());
+    win.root = &root;
+    UIContext ctx;
+    ctx.automation = &host;
+    root.AttachToContext(ctx);
+    root.UpdateLayout({0, 0, 800, 100000});
+    // The client's first contact (WM_GETOBJECT) gives the host its HWND and root
+    // provider; a dummy handle, since BenchUiaCore never dereferences it.
+    LRESULT lr = 0;
+    host.OnGetObject(reinterpret_cast<HWND>(static_cast<uintptr_t>(0x1234)), 0,
+                     static_cast<LPARAM>(-25) /* UiaRootObjectId */, false, lr);
+    for (auto* l : leaves)
+        if (auto* p = l->GetOrCreateAutomationPeer()) p->Provider();
+    double ms = 0.0;
+    {
+        ScopedTimer t(ms);
+        for (int f = 0; f < kFrames; ++f) {
+            // A burst: 8 invalidations of the same leaf in one frame (hover + text +
+            // focus visuals), then the frame's single flush.
+            auto* leaf = leaves[(static_cast<size_t>(f) * 997u) % leaves.size()];
+            for (int k = 0; k < 8; ++k) leaf->Poke();
+            host.OnFlush();
+        }
+    }
+    root.DetachFromContext();
+    host.OnWindowDestroyed(nullptr);
+    Result res;
+    res.primaryMs = ms;
+    res.perFrameMs = ms / kFrames;
+    std::snprintf(msgbuf, sizeof(msgbuf),
+                  "%.3f us/frame for 8 invalidations + 1 flush; posts=%zu over %d frames "
+                  "(coalesced: <= 1 per frame), property raises=%zu (0: nothing changed)",
+                  ms * 1000.0 / kFrames, core.posts, kFrames, core.raised);
+    res.metric = msgbuf;
+    res.note = "Raises stay 0 because a Poke changes no reported property: the re-check "
+               "runs but finds nothing, which is the common case (hover, caret blink).";
+    return res;
+}
+
 // ---- 13. ListBox Shift+End over 1M items ------------------------------------
 
 // Event handler for the subscribed variant below. Event handlers are plain function
@@ -590,4 +749,6 @@ REGISTER_SCENE("InputLatency", "Pointer-down to Present", InputLatency);
 REGISTER_SCENE("IdleTest", "Idle 30s: no periodic Present", IdleTest);
 REGISTER_SCENE("FrameCoalescing", "N invalidations merge into one frame", FrameCoalescing);
 REGISTER_SCENE("DirtyWalk", "Per-frame dirty analysis, 1 dirty leaf in 2k", DirtyWalk);
+REGISTER_SCENE("UiaNoClient", "UI Automation compiled in, no client: frame cost vs baseline", UiaNoClient);
+REGISTER_SCENE("UiaListening", "UI Automation with a listening client: invalidation flood", UiaListening);
 REGISTER_SCENE("ListBoxShiftEnd", "Shift+End range select over 1M ListBox items", ListBoxShiftEnd);

@@ -50,7 +50,11 @@ public:
         // ProgressBar's indeterminate sweep). Those pixels come from a DComp visual
         // the compositor draws on its own thread — skipping their D2D Render does NOT
         // hide them, so they must push the state down to the compositor themselves.
-        if (SetProperty(visible_, v, DirtyFlags::Measure)) OnVisibilityChanged(v);
+        if (SetProperty(visible_, v, DirtyFlags::Measure)) {
+            OnVisibilityChanged(v);
+            // A hidden child leaves the parent's UI Automation children (see below).
+            if (parent_ && parent_->observeInvalidation_) parent_->OnObservedChildrenChanged();
+        }
     }
 
     // --- Opacity ----------------------------------------------------------
@@ -102,6 +106,10 @@ public:
     // be reported and its flags never cleared. No frame is requested here; the
     // container that adopts the child (Panel::Add, Border::SetChild, ...) already
     // invalidates itself, which is what schedules the frame.
+    // True while an invalidation observer is set (SetObserveInvalidation): for
+    // UIElement, while a UI Automation peer exists.
+    bool IsObservingInvalidation() const { return observeInvalidation_; }
+
     void SetParent(Visual* parent) {
         parent_ = parent;
         if (parent_ && Any(subtreeDirty_)) MarkAncestorsSubtreeDirty(subtreeDirty_);
@@ -315,6 +323,9 @@ protected:
     // stays ignorant of automation, like OnMeasureInvalidated.
     void SetObserveInvalidation(bool on) { observeInvalidation_ = on; }
     virtual void OnObservedInvalidation() {}
+    // Same observer, for "which of my children are shown" changing (a child was
+    // attached, detached, hidden or shown). Called only on an observed parent.
+    virtual void OnObservedChildrenChanged() {}
 
 private:
     // OR `flags` into the subtree mark of every ancestor (not this node). Walks to

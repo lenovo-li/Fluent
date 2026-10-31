@@ -108,6 +108,14 @@ void AutomationHost::QueueChanged(IUnknown* p) {
 void AutomationHost::QueueInvoked(IUnknown* p) { if (p && !torn_down_) { PushUnique(invoked_, p); RequestFlush(); } }
 void AutomationHost::QueueSelected(IUnknown* p) { if (p && !torn_down_) { PushUnique(selected_, p); RequestFlush(); } }
 
+void AutomationHost::QueueChildrenChanged(IUnknown* parent) {
+    // No client ever connected (no root): nobody holds a view of the tree to fix.
+    if (!root_ || torn_down_ || !core_->ClientsAreListening()) return;
+    if (parent) PushUnique(structure_, parent);
+    else structureRoot_ = true;
+    RequestFlush();
+}
+
 
 // --- Flush --------------------------------------------------------------------
 
@@ -151,6 +159,10 @@ void AutomationHost::RaiseEvents() {
     invoked.swap(invoked_);
     selected.swap(selected_);
     Ref focus = std::move(focus_);
+    std::vector<Ref> structure;
+    structure.swap(structure_);
+    const bool structureRoot = structureRoot_, focusRoot = focusRoot_;
+    structureRoot_ = focusRoot_ = false;
     // The client stopped listening since these were queued: drop them unread.
     // (The baseline then lags; a later client's first diff may carry an old "old
     // value", which UIA clients treat as advisory.)
@@ -161,7 +173,12 @@ void AutomationHost::RaiseEvents() {
         if (PeerFromProvider(i.Get())) core_->RaiseEvent(i.Get(), kInvokedEventId);
     for (const Ref& sel : selected)
         if (PeerFromProvider(sel.Get())) core_->RaiseEvent(sel.Get(), kElementSelectedEventId);
+    // Structure before focus: a client must be able to find the newly focused node.
+    for (const Ref& p : structure)
+        if (PeerFromProvider(p.Get())) core_->RaiseChildrenInvalidated(p.Get());
+    if (structureRoot && root_) core_->RaiseChildrenInvalidated(root_.Get());
     if (focus && PeerFromProvider(focus.Get())) core_->RaiseEvent(focus.Get(), kFocusChangedEventId);
+    else if (focusRoot && root_) core_->RaiseEvent(root_.Get(), kFocusChangedEventId);
 }
 
 void AutomationHost::OnFocusChanged(UIElement* newFocus) {
@@ -176,6 +193,18 @@ void AutomationHost::OnFocusChanged(UIElement* newFocus) {
     IUnknown* prov = peer ? peer->Provider() : nullptr;
     if (!prov) return;
     focus_ = prov;  // coalesced: only the last focus change of a batch is raised
+    focusRoot_ = false;
+    RequestFlush();
+}
+
+void AutomationHost::OnWindowFocused() {
+    if (!root_ || torn_down_ || !core_->ClientsAreListening()) return;
+    if (UIElement* f = FocusedElement()) {
+        OnFocusChanged(f);
+        return;
+    }
+    focus_.Reset();
+    focusRoot_ = true;
     RequestFlush();
 }
 
@@ -188,7 +217,9 @@ void AutomationHost::OnWindowDestroying() {
     changed_.clear();
     invoked_.clear();
     selected_.clear();
+    structure_.clear();
     focus_.Reset();
+    focusRoot_ = structureRoot_ = false;
 }
 
 void AutomationHost::OnWindowDestroyed(HWND hwnd) {

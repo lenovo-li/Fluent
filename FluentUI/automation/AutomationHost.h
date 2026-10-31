@@ -75,6 +75,9 @@ public:
     void OnFlush();
     // The window's FocusChanged hook. A null check when no client ever came.
     void OnFocusChanged(UIElement* newFocus);
+    // WM_SETFOCUS: the window got OS focus back (Alt+Tab). Re-announces the focused
+    // element, or the window root when nothing inside is focused.
+    void OnWindowFocused();
 
     // Teardown, in this order around the window's element detach (see top).
     void OnWindowDestroying();
@@ -97,6 +100,7 @@ public:
     void QueueChanged(IUnknown* provider) override;
     void QueueInvoked(IUnknown* provider) override;
     void QueueSelected(IUnknown* provider) override;
+    void QueueChildrenChanged(IUnknown* parentProviderOrNull) override;
 
 private:
     using Ref = Microsoft::WRL::ComPtr<IUnknown>;
@@ -118,8 +122,10 @@ private:
     unsigned disconnected_ = 0, disconnectFailures_ = 0;  // traced at window teardown
     std::vector<Action> actions_;
     std::vector<Ref> disconnects_;
-    std::vector<Ref> changed_, invoked_, selected_;
+    std::vector<Ref> changed_, invoked_, selected_, structure_;
     Ref focus_;
+    bool focusRoot_ = false;      // focus event for the window root itself
+    bool structureRoot_ = false;  // the root's children changed
 };
 
 }  // namespace fluent::automation

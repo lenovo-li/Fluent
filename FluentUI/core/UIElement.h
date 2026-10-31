@@ -837,6 +837,11 @@ private:
     automation::AutomationState& EnsureAutomationState();
     void ReleaseAutomationPeer();
     void OnObservedInvalidation() override;
+    void OnObservedChildrenChanged() override;
+    // Tells UIA that this element joined or left its parent's exposed children.
+    // A pointer check unless the parent has a peer (a client looked at it) or this
+    // is a window root of a window a client is connected to.
+    void NotifyAutomationStructure();
 };
 
 } // namespace fluent

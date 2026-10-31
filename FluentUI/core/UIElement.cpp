@@ -55,6 +55,7 @@ void UIElement::AttachToContext(const UIContext& ctx) {
     // OnAttachedToTree runs before its descendants'.
     OnAttachedToTree();
     AttachChildren(ctx);
+    NotifyAutomationStructure();
 }
 
 void UIElement::DetachFromContext() {
@@ -72,6 +73,8 @@ void UIElement::DetachFromContext() {
     // finally clear the context so Context() reads empty while detached.
     DetachChildren();
     OnDetachedFromTree();
+    // While context_ (the automation site) is still valid.
+    NotifyAutomationStructure();
     // After the subclass hook, before context_ is cleared: the peer needs the
     // context's automation site to queue its provider's disconnect. Children
     // were released first (DetachChildren), matching the detach order.

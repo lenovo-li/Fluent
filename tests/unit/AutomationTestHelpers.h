@@ -68,6 +68,15 @@ struct RecordingCore final : fluent::automation::IUiaCore {
         return S_OK;
     }
     void PostToHost(HWND, UINT) override { ++flushPosts; }
+    // StructureChanged is recorded in `events` with this sentinel id, together with
+    // the provider it was raised on.
+    static constexpr int kChildrenInvalidated = -1;
+    std::vector<IUnknown*> structureOn;
+    HRESULT RaiseChildrenInvalidated(IUnknown* p) override {
+        events.push_back(kChildrenInvalidated);
+        structureOn.push_back(p);
+        return S_OK;
+    }
 };
 
 inline HWND DummyHwnd() { return reinterpret_cast<HWND>(static_cast<uintptr_t>(0x1234)); }
