@@ -49,7 +49,9 @@ struct ThemeChangedArgs {};
 class Application;
 class HudOverlay;
 
-class NativeWindowHost : public WindowServices, public IDropTarget {
+class NativeWindowHost : public WindowServices,
+                         public IDropTarget,
+                         private automation::IAutomationWindow {
 public:
     // Out of line (with the destructor) because hud_ is a unique_ptr to a type this
     // header only forward-declares; an implicit constructor would need its destructor
@@ -879,6 +881,12 @@ private:
     // a UIA client sends WM_GETOBJECT; torn down in WM_DESTROY (and the destructor
     // safety net) while hwnd_ is still valid, as UiaReturnRawElementProvider needs it.
     automation::AutomationHost automation_;
+    // automation::IAutomationWindow: the roots and focus the UIA tree exposes.
+    size_t AutomationRootCount() const override { return elements_.size(); }
+    UIElement* AutomationRootAt(size_t i) const override {
+        return i < elements_.size() ? elements_[i] : nullptr;
+    }
+    UIElement* AutomationFocusedElement() const override { return FocusedElement(); }
 
     // Per-frame animation subsystem. FrameHost encapsulates the
     // frame scheduler (clock: running/dt state, arm/disarm logic) and animation

@@ -181,6 +181,12 @@ void Viewbox::CollectFocusables(std::vector<UIElement*>& out) {
     if (content_ && content_->IsVisible()) content_->CollectFocusables(out);
 }
 
+RectDip Viewbox::MapChildRectToSelf(const RectDip& r) const {
+    // The content lays out unscaled from bounds_'s origin; Render scales about it.
+    return {bounds_.x + (r.x - bounds_.x) * scaleX_, bounds_.y + (r.y - bounds_.y) * scaleY_,
+            r.w * scaleX_, r.h * scaleY_};
+}
+
 void Viewbox::CollectDirtyBoundsOverride(std::vector<RectDip>& out) {
     if (IsVisible() && Any(Dirty())) out.push_back(VisualBounds());
     // The child reports its dirty rects in UNSCALED space, which is not where the
@@ -198,10 +204,7 @@ void Viewbox::CollectDirtyBoundsOverride(std::vector<RectDip>& out) {
     content_->CollectDirtyBounds(out);
     for (size_t i = first; i < out.size(); ++i) {
         RectDip& r = out[i];
-        r = {bounds_.x + (r.x - bounds_.x) * scaleX_,
-             bounds_.y + (r.y - bounds_.y) * scaleY_,
-             r.w * scaleX_, r.h * scaleY_};
-        r = r.inflated(1.0f);
+        r = MapChildRectToSelf(r).inflated(1.0f);
     }
 }
 

@@ -332,6 +332,21 @@ void TextEditBase::InsertText(const std::wstring& raw) {
     Changed();
 }
 
+void TextEditBase::ReplaceAllAsUserEdit(const std::wstring& text) {
+    if (readOnly_) return;
+    selAnchor_ = 0;
+    caret_ = static_cast<UINT32>(text_.size());
+    if (!text.empty()) {
+        InsertText(text);  // replaces the selection: one Replace undo entry + Changed()
+        return;
+    }
+    // InsertText ignores an empty run, so clearing is the Backspace-over-selection path.
+    if (!HasSelection()) return;
+    DeleteSelectionRecorded();
+    OnTextLayoutDirty();
+    Changed();
+}
+
 void TextEditBase::EraseRange(UINT32 start, UINT32 len) {
     if (readOnly_ || len == 0 || start >= text_.size()) return;
     len = std::min<UINT32>(len, static_cast<UINT32>(text_.size()) - start);

@@ -14,6 +14,7 @@ void Visual::InvalidateDirty(DirtyFlags flags) {
     // measure state itself, so it delegates to the hook UIElement overrides —
     // keeping the layer boundary clean.
     if (Has(flags, DirtyFlags::Measure)) OnMeasureInvalidated();
+    if (observeInvalidation_) OnObservedInvalidation();
 
     // Record the change in the subtree mark of this node and of every ancestor,
     // so the host's per-frame walks can skip every subtree nobody touched (see

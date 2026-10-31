@@ -307,6 +307,15 @@ protected:
     // Visual having to know about it (keeps the layer boundary clean).
     virtual void OnMeasureInvalidated() {}
 
+    // Invalidation observer: when set, InvalidateDirty also calls
+    // OnObservedInvalidation(). UIElement sets it only while a UI Automation peer
+    // exists for the element (a client has looked at it), so the peer can re-check
+    // its reported properties. Unset — every element without a client — the cost is
+    // this one byte test per invalidation; no virtual call. Kept generic so Visual
+    // stays ignorant of automation, like OnMeasureInvalidated.
+    void SetObserveInvalidation(bool on) { observeInvalidation_ = on; }
+    virtual void OnObservedInvalidation() {}
+
 private:
     // OR `flags` into the subtree mark of every ancestor (not this node). Walks to
     // the root unconditionally rather than stopping at the first ancestor whose
@@ -319,6 +328,7 @@ private:
     }
 
     bool visible_ = true;
+    bool observeInvalidation_ = false;  // see SetObserveInvalidation
     float opacity_ = 1.0f;      // [0..1]; 1 = opaque (multiplier skipped entirely)
     Visual* parent_ = nullptr;  // non-owning; set by Panel::Add
     DirtyFlags dirty_ = DirtyFlags::None;  // accumulated between frames

@@ -77,6 +77,12 @@ public:
     // which invalidates Measure to keep layout caching correct. Returns nullptr for an
     // out-of-range index instead of asserting, because a walker iterating a tree that is
     // being mutated is a normal situation for a debugging tool, not a programming error.
+    // UI Automation children: every child (attached state is filtered by the
+    // automation tree, so a container that detaches some children needs no override).
+    size_t LogicalChildCount() const override { return children_.size(); }
+    UIElement* LogicalChildAt(size_t i) const override {
+        return i < children_.size() ? children_[i].get() : nullptr;
+    }
     FrameworkElement* ChildAt(size_t i) const {
         return i < children_.size() ? children_[i].get() : nullptr;
     }

@@ -124,6 +124,12 @@ public:
     // Whether the content is attached to the live tree. Exposed because
     // "collapsed means detached" is the design and a test has no other way to see it.
     bool IsContentAttached() const;
+    // UI Automation: the content only while expanded (attached); collapsed
+    // content is not in the UIA tree, as in WPF.
+    size_t LogicalChildCount() const override { return IsContentAttached() ? 1 : 0; }
+    UIElement* LogicalChildAt(size_t i) const override {
+        return i == 0 && IsContentAttached() ? content_.get() : nullptr;
+    }
 
     // The header row's rect in window DIPs. Public so a headless test can check
     // hit-testing without a device, matching TabControl::HeaderRect.

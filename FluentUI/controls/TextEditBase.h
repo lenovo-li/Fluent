@@ -38,6 +38,13 @@ public:
 
     // Limit the text length. 0 (default) = unlimited. Enforced at insertion time
     // (typing, paste, IME commit); SetText is NOT clamped — it sets initial content.
+    // Replace the whole text the way the USER would (select all + type/paste):
+    // casing, InputFilter and MaxLength apply, it is one undo step, and TextChanged
+    // is raised. SetText, by contrast, is the app loading a new document. Used by
+    // UI Automation's ValuePattern.SetValue so a form filler or test tool updates the
+    // app's model exactly like typing does. No-op when read-only.
+    void ReplaceAllAsUserEdit(const std::wstring& text);
+
     void SetMaxLength(size_t len) { maxLength_ = len; }
     size_t MaxLength() const { return maxLength_; }
 
@@ -164,6 +171,8 @@ public:
     void OnImeEndComposition(HWND hwnd) override;
 
 protected:
+    // UI Automation peer (automation/ControlPeers.h); defined in ControlPeers.cpp.
+    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
     void OnFocusChanged() override;
     // DWrite arrives with the tree context: rebuild the cached
     // layout and repaint once attached (replaces the old SetDWrite side effects).

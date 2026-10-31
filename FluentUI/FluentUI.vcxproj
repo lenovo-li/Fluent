@@ -190,6 +190,14 @@
     <ClInclude Include="automation\AutomationHost.h" />
     <ClInclude Include="automation\UiaProvider.h" />
     <ClInclude Include="automation\UiaCore.h" />
+    <ClInclude Include="automation\AutomationTypes.h" />
+    <ClInclude Include="automation\AutomationGeometry.h" />
+    <ClInclude Include="automation\AutomationSite.h" />
+    <ClInclude Include="automation\AutomationPeer.h" />
+    <ClInclude Include="automation\AutomationTree.h" />
+    <ClInclude Include="automation\ControlPeers.h" />
+    <ClInclude Include="automation\UiaInternal.h" />
+    <ClInclude Include="automation\UiaElementProvider.h" />
     <ClInclude Include="WindowRegistry.h" />
     <ClInclude Include="services\PopupState.h" />
     <ClInclude Include="services\TooltipService.h" />
@@ -288,6 +296,10 @@
     <ClCompile Include="window\HudOverlay.cpp" />
     <ClCompile Include="automation\AutomationHost.cpp" />
     <ClCompile Include="automation\UiaProvider.cpp" />
+    <ClCompile Include="automation\AutomationPeer.cpp" />
+    <ClCompile Include="automation\AutomationTree.cpp" />
+    <ClCompile Include="automation\ControlPeers.cpp" />
+    <ClCompile Include="automation\UiaElementProvider.cpp" />
     <ClCompile Include="window\ThemeHost.cpp" />
     <ClCompile Include="window\DiagnosticsHost.cpp" />
     <ClCompile Include="window\Window.cpp" />

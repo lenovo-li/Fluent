@@ -126,6 +126,22 @@ form->AddColumn(GridLength::Auto());           // 按钮按内容收缩
 
 ---
 
+## UI Automation
+
+TextBox / TextArea 的 peer（`automation/ControlPeers.h`）：
+
+| 项 | 值 |
+|---|---|
+| ControlType | Edit |
+| 模式 | Value（`ReadOnly()` 时只读）。`SetValue` 走 `ReplaceAllAsUserEdit`（等同用户全选后输入）：套用大小写/InputFilter/MaxLength，记一步撤销，并触发 `TextChanged`，所以表单填充工具和测试工具改的值会进入应用的数据模型。TextArea 不发 ValueChanged（长文本属于 TextPattern，免得每次按键复制整篇文本）；单行超过 4096 字符时也不比较 |
+| Name 来源 | `SetAutomationName`（没有自带标题） |
+| AutomationId | `SetAutomationId` |
+| HelpText | `Tooltip()` |
+
+惰性创建：只有 UIA 客户端（讲述人、Inspect.exe、测试工具）访问到这个控件时才创建 peer，没有客户端时零开销。模式操作（Invoke/Toggle/Select/SetValue）经投递消息执行，执行前重新检查控件仍在树上且已启用，所以处理函数里删除控件自身是安全的。属性变化事件（Name、IsEnabled、ToggleState、Value）在控件失效后合并检查，只有真正变化且有客户端监听时才发送。自定义方式见 inheritance-guide.md 的“UI Automation”一节。
+
+验证：`tests/unit/AutomationPeerTests.cpp`、`AutomationPeerLifetimeTests.cpp`（无头，用记录调用的假 UIA core），10 处变异全部被测试抓到；真实客户端下的表现需在真机用 Inspect.exe 检查。
+
 ## 备注
 
 ### 性能特征

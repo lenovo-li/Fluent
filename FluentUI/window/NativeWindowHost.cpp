@@ -92,12 +92,13 @@ NativeWindowHost::~NativeWindowHost() {
             // dereferenced. Just drop them; each element cleared its own context in
             // ~UIElement (or is gone with the tree).
             elements_.clear();
-            // Disconnect the UIA root while hwnd_ is still valid, and only AFTER
-            // elements_ is empty: with a client attached, UiaDisconnectProvider makes
-            // outgoing COM calls and UIA core calls back into us, and while this STA
-            // waits on them a cross-thread SendMessage can be dispatched to a handler
-            // that walks elements_ without a destroying_ guard.
-            automation_.OnWindowDestroying(hwnd_);
+            // Disconnect UIA (queued element providers, then the root) while hwnd_
+            // is still valid, and only AFTER elements_ is empty: with a client
+            // attached, UiaDisconnectProvider makes outgoing COM calls and UIA core
+            // calls back into us, and while this STA waits on them a cross-thread
+            // SendMessage can be dispatched to a handler that walks elements_
+            // without a destroying_ guard.
+            automation_.OnWindowDestroyed(hwnd_);
             if (application_) application_->DetachWindow(*this);
         }
         HWND doomed = hwnd_;
@@ -288,6 +289,10 @@ HRESULT NativeWindowHost::Create(HINSTANCE hInst, const wchar_t* title,
     // parked pointer stays valid. The app sets the initial mode via SetDarkMode /
     // FollowSystemTheme before or after Create; the manager defaults to light.
     context_.theme = &theme_.Manager().Snapshot();
+    // UI Automation site. Costs nothing until a client sends WM_GETOBJECT; an
+    // element creates a peer only when a client reaches it (automation/).
+    automation_.Bind(this);
+    context_.automation = &automation_;
 
     // Wire the input routing via InputHost, which encapsulates the
     // InputManager, FocusManager, and ClickCounter.
@@ -296,7 +301,10 @@ HRESULT NativeWindowHost::Create(HINSTANCE hInst, const wchar_t* title,
     // Run the caret-blink timer only while a blink-wanting element holds focus.
     focusChangedSub_ = input_.Focus().FocusChanged().Subscribe(this,
         [](void* owner, FocusManager&, FocusChangedArgs& e) {
-            static_cast<NativeWindowHost*>(owner)->UpdateBlinkTimer(e.newFocus);
+            auto* self = static_cast<NativeWindowHost*>(owner);
+            self->UpdateBlinkTimer(e.newFocus);
+            // A null check unless a UIA client has connected and is listening.
+            self->automation_.OnFocusChanged(e.newFocus);
         });
 
     theme_.Appearance().SetHwnd(hwnd_);
@@ -1256,6 +1264,11 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
         return appResult;
 
     switch (msg) {
+        case automation::WM_FLUENT_UIA_FLUSH:
+            // Queued UIA actions, provider disconnects and events (AutomationHost.h).
+            automation_.OnFlush();
+            return 0;
+
         case WM_GETOBJECT: {
             // UI Automation asks for our provider with UiaRootObjectId; every other
             // object id (MSAA OBJID_CLIENT etc.) falls through to DefWindowProc and
@@ -1981,11 +1994,9 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
             // the HWND is valid, so a control never tears down mid-dismiss
             // (single deterministic shutdown path).
             CloseActivePopups();
-            // UIA teardown first among the element-facing steps: destroying_ is already
-            // set, so a re-entrant WM_GETOBJECT from here on goes to DefWindowProc
-            // instead of handing out the provider being disconnected. hwnd_ must still
-            // be valid for UiaReturnRawElementProvider(hwnd, 0, 0, nullptr).
-            automation_.OnWindowDestroying(hwnd_);
+            // UIA, step 1: stop serving WM_GETOBJECT (destroying_ is set too) and drop
+            // queued UIA actions/events before any element goes away.
+            automation_.OnWindowDestroying();
             OnDestroying();
             // Detach every registered root while it is still alive and the window
             // members (anim registry, device) are valid. This
@@ -1999,6 +2010,9 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
                 input_.Input().OnElementDetached(e);
                 if (e->IsAttached()) e->DetachFromContext();
             }
+            // UIA, step 2: the detach above froze and queued every element
+            // provider; disconnect them and then the root while hwnd_ is valid.
+            automation_.OnWindowDestroyed(hwnd_);
             hwnd_ = nullptr;
             OnDestroyed();
             if (application_) application_->DetachWindow(*this);

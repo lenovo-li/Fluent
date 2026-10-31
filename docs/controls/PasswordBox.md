@@ -136,6 +136,22 @@ demo 导航 → 输入控件 → PasswordBox(nav 208)。
 
 ---
 
+## UI Automation
+
+PasswordBox 的 peer（`automation/ControlPeers.h`）：
+
+| 项 | 值 |
+|---|---|
+| ControlType | Edit，`IsPassword=true` |
+| 模式 | Value，但 `GetValue` 永远返回空串，也不发 Value 变化事件 |
+| Name 来源 | `SetAutomationName` |
+| AutomationId | `SetAutomationId` |
+| HelpText | `Tooltip()` |
+
+惰性创建：只有 UIA 客户端（讲述人、Inspect.exe、测试工具）访问到这个控件时才创建 peer，没有客户端时零开销。模式操作（Invoke/Toggle/Select/SetValue）经投递消息执行，执行前重新检查控件仍在树上且已启用，所以处理函数里删除控件自身是安全的。属性变化事件（Name、IsEnabled、ToggleState、Value）在控件失效后合并检查，只有真正变化且有客户端监听时才发送。自定义方式见 inheritance-guide.md 的“UI Automation”一节。
+
+验证：`tests/unit/AutomationPeerTests.cpp`、`AutomationPeerLifetimeTests.cpp`（无头，用记录调用的假 UIA core），10 处变异全部被测试抓到；真实客户端下的表现需在真机用 Inspect.exe 检查。
+
 ## 相关控件
 
 - [TextBox](TextBox.md) — 父类,`SetPassword(bool)` 提供密码模式本身

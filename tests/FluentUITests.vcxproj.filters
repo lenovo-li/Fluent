@@ -64,6 +64,9 @@
     <ClCompile Include="unit\ButtonTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ApplicationTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\AutomationProviderTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\AutomationPeerTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\AutomationPeerLifetimeTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\AutomationReviewFixTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\FrameWaiterTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\PerformanceCountersTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\FrameRingTests.cpp"><Filter>unit</Filter></ClCompile>
@@ -184,6 +187,7 @@
     <ClInclude Include="framework\PixelSurface.h"><Filter>framework</Filter></ClInclude>
     <ClInclude Include="framework\FakeCompositionBackend.h"><Filter>framework</Filter></ClInclude>
     <ClInclude Include="unit\LayoutTestHelpers.h"><Filter>unit</Filter></ClInclude>
+    <ClInclude Include="unit\AutomationTestHelpers.h"><Filter>unit</Filter></ClInclude>
     <ClInclude Include="unit\ClipboardTestHelpers.h"><Filter>unit</Filter></ClInclude>
     <ClInclude Include="unit\InheritanceExamples.h"><Filter>unit</Filter></ClInclude>
   </ItemGroup>

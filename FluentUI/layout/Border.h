@@ -41,6 +41,11 @@ public:
         return raw;
     }
     UIElement* Child() const { return content_.get(); }
+    // UI Automation: the content is the one logical child (0 when empty).
+    size_t LogicalChildCount() const override { return content_ ? 1 : 0; }
+    UIElement* LogicalChildAt(size_t i) const override {
+        return i == 0 ? content_.get() : nullptr;
+    }
 
     // --- Chrome -----------------------------------------------------------
     // Background fill. Unset (the default) paints no fill (transparent). A set

@@ -35,8 +35,9 @@ namespace fluent {
 // WM_APP+n is the documented range for application-private messages. WM_APP+17 is
 // ModalFrameHeartbeat's tick, WM_APP+18 the tray callback (window/TrayIcon.h), WM_APP+20
 // the HUD ping (window/HudOverlay.h), WM_APP+21 the popup's deferred render (below),
-// WM_APP+22 Window's deferred release of a replaced root (window/Window.h) — keep the
-// list consistent when adding another.
+// WM_APP+22 Window's deferred release of a replaced root (window/Window.h), WM_APP+23
+// the UI Automation flush (automation/AutomationHost.h) — keep the list consistent
+// when adding another.
 constexpr UINT WM_FLUENT_POPUP_OPENED = WM_APP + 19;
 
 // Posted by a PopupHost to its OWN window to run one coalesced Render(); see

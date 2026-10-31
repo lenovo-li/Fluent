@@ -2,6 +2,7 @@
 // machine, and the tree attachment lifecycle.
 
 #include "UIElement.h"
+#include "../automation/AutomationPeer.h"
 #include "../animation/AnimationRegistry.h"
 #include "../styling/ThemeManager.h"
 #include "../input/InputManager.h"
@@ -28,6 +29,9 @@ UIElement::~UIElement() {
     // context-scoped subscriptions. contextSubs_ would release on its own during
     // member destruction anyway; doing it before we clear the animation pointer
     // keeps the order explicit.
+    // UIA peer: freeze its provider and queue the UIA disconnect while the site
+    // pointer in context_ is still valid. Non-virtual (see ReleaseAutomationPeer).
+    ReleaseAutomationPeer();
     if (context_.animations) context_.animations->Remove(this);
     contextSubs_.clear();
 }
@@ -68,6 +72,10 @@ void UIElement::DetachFromContext() {
     // finally clear the context so Context() reads empty while detached.
     DetachChildren();
     OnDetachedFromTree();
+    // After the subclass hook, before context_ is cleared: the peer needs the
+    // context's automation site to queue its provider's disconnect. Children
+    // were released first (DetachChildren), matching the detach order.
+    ReleaseAutomationPeer();
     contextSubs_.clear();
     if (context_.animations) context_.animations->Remove(this);
     context_ = UIContext{};

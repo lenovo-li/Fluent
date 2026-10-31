@@ -26,6 +26,16 @@
 #include <vector>
 #include <any>  // For UIElement::Tag support
 
+namespace fluent::automation {
+class AutomationPeer;
+struct AutomationState;
+// Deletes an AutomationState. Declared here, defined with the type, so UIElement's
+// inline constructors (which may destroy members on unwind) never need it complete.
+struct AutomationStateDeleter {
+    void operator()(AutomationState* p) const;
+};
+}  // namespace fluent::automation
+
 namespace fluent {
 
 enum class VisualState { Normal, Hover, Pressed, Disabled };
@@ -293,6 +303,38 @@ public:
     // --- State / enabled --------------------------------------------------
     VisualState State() const { return state_; }
     void SetEnabled(bool e);
+    bool IsEnabled() const { return enabled_; }
+
+    // --- UI Automation ------------------------------------------------------
+    // Name/AutomationId for screen readers and UIA test tools. Stored lazily (no
+    // memory until set) and not rendered, so the setters dirty nothing; a peer
+    // that exists is told so it can raise NameChanged.
+    void SetAutomationName(std::wstring name);
+    const std::wstring& AutomationName() const;
+    void SetAutomationId(std::wstring id);
+    const std::wstring& AutomationId() const;
+
+    // The live children this element exposes to UIA, in render/tab order. Unlike
+    // Panel::ChildAt this lists only attached content (TabControl: the selected page;
+    // Expander: content only while expanded). Default: none.
+    virtual size_t LogicalChildCount() const { return 0; }
+    virtual UIElement* LogicalChildAt(size_t i) const {
+        UNREFERENCED_PARAMETER(i);
+        return nullptr;
+    }
+    // Maps a rect from a child's coordinate space into this element's. Identity
+    // except where a container transforms its children (Viewbox scales them).
+    virtual RectDip MapChildRectToSelf(const RectDip& r) const { return r; }
+    // bounds_ mapped through every ancestor's MapChildRectToSelf: the element's
+    // rect in host-client DIPs, which is what UIA's BoundingRectangle needs.
+    RectDip BoundsInHostDip() const;
+
+    // The element's UIA peer, created on first use; null unless the element is
+    // attached to a window that has an automation site (no client = no peer).
+    automation::AutomationPeer* GetOrCreateAutomationPeer();
+    automation::AutomationPeer* AutomationPeerIfAny() const;
+    // The automation site of the window this element is attached to, else null.
+    automation::IAutomationSite* AutomationSite() const { return context_.automation; }
 
     // --- Tooltip ----------------------------------------------------------
     // Hover text shown by the window's TooltipService after a short delay.
@@ -650,6 +692,12 @@ protected:
     virtual void AttachChildren(const UIContext& ctx) { UNREFERENCED_PARAMETER(ctx); }
     virtual void DetachChildren() {}
 
+    // The UIA peer for this element; override to expose a control type and
+    // patterns (stable protected API, docs/controls/inheritance-guide.md). Called
+    // lazily, only while attached and only when a UIA client reaches the element.
+    // Default: a generic peer (Custom when focusable, raw-only otherwise).
+    virtual std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer();
+
     // Overridable body of CollectDirtyBounds, called only when the subtree mark
     // says something at or below this node may be dirty. The default reports this
     // element's own VisualBounds() when its own flags are set. A container calls
@@ -776,6 +824,19 @@ private:
     // Tag: arbitrary user data (WPF/WinForms parity). Stored as std::any to
     // support any type. Common usage: storing int/string/pointer identifiers.
     std::any tag_;
+
+    // UI Automation state (name/id strings and the peer), allocated on first use.
+    // One pointer for every element that no client has looked at and no app has
+    // named. Released in DetachFromContext and ~UIElement (ReleaseAutomationPeer):
+    // a peer never outlives the attach period, so its provider can always reach a
+    // live context while it is not frozen.
+    std::unique_ptr<automation::AutomationState, automation::AutomationStateDeleter> automation_;
+    // The peer base reads Context() (site, focus manager) for its owner. Peer
+    // subclasses do not inherit this; they use the owner's public API.
+    friend class automation::AutomationPeer;
+    automation::AutomationState& EnsureAutomationState();
+    void ReleaseAutomationPeer();
+    void OnObservedInvalidation() override;
 };
 
 } // namespace fluent

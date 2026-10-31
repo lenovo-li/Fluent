@@ -12,30 +12,47 @@
 // Every method is O(1) and reads only members of this object.
 #include "UiaProvider.h"
 
-#include <UIAutomation.h>
+#include "UiaInternal.h"
 
-#include <atomic>
-#include <crtdbg.h>
-
-#include "../fl_common.h"
+#include "AutomationGeometry.h"
+#include "AutomationTree.h"
+#include "../core/UIElement.h"
 
 #pragma comment(lib, "uiautomationcore.lib")
 
 namespace fluent::automation {
-namespace {
 
 std::atomic<uint32_t> g_threadViolations{0};
 std::atomic<bool> g_threadAssertEnabled{true};
-std::atomic<bool> g_firstCallTraced{false};
 std::atomic<bool> g_optionsOffThreadTraced{false};
+namespace {
+std::atomic<bool> g_firstCallTraced{false};
+}  // namespace
+
+void CheckProviderThread(DWORD uiThreadId, const char* method) {
+    const DWORD tid = GetCurrentThreadId();
+    if (tid == uiThreadId) {
+        if (!g_firstCallTraced.exchange(true))
+            TraceFmt("Uia", "first provider call on UI thread (%s) tid=%lu", method, tid);
+        return;
+    }
+    const uint32_t n = ++g_threadViolations;
+    if (n <= 16)  // a confused client can call thousands of times; keep the log readable
+        TraceFmt("Uia", "WRONG THREAD %s tid=%lu ui=%lu (#%u)", method, tid, uiThreadId, n);
+    _ASSERTE(!g_threadAssertEnabled.load() &&
+             "UIA provider called off the UI thread; see automation/UiaProvider.h");
+}
+
+namespace {
 
 class WindowRootProvider final : public IRawElementProviderSimple,
                                  public IRawElementProviderFragment,
                                  public IRawElementProviderFragmentRoot {
 public:
-    WindowRootProvider(HWND hwnd, DWORD uiThreadId) : hwnd_(hwnd), uiThreadId_(uiThreadId) {}
+    WindowRootProvider(HWND hwnd, DWORD uiThreadId, IAutomationSite* site)
+        : hwnd_(hwnd), uiThreadId_(uiThreadId), site_(site) {}
 
-    void Detach() { hwnd_ = nullptr; attached_ = false; }
+    void Detach() { hwnd_ = nullptr; site_ = nullptr; attached_ = false; }
     bool Attached() const { return attached_; }
 
     // IUnknown. The count is atomic because UIA core may Release from its own
@@ -111,11 +128,17 @@ public:
     }
 
     // IRawElementProviderFragment
-    IFACEMETHODIMP Navigate(NavigateDirection, IRawElementProviderFragment** ret) override {
+    IFACEMETHODIMP Navigate(NavigateDirection dir, IRawElementProviderFragment** ret) override {
         CheckThread("Navigate");
         if (!ret) return E_POINTER;
-        *ret = nullptr;  // root: no parent/siblings; no children until peers exist
-        return attached_ ? S_OK : UIA_E_ELEMENTNOTAVAILABLE;
+        *ret = nullptr;
+        if (!attached_) return UIA_E_ELEMENTNOTAVAILABLE;
+        // A fragment root has no parent or siblings in its fragment; UIA asks the
+        // HWND host for those. Children are the window's exposed root elements.
+        if (!site_) return S_OK;
+        if (dir == NavigateDirection_FirstChild) return FragmentForElement(FirstExposedRoot(*site_), ret);
+        if (dir == NavigateDirection_LastChild) return FragmentForElement(LastExposedRoot(*site_), ret);
+        return S_OK;
     }
     IFACEMETHODIMP GetRuntimeId(SAFEARRAY** ret) override {
         CheckThread("GetRuntimeId");
@@ -150,44 +173,36 @@ public:
     }
 
     // IRawElementProviderFragmentRoot
-    IFACEMETHODIMP ElementProviderFromPoint(double, double,
+    IFACEMETHODIMP ElementProviderFromPoint(double x, double y,
                                             IRawElementProviderFragment** ret) override {
         CheckThread("ElementProviderFromPoint");
         if (!ret) return E_POINTER;
-        *ret = nullptr;  // null = the root itself; no element hit-testing yet
-        return attached_ ? S_OK : UIA_E_ELEMENTNOTAVAILABLE;
+        *ret = nullptr;  // null = the root itself
+        if (!attached_) return UIA_E_ELEMENTNOTAVAILABLE;
+        if (!site_) return S_OK;
+        const POINT o = site_->ClientOriginOnScreen();
+        const DipPoint pt = HostDipFromScreen(x, y, o.x, o.y, site_->Dpi());
+        return FragmentForElement(ExposedElementAt(*site_, pt.x, pt.y), ret);
     }
     IFACEMETHODIMP GetFocus(IRawElementProviderFragment** ret) override {
         CheckThread("GetFocus");
         if (!ret) return E_POINTER;
-        *ret = nullptr;
-        return attached_ ? S_OK : UIA_E_ELEMENTNOTAVAILABLE;
+        *ret = nullptr;  // null = focus is on the root (no focused element)
+        if (!attached_) return UIA_E_ELEMENTNOTAVAILABLE;
+        if (!site_) return S_OK;
+        UIElement* f = site_->FocusedElement();
+        return f ? FragmentForElement(NearestListed(*site_, f), ret) : S_OK;
     }
 
 private:
     ~WindowRootProvider() = default;
 
-    // The thread probe. Cheap enough to keep permanently: one
-    // GetCurrentThreadId and a compare per client call, and client calls only
-    // happen while a UIA client is attached.
-    void CheckThread(const char* method) const {
-        const DWORD tid = GetCurrentThreadId();
-        if (tid == uiThreadId_) {
-            if (!g_firstCallTraced.exchange(true))
-                TraceFmt("Uia", "first provider call on UI thread (%s) tid=%lu", method, tid);
-            return;
-        }
-        const uint32_t n = ++g_threadViolations;
-        if (n <= 16)  // a confused client can call thousands of times; keep the log readable
-            TraceFmt("Uia", "WRONG THREAD %s tid=%lu ui=%lu (#%u)", method, tid,
-                     uiThreadId_, n);
-        _ASSERTE(!g_threadAssertEnabled.load() &&
-                 "UIA provider called off the UI thread; see automation/UiaProvider.h");
-    }
+    void CheckThread(const char* method) const { CheckProviderThread(uiThreadId_, method); }
 
     std::atomic<ULONG> refs_{1};
     HWND hwnd_;
     const DWORD uiThreadId_;
+    IAutomationSite* site_;  // non-owning; nulled by Detach (the host dies first)
     bool attached_ = true;
 };
 
@@ -199,9 +214,10 @@ WindowRootProvider* FromUnknown(IUnknown* unk) {
 
 }  // namespace
 
-HRESULT CreateWindowRootProvider(HWND hwnd, DWORD uiThreadId, IUnknown** out) {
+HRESULT CreateWindowRootProvider(HWND hwnd, DWORD uiThreadId, IAutomationSite* site,
+                                 IUnknown** out) {
     if (!out) return E_POINTER;
-    auto* p = new (std::nothrow) WindowRootProvider(hwnd, uiThreadId);
+    auto* p = new (std::nothrow) WindowRootProvider(hwnd, uiThreadId, site);
     *out = p ? static_cast<IRawElementProviderSimple*>(p) : nullptr;
     // UseComThreading only routes calls back to us if this thread is an STA. Trace
     // the apartment so a log from a host without Application's ComApartment (or one
@@ -232,16 +248,49 @@ namespace {
 // out by this file (FromUnknown's invariant), so the cast below is exact.
 class RealCore final : public IUiaCore {
 public:
+    // Both provider kinds hand out their IRawElementProviderSimple base as the
+    // IUnknown (UiaInternal.h), so AsSimple is exact for either.
     LRESULT ReturnProvider(HWND hwnd, WPARAM wp, LPARAM lp, IUnknown* provider) override {
-        return UiaReturnRawElementProvider(
-            hwnd, wp, lp, static_cast<IRawElementProviderSimple*>(FromUnknown(provider)));
+        return UiaReturnRawElementProvider(hwnd, wp, lp, AsSimple(provider));
     }
     HRESULT DisconnectProvider(IUnknown* provider) override {
-        return UiaDisconnectProvider(
-            static_cast<IRawElementProviderSimple*>(FromUnknown(provider)));
+        return UiaDisconnectProvider(AsSimple(provider));
     }
     void ReleaseEventMap(HWND hwnd) override { UiaReturnRawElementProvider(hwnd, 0, 0, nullptr); }
     bool InSendMessage() override { return InSendMessageEx(nullptr) != ISMEX_NOSEND; }
+    bool ClientsAreListening() override { return UiaClientsAreListening() != FALSE; }
+    HRESULT RaiseEvent(IUnknown* provider, int eventId) override {
+        return UiaRaiseAutomationEvent(AsSimple(provider), eventId);
+    }
+    HRESULT RaiseBoolChanged(IUnknown* provider, int id, bool oldV, bool newV) override {
+        VARIANT o, n;
+        o.vt = n.vt = VT_BOOL;
+        o.boolVal = oldV ? VARIANT_TRUE : VARIANT_FALSE;
+        n.boolVal = newV ? VARIANT_TRUE : VARIANT_FALSE;
+        return UiaRaiseAutomationPropertyChangedEvent(AsSimple(provider), id, o, n);
+    }
+    HRESULT RaiseIntChanged(IUnknown* provider, int id, int oldV, int newV) override {
+        VARIANT o, n;
+        o.vt = n.vt = VT_I4;
+        o.lVal = oldV;
+        n.lVal = newV;
+        return UiaRaiseAutomationPropertyChangedEvent(AsSimple(provider), id, o, n);
+    }
+    HRESULT RaiseStringChanged(IUnknown* provider, int id, const wchar_t* oldV,
+                               const wchar_t* newV) override {
+        VARIANT o, n;
+        o.vt = n.vt = VT_BSTR;
+        o.bstrVal = SysAllocString(oldV ? oldV : L"");
+        n.bstrVal = SysAllocString(newV ? newV : L"");
+        const HRESULT hr = UiaRaiseAutomationPropertyChangedEvent(AsSimple(provider), id, o, n);
+        SysFreeString(o.bstrVal);
+        SysFreeString(n.bstrVal);
+        return hr;
+    }
+    void PostToHost(HWND hwnd, UINT msg) override {
+        if (!PostMessageW(hwnd, msg, 0, 0))
+            Trace("Uia", "PostMessage(flush) FAILED", HRESULT_FROM_WIN32(GetLastError()));
+    }
 };
 
 }  // namespace

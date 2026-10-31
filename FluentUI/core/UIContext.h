@@ -28,6 +28,9 @@
 
 namespace fluent {
 
+namespace automation {
+class IAutomationSite;
+}
 class WindowServices;
 class DWriteContext;
 class AnimationRegistry;
@@ -125,6 +128,11 @@ struct UIContext {
     // want to flip a behavior tree-wide (e.g. "single click opens links in
     // this app") hold a BehaviorSettings member and point this at it.
     const BehaviorSettings* behavior = nullptr;
+
+    // The window's UI Automation site (automation/AutomationSite.h). Non-owning.
+    // Null in headless tests and in popup trees (popups are not yet exposed); an
+    // element under a null site never creates an automation peer.
+    automation::IAutomationSite* automation = nullptr;
 
     // A context with no host wired in — the default for a detached element.
     bool IsValid() const { return window != nullptr; }

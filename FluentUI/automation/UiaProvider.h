@@ -29,17 +29,22 @@
 // UI thread and the check will fire.
 #pragma once
 
-#include <windows.h>
+#include "../fl_common.h"  // NOMINMAX / WIN32_LEAN_AND_MEAN before <windows.h>
 #include <unknwn.h>
 #include <cstdint>
 
+#include <string>
+
+#include "AutomationSite.h"
 #include "UiaCore.h"
 
 namespace fluent::automation {
 
 // Creates the fragment-root provider for a top-level window. `uiThreadId` is the
 // thread every call is expected on. Returns the provider AddRef'd once in *out.
-HRESULT CreateWindowRootProvider(HWND hwnd, DWORD uiThreadId, IUnknown** out);
+// `site` (may be null in tests) supplies the root's children, focus and hit-testing.
+HRESULT CreateWindowRootProvider(HWND hwnd, DWORD uiThreadId, IAutomationSite* site,
+                                 IUnknown** out);
 
 // Severs the provider from the window: afterwards every method except
 // get_ProviderOptions returns UIA_E_ELEMENTNOTAVAILABLE. Touches no framework object
@@ -59,6 +64,22 @@ bool IsProviderAttached(IUnknown* provider);
 // the disconnect fail with UIA_E_ELEMENTNOTAVAILABLE, measured under Inspect.exe).
 // All UIA calls go through `core` (UiaCore.h) so tests can check the order.
 void ReleaseWindowProvider(IUiaCore& core, HWND hwnd, IUnknown* provider);
+
+// --- Element providers (one per AutomationPeer; UiaElementProvider.cpp) ---------
+// Creates the provider for `peer`, AddRef'd once in *out. The provider keeps a raw
+// pointer to the peer until FreezeProvider.
+HRESULT CreateElementProvider(AutomationPeer& peer, IUnknown** out);
+// Stops the provider from reaching its peer. A frozen provider still answers what
+// UIA core asks while disconnecting it (ProviderOptions, RuntimeId, FragmentRoot)
+// and returns UIA_E_ELEMENTNOTAVAILABLE for everything else. Null-safe.
+void FreezeProvider(IUnknown* provider);
+// The peer behind an unfrozen element provider, else null.
+AutomationPeer* PeerFromProvider(IUnknown* provider);
+// Runs a posted action on the provider's peer, if it is still unfrozen.
+void RunPeerAction(IUnknown* provider, PeerAction action, const std::wstring& value);
+// Re-reads the reported properties and raises UIA property events for the ones that
+// changed since the last raise. Null `core` only records the baseline.
+void RaiseChangedProperties(IUiaCore* core, IUnknown* provider);
 
 // WM_GETOBJECT carries the object id in lParam as a 32-bit value. Pure, for tests:
 // true only for UiaRootObjectId and only while the window is not being destroyed

@@ -36,6 +36,8 @@ public:
     }
 
 protected:
+    // UI Automation peer (automation/ControlPeers.h); defined in ControlPeers.cpp.
+    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
     // Activation flips the state (user-driven), so this raises the notification.
     void OnActivate() override { Toggle(); }
 

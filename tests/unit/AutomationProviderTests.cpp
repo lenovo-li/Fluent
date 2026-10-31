@@ -19,21 +19,19 @@
 #include "../../FluentUI/automation/AutomationHost.h"
 #include "../../FluentUI/automation/UiaProvider.h"
 
-#include <UIAutomation.h>
-#include <oleacc.h>   // OBJID_CLIENT
+#include "AutomationTestHelpers.h"
 #include <wrl/client.h>
 #include <string>
 #include <thread>
 #include <vector>
 
 using namespace fluent;
-using Microsoft::WRL::ComPtr;
 
 namespace {
 
 ComPtr<IUnknown> MakeRoot() {
     ComPtr<IUnknown> root;
-    automation::CreateWindowRootProvider(nullptr, GetCurrentThreadId(), root.GetAddressOf());
+    automation::CreateWindowRootProvider(nullptr, GetCurrentThreadId(), nullptr, root.GetAddressOf());
     return root;
 }
 
@@ -65,7 +63,7 @@ TEST(AutomationProvider, HostCreatesNothingForMsaaRequests) {
 
 TEST(AutomationProvider, TeardownWithoutClientIsANoOpAndFinal) {
     automation::AutomationHost host;
-    host.OnWindowDestroying(nullptr);  // no client ever came: must not touch UIA
+    host.OnWindowDestroyed(nullptr);  // no client ever came: must not touch UIA
     EXPECT_FALSE(host.HasRootProvider());
     LRESULT r = 0;
     // After teardown even a valid root request is refused (the window is going away).
@@ -204,30 +202,8 @@ TEST(AutomationProvider, RequestsComThreading) {
 // These tests pin that order headlessly. The HWND is a dummy value: the recording
 // core never dereferences it.
 // ---------------------------------------------------------------------------
-namespace {
-
-struct RecordingCore final : automation::IUiaCore {
-    std::vector<std::string> calls;
-    bool inSend = false;
-    bool attachedAtDisconnect = false;
-    IUnknown* returned = nullptr;
-    LRESULT ReturnProvider(HWND, WPARAM, LPARAM, IUnknown* p) override {
-        calls.push_back("return");
-        returned = p;
-        return 42;
-    }
-    HRESULT DisconnectProvider(IUnknown* p) override {
-        calls.push_back("disconnect");
-        attachedAtDisconnect = automation::IsProviderAttached(p);
-        return S_OK;
-    }
-    void ReleaseEventMap(HWND) override { calls.push_back("releaseEventMap"); }
-    bool InSendMessage() override { return inSend; }
-};
-
-HWND DummyHwnd() { return reinterpret_cast<HWND>(static_cast<uintptr_t>(0x1234)); }
-
-}  // namespace
+using uiatest::DummyHwnd;
+using uiatest::RecordingCore;
 
 TEST(AutomationProvider, HostServesTheSameProviderEveryTime) {
     // UIA compares providers by identity; a second WM_GETOBJECT must not mint a new one.
@@ -240,7 +216,7 @@ TEST(AutomationProvider, HostServesTheSameProviderEveryTime) {
     EXPECT_TRUE(first != nullptr);
     EXPECT_TRUE(host.OnGetObject(DummyHwnd(), 0, static_cast<LPARAM>(UiaRootObjectId), false, r));
     EXPECT_TRUE(core.returned == first);
-    host.OnWindowDestroying(DummyHwnd());
+    host.OnWindowDestroyed(DummyHwnd());
 }
 
 TEST(AutomationProvider, TeardownDisconnectsBeforeDetaching) {
@@ -251,7 +227,7 @@ TEST(AutomationProvider, TeardownDisconnectsBeforeDetaching) {
     ComPtr<IUnknown> provider(core.returned);  // keep it alive past the host's release
     core.calls.clear();
 
-    host.OnWindowDestroying(DummyHwnd());
+    host.OnWindowDestroyed(DummyHwnd());
     const std::vector<std::string> expected{"disconnect", "releaseEventMap"};
     EXPECT_TRUE(core.calls == expected);
     EXPECT_TRUE(core.attachedAtDisconnect);                   // still answering during it
@@ -271,7 +247,7 @@ TEST(AutomationProvider, TeardownInsideSendMessageSkipsDisconnectButStillDetache
     core.calls.clear();
     core.inSend = true;
 
-    host.OnWindowDestroying(DummyHwnd());
+    host.OnWindowDestroyed(DummyHwnd());
     const std::vector<std::string> expected{"releaseEventMap"};
     EXPECT_TRUE(core.calls == expected);
     EXPECT_FALSE(automation::IsProviderAttached(provider.Get()));
@@ -284,8 +260,8 @@ TEST(AutomationProvider, TeardownWithoutClientMakesNoUiaCalls) {
     automation::AutomationHost host(core);
     LRESULT r = 0;
     host.OnGetObject(DummyHwnd(), 0, static_cast<LPARAM>(OBJID_CLIENT), false, r);
-    host.OnWindowDestroying(DummyHwnd());
-    host.OnWindowDestroying(DummyHwnd());  // idempotent
+    host.OnWindowDestroyed(DummyHwnd());
+    host.OnWindowDestroyed(DummyHwnd());  // idempotent
     EXPECT_TRUE(core.calls.empty());
 }
 
@@ -296,7 +272,7 @@ TEST(AutomationProvider, NoProviderHandedOutAfterTeardown) {
     automation::AutomationHost host(core);
     LRESULT r = 0;
     host.OnGetObject(DummyHwnd(), 0, static_cast<LPARAM>(UiaRootObjectId), false, r);
-    host.OnWindowDestroying(DummyHwnd());
+    host.OnWindowDestroyed(DummyHwnd());
     core.calls.clear();
     EXPECT_FALSE(host.OnGetObject(DummyHwnd(), 0, static_cast<LPARAM>(UiaRootObjectId), false, r));
     EXPECT_TRUE(core.calls.empty());

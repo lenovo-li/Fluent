@@ -130,6 +130,11 @@ public:
 
     // The currently selected content element, or null when there are no tabs.
     FrameworkElement* SelectedContent() const;
+    // UI Automation: only the selected page (unselected pages are not attached).
+    size_t LogicalChildCount() const override { return SelectedContent() ? 1 : 0; }
+    UIElement* LogicalChildAt(size_t i) const override {
+        return i == 0 ? SelectedContent() : nullptr;
+    }
 
     // Whether the content at `index` is attached to the live tree. Exposed
     // because "only the selected tab is attached" is the whole design and a test

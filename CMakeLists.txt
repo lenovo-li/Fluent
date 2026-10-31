@@ -101,6 +101,10 @@ set(FLUENTUI_SOURCES
     FluentUI/window/HudOverlay.cpp
     FluentUI/automation/AutomationHost.cpp
     FluentUI/automation/UiaProvider.cpp
+    FluentUI/automation/AutomationPeer.cpp
+    FluentUI/automation/AutomationTree.cpp
+    FluentUI/automation/ControlPeers.cpp
+    FluentUI/automation/UiaElementProvider.cpp
     FluentUI/window/ThemeHost.cpp
     FluentUI/window/DiagnosticsHost.cpp
     FluentUI/window/DialogHost.cpp

@@ -49,6 +49,8 @@ public:
     }
 
 protected:
+    // UI Automation peer (automation/ControlPeers.h); defined in ControlPeers.cpp.
+    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
     // ButtonBase routes click + Space/Enter here; RadioButton selects within group.
     void OnActivate() override;
     // DWrite arrives with the tree context; re-measure once attached so the label

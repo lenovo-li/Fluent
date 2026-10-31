@@ -67,6 +67,15 @@ public:
     }
     UIElement* Child() const { return content_.get(); }
 
+    // UI Automation: one logical child, and its rects map forward through the
+    // scale (the same mapping CollectDirtyBoundsOverride applies to dirty rects,
+    // so UIA's BoundingRectangle lands on the pixels the content actually paints).
+    size_t LogicalChildCount() const override { return content_ ? 1 : 0; }
+    UIElement* LogicalChildAt(size_t i) const override {
+        return i == 0 ? content_.get() : nullptr;
+    }
+    RectDip MapChildRectToSelf(const RectDip& r) const override;
+
     // Stretch mode: how the child is scaled to fit the available space.
     void SetStretch(Stretch s) { SetProperty(stretch_, s, DirtyFlags::Measure); }
     Stretch GetStretch() const { return stretch_; }

@@ -37,6 +37,8 @@ public:
     void Measure(float availW, float availH) override;
 
 protected:
+    // UI Automation peer (automation/ControlPeers.h); defined in ControlPeers.cpp.
+    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
     // TextEditBase hooks.
     void OnTextLayoutDirty() override {}   // layout is rebuilt on demand (cheap)
     void EnsureCaretVisible() override;

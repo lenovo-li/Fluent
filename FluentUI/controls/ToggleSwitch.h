@@ -52,6 +52,8 @@ public:
     }
 
 protected:
+    // UI Automation peer (automation/ControlPeers.h); defined in ControlPeers.cpp.
+    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
     // Raise the public Toggled event when the user toggles (ToggleButton hook).
     void OnToggleChanged(bool newState) override { toggled_.Raise(*this, newState); }
     // DWrite arrives with the tree context; re-measure once attached so the label

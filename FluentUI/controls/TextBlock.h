@@ -31,6 +31,7 @@ public:
     // Opt into focus + wheel/arrow scrolling + text selection (I-beam cursor).
     void SetSelectable(bool on) { selectable_ = on; SetFocusable(on); }
     void SetText(std::wstring text) { SetProperty(text_, std::move(text), DirtyFlags::Measure); }
+    const std::wstring& Text() const { return text_; }
     // An explicit size opts out of the type ramp (role becomes Custom).
     //
     // This writes the size TWICE, deliberately: to TextBlock's own fontSize_ (which
@@ -110,6 +111,8 @@ public:
     bool IsPointOverText(float dipX, float dipY) const;
 
 protected:
+    // UI Automation peer (automation/ControlPeers.h); defined in ControlPeers.cpp.
+    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
     // DWrite becomes available on attach: re-measure so a TextBlock built and
     // sized before it joined the tree lays out its text now.
     void OnAttachedToTree() override { InvalidateMeasure(); }

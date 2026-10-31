@@ -10,11 +10,12 @@
 // Providers are passed as IUnknown so this header stays free of <UIAutomation.h>;
 // the real implementation (RealUiaCore, in UiaProvider.cpp) converts them.
 //
-// Event raising and UiaClientsAreListening join this interface when providers start
-// raising events, so the "no client listening -> raise nothing" gate is testable too.
+// Events go through it too, so the "no client listening -> raise nothing" gate and
+// the coalescing are testable, as does the posted flush message (tests run the
+// flush by hand instead of pumping a window).
 #pragma once
 
-#include <windows.h>
+#include "../fl_common.h"  // NOMINMAX / WIN32_LEAN_AND_MEAN before <windows.h>
 #include <unknwn.h>
 
 namespace fluent::automation {
@@ -31,6 +32,18 @@ public:
     // InSendMessageEx(nullptr) != ISMEX_NOSEND: UiaDisconnectProvider would fail
     // with RPC_E_CANTCALLOUT_ININPUTSYNCCALL here.
     virtual bool InSendMessage() = 0;
+
+    // UiaClientsAreListening(): false means no client anywhere wants events.
+    virtual bool ClientsAreListening() = 0;
+    // UiaRaiseAutomationEvent(provider, eventId).
+    virtual HRESULT RaiseEvent(IUnknown* provider, int eventId) = 0;
+    // UiaRaiseAutomationPropertyChangedEvent for a VT_BOOL / VT_I4 / VT_BSTR value.
+    virtual HRESULT RaiseBoolChanged(IUnknown* provider, int propertyId, bool oldV, bool newV) = 0;
+    virtual HRESULT RaiseIntChanged(IUnknown* provider, int propertyId, int oldV, int newV) = 0;
+    virtual HRESULT RaiseStringChanged(IUnknown* provider, int propertyId, const wchar_t* oldV,
+                                       const wchar_t* newV) = 0;
+    // PostMessageW(hwnd, msg, 0, 0) for the host's coalesced flush.
+    virtual void PostToHost(HWND hwnd, UINT msg) = 0;
 };
 
 // The process-wide real implementation. Stateless; never null.

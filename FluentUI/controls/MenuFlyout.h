@@ -167,7 +167,15 @@ public:
     // view to this context, so the list's inherited Dwrite() works at measure time
     // (before PopupHost re-injects its own context on SetContent). Replaces the old
     // manual SetDWrite + Attach(WindowServices*) pair.
-    void SetContext(const UIContext& ctx) { ctx_ = ctx; window_ = ctx.window; }
+    // The automation site is dropped: menu levels live in their own popup HWNDs,
+    // which are not exposed to UI Automation yet. Keeping the owner window's site
+    // would let a menu item create a peer that reports the owner's coordinates and
+    // claims the owner's root as its parent, which never lists it.
+    void SetContext(const UIContext& ctx) {
+        ctx_ = ctx;
+        ctx_.automation = nullptr;
+        window_ = ctx.window;
+    }
 
     // Replace the menu items. Closes the menu if open.
     //

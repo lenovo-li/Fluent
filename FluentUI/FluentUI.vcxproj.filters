@@ -143,6 +143,14 @@
     <ClInclude Include="automation\AutomationHost.h"><Filter>automation</Filter></ClInclude>
     <ClInclude Include="automation\UiaProvider.h"><Filter>automation</Filter></ClInclude>
     <ClInclude Include="automation\UiaCore.h"><Filter>automation</Filter></ClInclude>
+    <ClInclude Include="automation\AutomationTypes.h"><Filter>automation</Filter></ClInclude>
+    <ClInclude Include="automation\AutomationGeometry.h"><Filter>automation</Filter></ClInclude>
+    <ClInclude Include="automation\AutomationSite.h"><Filter>automation</Filter></ClInclude>
+    <ClInclude Include="automation\AutomationPeer.h"><Filter>automation</Filter></ClInclude>
+    <ClInclude Include="automation\AutomationTree.h"><Filter>automation</Filter></ClInclude>
+    <ClInclude Include="automation\ControlPeers.h"><Filter>automation</Filter></ClInclude>
+    <ClInclude Include="automation\UiaInternal.h"><Filter>automation</Filter></ClInclude>
+    <ClInclude Include="automation\UiaElementProvider.h"><Filter>automation</Filter></ClInclude>
     <ClInclude Include="WindowRegistry.h" />
     <ClInclude Include="services\PopupState.h"><Filter>services</Filter></ClInclude>
     <ClInclude Include="services\TooltipService.h"><Filter>services</Filter></ClInclude>
@@ -239,6 +247,10 @@
     <ClCompile Include="window\HudOverlay.cpp"><Filter>window</Filter></ClCompile>
     <ClCompile Include="automation\AutomationHost.cpp"><Filter>automation</Filter></ClCompile>
     <ClCompile Include="automation\UiaProvider.cpp"><Filter>automation</Filter></ClCompile>
+    <ClCompile Include="automation\AutomationPeer.cpp"><Filter>automation</Filter></ClCompile>
+    <ClCompile Include="automation\AutomationTree.cpp"><Filter>automation</Filter></ClCompile>
+    <ClCompile Include="automation\ControlPeers.cpp"><Filter>automation</Filter></ClCompile>
+    <ClCompile Include="automation\UiaElementProvider.cpp"><Filter>automation</Filter></ClCompile>
     <ClCompile Include="window\ThemeHost.cpp"><Filter>window</Filter></ClCompile>
     <ClCompile Include="window\DiagnosticsHost.cpp"><Filter>window</Filter></ClCompile>
     <ClCompile Include="window\Window.cpp"><Filter>window</Filter></ClCompile>

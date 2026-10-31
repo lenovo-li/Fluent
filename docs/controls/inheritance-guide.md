@@ -480,6 +480,49 @@ In `OnSelectionSetChanged`, check `HasSubscribers()` on your event before buildi
 
 ---
 
+### UI Automation (any element)
+
+Screen readers (Narrator, NVDA) and UIA test tools see an element through its **automation peer** (`automation/AutomationPeer.h`). The extension point is one protected virtual on `UIElement`:
+
+```cpp
+// Called lazily: only while the element is attached to a window, and only when a
+// UIA client actually reaches it (navigation, hit-test, or focus while listening).
+virtual std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer();
+```
+
+The default peer reports `Custom` for a focusable element and a raw-view-only `Pane` otherwise, named by `SetAutomationName()`. Built-in peers live in `automation/ControlPeers.h` (`ButtonPeer`, `TogglePeer`, `RadioButtonPeer`, `TextBlockPeer`, `TextEditPeer`, `GroupBoxPeer`). A control derived from `Button` keeps `ButtonPeer` without doing anything; override only to change what UIA sees:
+
+```cpp
+class StarRating : public FrameworkElement {
+protected:
+    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
+};
+
+class StarRatingPeer : public automation::AutomationPeer, public automation::IValuePeer {
+public:
+    explicit StarRatingPeer(StarRating& o) : AutomationPeer(o) {}
+    automation::ControlType GetControlType() const override { return automation::ControlType::Slider; }
+    bool IsControlElement() const override { return true; }
+    automation::IValuePeer* AsValue() override { return this; }
+    std::wstring GetValue() const override;              // read the control's state now
+    bool IsReadOnly() const override { return false; }
+    void SetValue(const std::wstring& v) override;       // runs from a posted message
+};
+```
+
+Pattern interfaces: `IInvokePeer`, `ITogglePeer`, `IValuePeer`, `ISelectionItemPeer`, exposed through `AsInvoke()`/`AsToggle()`/`AsValue()`/`AsSelectionItem()` (return `this`, or null when unsupported).
+
+Rules a peer must follow, and why:
+
+- **Getters read live state, O(1).** No caching, no layout, no tree walk per property: UIA can ask hundreds of properties per second while Narrator is on, and every call is on the UI thread.
+- **Actions may destroy the element.** `Invoke()`/`Toggle()`/`Select()`/`SetValue()` run app code (a Click handler can remove its own button). The framework calls them from a posted message after the COM call returned and re-checks that the element is still attached and enabled. Do not touch `this` after the call that raises app events (see `ButtonPeer::Invoke`).
+- **The peer never outlives the attach period.** `DetachFromContext` and `~UIElement` release it; the provider UIA still holds is frozen and answers `UIA_E_ELEMENTNOTAVAILABLE`. Do not keep a pointer to a peer.
+- **No UIA headers.** Peers see only `automation/AutomationTypes.h`; `<UIAutomation.h>` stays inside `automation/Uia*.cpp`.
+- **Children** come from `UIElement::LogicalChildCount()/LogicalChildAt()`. A container that owns children outside `Panel` overrides those two (only attached, visible children are exposed); one that transforms its children overrides `MapChildRectToSelf` (Viewbox does) so UIA's bounding rectangle matches the pixels.
+- **Property changes need no code.** While a peer exists, any invalidation of its element queues one re-check per flush; Name, IsEnabled, ToggleState and Value changes are raised only if they really changed and only while a client listens.
+
+`ButtonBase::PerformActivate()` is the public programmatic activation (same effect as a click; ignored when disabled) that `ButtonPeer`/`TogglePeer`/`RadioButtonPeer` call.
+
 ## Common Patterns
 
 ### Pattern 1: Call Base Then Decorate

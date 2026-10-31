@@ -69,6 +69,7 @@
     <ClInclude Include="framework\PixelSurface.h" />
     <ClInclude Include="framework\FakeCompositionBackend.h" />
     <ClInclude Include="unit\LayoutTestHelpers.h" />
+    <ClInclude Include="unit\AutomationTestHelpers.h" />
     <ClInclude Include="unit\ClipboardTestHelpers.h" />
     <ClInclude Include="unit\InheritanceExamples.h" />
   </ItemGroup>
@@ -110,6 +111,9 @@
     <ClCompile Include="unit\ButtonTests.cpp" />
     <ClCompile Include="unit\ApplicationTests.cpp" />
     <ClCompile Include="unit\AutomationProviderTests.cpp" />
+    <ClCompile Include="unit\AutomationPeerTests.cpp" />
+    <ClCompile Include="unit\AutomationPeerLifetimeTests.cpp" />
+    <ClCompile Include="unit\AutomationReviewFixTests.cpp" />
     <ClCompile Include="unit\FrameWaiterTests.cpp" />
     <ClCompile Include="unit\AnimatedValueTests.cpp" />
     <ClCompile Include="unit\ButtonBaseTests.cpp" />
