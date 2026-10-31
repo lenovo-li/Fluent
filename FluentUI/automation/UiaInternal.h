@@ -40,4 +40,14 @@ inline IRawElementProviderSimple* AsSimple(IUnknown* p) {
     return static_cast<IRawElementProviderSimple*>(p);
 }
 
+// Caption-button providers (UiaCaptionButtons.cpp) answer QueryInterface for this
+// private IID, so code handed "some provider" can tell them from element providers
+// before casting (an element cast of a caption provider reads garbage).
+// {6C0B5E2A-4F1D-4C77-9A51-3E8F2B7D9C10}
+inline constexpr GUID kCaptionProviderIid = {
+    0x6c0b5e2a, 0x4f1d, 0x4c77, {0x9a, 0x51, 0x3e, 0x8f, 0x2b, 0x7d, 0x9c, 0x10}};
+bool IsCaptionProvider(IUnknown* p);
+// Whether a caption provider is still served by its window's host (not detached).
+bool CaptionProviderAttached(IUnknown* p);
+
 }  // namespace fluent::automation

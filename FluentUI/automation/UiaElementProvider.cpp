@@ -488,6 +488,7 @@ void RaiseChangedProperties(IUiaCore* core, IUnknown* provider) {
         now.selected = sel->SelectedIndex();
         now.selectedCount = sel->SelectedCount();
     }
+    if (ISelectionItemPeer* si = peer->AsSelectionItem()) now.isSelected = si->IsSelected() ? 1 : 0;
     // A password's value is never reported, so it can never be raised either. A
     // multi-line document does not raise Value changes at all (that is TextPattern's
     // job), and a long single-line value is not compared: either would copy the
@@ -510,6 +511,9 @@ void RaiseChangedProperties(IUiaCore* core, IUnknown* provider) {
         if (was.expand != now.expand && now.expand >= 0)
             core->RaiseIntChanged(provider, UIA_ExpandCollapseExpandCollapseStatePropertyId,
                                   was.expand, now.expand);
+        if (was.isSelected != now.isSelected && now.isSelected >= 0)
+            core->RaiseBoolChanged(provider, UIA_SelectionItemIsSelectedPropertyId,
+                                   was.isSelected == 1, now.isSelected == 1);
         if (now.hasRange && was.range != now.range)
             core->RaiseDoubleChanged(provider, UIA_RangeValueValuePropertyId, was.range, now.range);
         if (was.selected != now.selected || was.selectedCount != now.selectedCount) {

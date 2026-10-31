@@ -107,12 +107,6 @@ public:
     void SetSelectedIndex(int visibleIndex) override;
     const TreeViewRow* SelectedRow() const { return SelectedItem(); }
 
-    // Selection mode + the multi-select API live in Selector now
-    // (SetSelectionMode / GetSelectionMode / SelectedIndices / IsSelected /
-    // ToggleSelection / RangeSelectTo). The four names below are kept as thin
-    // row-flavoured aliases: they read better at a tree call site, and they are
-    // what the existing tests and demo call. The indices are ROW indices (into
-    // items_), not visible indices — same as before the hoist.
     // --- Visible rows, for UI Automation (O(1) each) ------------------------
     // The rows currently shown (collapsed subtrees excluded), in display order.
     int VisibleRowCount() const { return static_cast<int>(visibleRows_.size()); }
@@ -132,6 +126,13 @@ public:
         scroll_.SetOffset(dip);
         Invalidate();
     }
+
+    // Selection mode + the multi-select API live in Selector now
+    // (SetSelectionMode / GetSelectionMode / SelectedIndices / IsSelected /
+    // ToggleSelection / RangeSelectTo). The four names below are kept as thin
+    // row-flavoured aliases: they read better at a tree call site, and they are
+    // what the existing tests and demo call. The indices are ROW indices (into
+    // items_), not visible indices — same as before the hoist.
 
     std::vector<int> SelectedRowIndices() const { return SelectedIndices(); }
     bool IsRowSelected(int rowIndex) const { return IsSelected(rowIndex); }

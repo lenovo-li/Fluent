@@ -108,6 +108,7 @@ public:
     void PostAction(IUnknown* provider, PeerAction action, const wchar_t* value, double a,
                     double b) override;
     void QueueChanged(IUnknown* provider) override;
+    bool ClientsAreListening() const override;
     void QueueInvoked(IUnknown* provider) override;
     void QueueSelected(IUnknown* provider) override;
     void QueueChildrenChanged(IUnknown* parentProviderOrNull) override;

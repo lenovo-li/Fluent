@@ -59,6 +59,12 @@ public:
     virtual void ScrollItemIntoView(size_t i) { UNREFERENCED_PARAMETER(i); }
     AutomationPeer* ItemAtPoint(float x, float y) override;
     size_t FocusedIndex() const override { return SelectedIndex(); }
+
+protected:
+    // ItemAtPoint receives HOST DIPs; ItemRect and the controls' hit-tests work in
+    // the control's own space. This is the inverse of SelectableItemPeer's
+    // BoundsInHostDip mapping (Viewbox scaling), so hit-test and bounds agree.
+    void HostToOwner(float& x, float& y) const;
 };
 
 class ListBoxPeer final : public SelectableContainerPeer, public IScrollPeer {
@@ -160,6 +166,7 @@ public:
     size_t SelectedCount() const override;
     bool IsIndexSelected(size_t i) const override;
     AutomationPeer* ItemAtPoint(float x, float y) override;
+    bool KeysAreStable() const override { return true; }  // row ids
     ExpandState RowExpandState(size_t i) const;
     void SetRowExpanded(size_t i, bool expanded);
     IScrollPeer* AsScroll() override { return this; }

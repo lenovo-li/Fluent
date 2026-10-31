@@ -97,6 +97,9 @@ public:
     // Replace the typed text. No-op when not editable. Does not raise TextChanged
     // (a programmatic set is not user input); does not touch the selection.
     void SetText(std::wstring text);
+    // Replace the edit text the way typing does, raising TextChanged (SetText is
+    // programmatic and silent). UI Automation's ValuePattern.SetValue. Editable only.
+    void ReplaceTextAsUserEdit(const std::wstring& text);
 
     // The caret's code-unit offset into the typed text. Editable mode only.
     // Exposed because every editing key is defined by what it does to the caret,

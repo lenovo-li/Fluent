@@ -109,6 +109,7 @@ void AutomationHost::QueueChanged(IUnknown* p) {
     PushUnique(changed_, p);
     RequestFlush();
 }
+bool AutomationHost::ClientsAreListening() const { return !torn_down_ && core_->ClientsAreListening(); }
 void AutomationHost::QueueInvoked(IUnknown* p) { if (p && !torn_down_) { PushUnique(invoked_, p); RequestFlush(); } }
 void AutomationHost::QueueSelected(IUnknown* p) { if (p && !torn_down_) { PushUnique(selected_, p); RequestFlush(); } }
 

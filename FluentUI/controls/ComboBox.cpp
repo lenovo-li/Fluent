@@ -542,6 +542,16 @@ void ComboBox::SetText(std::wstring text) {
     InvalidateDirty(DirtyFlags::Render);
 }
 
+void ComboBox::ReplaceTextAsUserEdit(const std::wstring& text) {
+    if (!editable_ || text_ == text) return;
+    text_ = text;
+    caret_ = static_cast<UINT32>(text_.size());
+    caretVisible_ = true;
+    InvalidateDirty(DirtyFlags::Render);
+    std::wstring snapshot = text_;
+    textChanged_.Raise(*this, snapshot);
+}
+
 void ComboBox::ClampCaret() {
     caret_ = std::min<UINT32>(caret_, static_cast<UINT32>(text_.size()));
 }

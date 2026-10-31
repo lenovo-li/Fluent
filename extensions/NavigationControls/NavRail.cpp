@@ -179,6 +179,13 @@ void NavRail::SetPaneMode(bool enabled) {
     InvalidateDirty(DirtyFlags::Measure);
 }
 
+void NavRail::PerformSetPaneExpanded(bool expanded) {
+    if (!paneMode_ || expanded == expanded_) return;
+    SetExpanded(expanded);
+    bool payload = expanded_;
+    expandedChanged_.Raise(*this, payload);
+}
+
 void NavRail::SetExpanded(bool expanded, bool animate) {
     if (expanded_ == expanded) return;
     expanded_ = expanded;
@@ -319,9 +326,7 @@ void NavRail::PaneActivate(int target) {
         int payload = 0;
         backRequested_.Raise(*this, payload);
     } else if (target == kToggleTarget) {
-        SetExpanded(!expanded_);
-        bool payload = expanded_;
-        expandedChanged_.Raise(*this, payload);
+        PerformSetPaneExpanded(!expanded_);
         // Tooltips depend on the state (labels are visible when expanded).
         const int hover = hoverIndex_;
         hoverIndex_ = -1;

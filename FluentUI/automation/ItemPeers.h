@@ -49,8 +49,10 @@ public:
     void SetFocusFromAutomation() override;
 
 private:
+    friend class ItemsContainerPeer;
     ItemsContainerPeer& container_;
     const size_t key_;
+    uint64_t lastUse_ = 0;  // container's use clock at the last ItemAt hit (trim order)
 };
 
 class ItemsContainerPeer : public AutomationPeer, public IItemsPeer {
@@ -64,30 +66,50 @@ public:
     // Supplied by the control's peer.
     virtual size_t KeyAt(size_t i) const { return i; }
     virtual size_t IndexOfKey(size_t key) const { return key; }  // >= ItemCount() = gone
+    // True when a key keeps naming the same row across inserts and removals (a row
+    // id). False for the default index keys: there, any change of the item count
+    // may have shifted every row under its key ("item 5" was Apple, is now Fig),
+    // so the whole cache is released and the client re-reads the children.
+    virtual bool KeysAreStable() const { return false; }
     virtual std::unique_ptr<ItemPeer> MakeItem(size_t key) = 0;
     // The keyboard-current item's index, or ItemCount() for none.
     virtual size_t FocusedIndex() const { return ItemCount(); }
 
     AutomationPeer* FocusedItem() override;
-    // Re-check after the owner invalidated: drop items whose key vanished, then the
-    // base re-check (which raises property changes).
-    void OnOwnerInvalidated() override;  // queues only
-    void OnFlushRecheck() override;      // prunes / trims
+    // Re-check after the owner invalidated. OnOwnerInvalidated only queues;
+    // OnFlushRecheck (called from the host's flush, never inside a client call)
+    // releases what is gone, raises ChildrenInvalidated when the item count changed,
+    // and queues a property re-check for the cached items a client can see (a
+    // TreeItem's ExpandCollapseState, a row's IsSelected), which items cannot get
+    // any other way: they have no element of their own to invalidate.
+    void OnOwnerInvalidated() override;
+    void OnFlushRecheck() override;
     size_t CachedItemCount() const { return items_.size(); }
 
-    // Bound on the cache. Past it, every cached item but the requested one is
-    // released: the client sees earlier rows as gone and re-fetches them, which is
-    // what virtualized UIA trees do.
+    // Bound on the cache. Past it, the flush releases all but the focused item and
+    // the kKeptOnTrim most recently used ones: a client walking 5000 rows keeps the
+    // row it stands on (its next Navigate still works) while the rows it walked
+    // past are released, which is what virtualized UIA trees do.
     static constexpr size_t kMaxCachedItems = 1024;
+    static constexpr size_t kKeptOnTrim = 64;
+    // At most this many cached items are re-checked for property changes per
+    // flush: the focused one, then the visible ones.
+    static constexpr size_t kMaxRecheckedItems = 64;
 
 protected:
     void ReleaseOwned(IAutomationSite* site) override;
 
 private:
     void ReleaseItem(std::map<size_t, std::unique_ptr<ItemPeer>>::iterator it);
+    bool ReleaseAll();
+    bool TrimToRecent();
+    void QueueItemRechecks(IAutomationSite& site);
     std::map<size_t, std::unique_ptr<ItemPeer>> items_;
     bool trimRequested_ = false;
-    size_t lastCount_ = SIZE_MAX;  // item count at the last flush re-check
+    // Item count a client last saw (at the first ItemAt, then each flush re-check);
+    // SIZE_MAX = no client has enumerated items, so a count change concerns nobody.
+    size_t lastCount_ = SIZE_MAX;
+    uint64_t useClock_ = 0;
 };
 
 }  // namespace fluent::automation

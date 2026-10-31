@@ -47,6 +47,7 @@ public:
         double range = 0;   // RangeValue value (hasRange)
         bool hasRange = false;
         size_t selected = SIZE_MAX, selectedCount = 0;  // container selection
+        int isSelected = -1;  // SelectionItem.IsSelected; -1 = no SelectionItem pattern
         std::wstring name, value;
     } reported;
 

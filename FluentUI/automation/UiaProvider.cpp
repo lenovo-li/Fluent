@@ -265,7 +265,13 @@ void DetachProvider(IUnknown* provider) {
 bool IsProviderAttached(IUnknown* provider) {
     if (!provider) return false;
     ComPtr<IRawElementProviderFragmentRoot> root;
-    if (FAILED(provider->QueryInterface(IID_PPV_ARGS(&root)))) return PeerFromProvider(provider) != nullptr;
+    if (FAILED(provider->QueryInterface(IID_PPV_ARGS(&root)))) {
+        // Not the root: an element provider, or a caption button (which has no peer
+        // and must not be cast as an element; it answers "attached" while its
+        // window's host still serves it).
+        if (IsCaptionProvider(provider)) return CaptionProviderAttached(provider);
+        return PeerFromProvider(provider) != nullptr;
+    }
     auto* p = FromUnknown(provider);
     return p->Attached();
 }

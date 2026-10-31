@@ -71,6 +71,10 @@ public:
     // A plain UIA event (UiaRaiseAutomationEvent) on `provider`, coalesced per
     // (provider, event) per flush, raised only while a client listens.
     virtual void QueueEvent(IUnknown* provider, int eventId) = 0;
+    // Whether any UIA client is listening right now (UiaClientsAreListening). For
+    // peers that keep state on a client's behalf (the item cache) and should drop
+    // it once nobody is left to use it.
+    virtual bool ClientsAreListening() const = 0;
 
     // --- The window's caption buttons (window/NativeWindowHost draws them) -------
     // Slot 0..2 = minimize, maximize, close; the window root lists them FIRST (they

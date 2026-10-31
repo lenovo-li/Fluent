@@ -89,7 +89,13 @@ public:
     void ScrollItemIntoView(int i);
     // The list's own scroller, read-only (UIA's Scroll pattern reports it).
     const ScrollViewer& Scroller() const { return scroll_; }
-    void SetScrollOffset(float dip) { scroll_.SetOffset(dip); }
+    // Moves the list's own scroller and repaints. scroll_ is a member, not an
+    // element, so it cannot schedule a frame itself (same as TreeView).
+    void SetScrollOffset(float dip) {
+        const float before = scroll_.Offset();
+        scroll_.SetOffset(dip);
+        if (scroll_.Offset() != before) Invalidate();
+    }
 
     // Selection: inherited from Selector. SelectionChanged event is fired when
     // the ACTIVE index changes via keyboard, mouse, or SetSelectedIndex.

@@ -87,7 +87,7 @@ protected:
         lbl->SetText(L"Hello label");
         lbl->SetAutomationId(L"lbl");
 
-        // Phase 2: a RangeValue, an ExpandCollapse, a list with item peers.
+        // A RangeValue, an ExpandCollapse, a list with item peers.
         auto* sld = root->Emplace<Slider>();
         sld->SetAutomationId(L"sld");
         sld->SetMinimum(0);
@@ -338,7 +338,7 @@ void RunClient(HWND hwnd) {
               "removal -> StructureChanged event delivered");
         if (uia) uia->RemoveAllEventHandlers();
 
-        // --- Phase 2 controls through the real client ---------------------------
+        // --- Range, expand, list and caption patterns through the real client ---
         auto sld = FindById(uia.Get(), root.Get(), L"sld");
         ComPtr<IUIAutomationRangeValuePattern> rv;
         if (sld) sld->GetCurrentPatternAs(UIA_RangeValuePatternId, IID_PPV_ARGS(&rv));

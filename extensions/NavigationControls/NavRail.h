@@ -84,6 +84,13 @@ public:
     // SelectedItem setter path used for state restore). -1 clears.
     void SetSelectedIndex(int index);
     int SelectedIndex() const { return selectedIndex_; }
+    // Select the way a click does: refuses headers and disabled items, raises
+    // SelectionChanged (SetSelectedIndex is silent). Used by UI Automation, so a
+    // screen-reader selection navigates. Index is the unified one (footer items
+    // follow Items()).
+    void PerformSelect(int index) { UserSelect(index); }
+    // Whether the unified index names an item a user can select.
+    bool IsItemSelectable(int index) const { return Selectable(index); }
 
     // Rail fill. Default: Theme().colors.windowBackground.
     void SetRailBackground(const D2D1_COLOR_F& c) { background_ = c; Invalidate(); }
@@ -101,6 +108,10 @@ public:
     // Does not raise ExpandedChanged.
     void SetExpanded(bool expanded, bool animate = true);
     bool IsExpanded() const { return expanded_; }
+    // Toggle the pane the way the toggle button does: animated, ExpandedChanged
+    // raised when it changed (SetExpanded is silent). Pane mode only; used by UI
+    // Automation's Expand/Collapse.
+    void PerformSetPaneExpanded(bool expanded);
     void SetExpandedWidth(float dip);
     void SetBackButtonVisible(bool visible);
     void SetBackButtonEnabled(bool enabled);

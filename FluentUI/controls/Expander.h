@@ -104,6 +104,13 @@ public:
     // guarantee a ticking host should ask for Instant. (Detached is not a problem for
     // correctness: the state is already correct, only the interpolation is missing.)
     void SetExpanded(bool expanded, Transition transition = Transition::Instant);
+    // Set the state the way a header click does: the user transition, and
+    // ExpandedChanged raised when it changed (SetExpanded raises nothing). UI
+    // Automation's Expand/Collapse use this, so an app that lazy-loads content in
+    // ExpandedChanged sees a screen-reader expansion too. Ignored when disabled.
+    void PerformSetExpanded(bool expanded) {
+        if (IsEnabled() && expanded != IsExpanded()) ToggleFromUser();
+    }
     bool IsExpanded() const { return expanded_; }
 
     // Whether a HEADER CLICK (or Space/Enter on the header) animates. Programmatic

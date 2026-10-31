@@ -40,6 +40,7 @@ public:
     CaptionButtonProvider(IAutomationSite* site, int slot)
         : site_(site), slot_(slot), serial_(0x7FFF0000u + slot), ui_(GetCurrentThreadId()) {}
     void Detach() { site_ = nullptr; }
+    bool Attached() const { return site_ != nullptr; }
 
     IFACEMETHODIMP_(ULONG) AddRef() override { return ++refs_; }
     IFACEMETHODIMP_(ULONG) Release() override {
@@ -56,6 +57,8 @@ public:
             *out = static_cast<IRawElementProviderFragment*>(this);
         else if (riid == __uuidof(IInvokeProvider))
             *out = static_cast<IInvokeProvider*>(this);
+        else if (riid == kCaptionProviderIid)
+            *out = static_cast<IRawElementProviderSimple*>(this);
         else
             return E_NOINTERFACE;
         AddRef();
@@ -217,6 +220,18 @@ IUnknown* AutomationHost::CaptionProvider(int slot) {
         captions_[slot].Attach(static_cast<IRawElementProviderSimple*>(p));
     }
     return captions_[slot].Get();
+}
+
+bool IsCaptionProvider(IUnknown* p) {
+    if (!p) return false;
+    IUnknown* q = nullptr;
+    if (FAILED(p->QueryInterface(kCaptionProviderIid, reinterpret_cast<void**>(&q))) || !q) return false;
+    q->Release();
+    return true;
+}
+
+bool CaptionProviderAttached(IUnknown* p) {
+    return IsCaptionProvider(p) && static_cast<CaptionButtonProvider*>(AsSimple(p))->Attached();
 }
 
 // Detach + disconnect the caption providers at teardown (called by the host).

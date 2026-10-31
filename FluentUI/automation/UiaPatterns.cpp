@@ -71,10 +71,18 @@ HRESULT ElementProvider::Scroll(ScrollAmount h, ScrollAmount v) {
     CheckThread("Scroll");
     IScrollPeer* sc = LiveSite() ? peer_->AsScroll() : nullptr;
     if (!sc) return UIA_E_ELEMENTNOTAVAILABLE;
-    // Amounts -> percent steps: a page is the visible share, a line a tenth of it.
+    // A request on an axis that cannot scroll is an error per the Scroll pattern.
+    const double ch = sc->HorizontalPercent(), cv = sc->VerticalPercent();
+    if ((h != ScrollAmount_NoAmount && ch < 0) || (v != ScrollAmount_NoAmount && cv < 0))
+        return UIA_E_INVALIDOPERATION;
+    // Amounts -> percent steps. Percent is of the scrollable range (extent - view),
+    // view size is a percent of the extent, so one viewport is
+    // view / (100 - view) * 100 percent of the range. A line is a tenth of a page.
     auto step = [](ScrollAmount a, double cur, double view) -> double {
         if (cur < 0) return -1;  // axis not scrollable: leave it
-        const double page = view > 0 ? view : 10.0, line = page / 10.0;
+        const double page = (view > 0 && view < 100) ? std::min(100.0, view / (100.0 - view) * 100.0)
+                                                     : 10.0;
+        const double line = page / 10.0;
         switch (a) {
             case ScrollAmount_LargeDecrement: return std::max(0.0, cur - page);
             case ScrollAmount_SmallDecrement: return std::max(0.0, cur - line);
@@ -83,8 +91,8 @@ HRESULT ElementProvider::Scroll(ScrollAmount h, ScrollAmount v) {
             default: return -1;
         }
     };
-    const double nh = step(h, sc->HorizontalPercent(), sc->HorizontalViewSize());
-    const double nv = step(v, sc->VerticalPercent(), sc->VerticalViewSize());
+    const double nh = step(h, ch, sc->HorizontalViewSize());
+    const double nv = step(v, cv, sc->VerticalViewSize());
     return Post(PeerAction::SetScroll, nullptr, nh, nv);
 }
 HRESULT ElementProvider::SetScrollPercent(double h, double v) {
@@ -95,6 +103,9 @@ HRESULT ElementProvider::SetScrollPercent(double h, double v) {
     const bool badH = h != UIA_ScrollPatternNoScroll && (h < 0 || h > 100);
     const bool badV = v != UIA_ScrollPatternNoScroll && (v < 0 || v > 100);
     if (badH || badV) return E_INVALIDARG;
+    if ((h != UIA_ScrollPatternNoScroll && sc->HorizontalPercent() < 0) ||
+        (v != UIA_ScrollPatternNoScroll && sc->VerticalPercent() < 0))
+        return UIA_E_INVALIDOPERATION;
     return Post(PeerAction::SetScroll, nullptr, h, v);
 }
 #define FL_SCROLL_GETTER(Method, Call)                                       \

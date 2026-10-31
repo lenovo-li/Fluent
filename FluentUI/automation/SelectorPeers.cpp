@@ -41,10 +41,18 @@ void SelectableItemPeer::ScrollIntoView() { C(*this).ScrollItemIntoView(Index())
 std::unique_ptr<ItemPeer> SelectableContainerPeer::MakeItem(size_t key) {
     return std::make_unique<SelectableItemPeer>(*this, key, ItemType());
 }
+void SelectableContainerPeer::HostToOwner(float& x, float& y) const {
+    const RectDip owner = Owner().Bounds();
+    const RectDip mapped = Owner().BoundsInHostDip();
+    if (owner.w <= 0 || owner.h <= 0 || mapped.w <= 0 || mapped.h <= 0) return;
+    x = owner.x + (x - mapped.x) * owner.w / mapped.w;
+    y = owner.y + (y - mapped.y) * owner.h / mapped.h;
+}
 AutomationPeer* SelectableContainerPeer::ItemAtPoint(float x, float y) {
     // O(visible) for a list: rows outside the viewport have empty rects, but a
     // linear scan over a 1M-row list would still be O(n), so containers with many
     // items override with arithmetic (ListBoxPeer).
+    HostToOwner(x, y);
     for (size_t i = 0, n = ItemCount(); i < n && i < 512; ++i)
         if (ItemRect(i).contains(x, y)) return ItemAt(i);
     return nullptr;
@@ -67,7 +75,8 @@ void ListBoxPeer::SetItemInSelection(size_t i, bool on) {
     }
     if (lb.IsSelected(static_cast<int>(i)) != on) lb.ToggleSelection(static_cast<int>(i));
 }
-AutomationPeer* ListBoxPeer::ItemAtPoint(float, float y) {
+AutomationPeer* ListBoxPeer::ItemAtPoint(float x, float y) {
+    HostToOwner(x, y);
     const int i = LB(*this).ItemIndexAt(y);
     return i >= 0 ? ItemAt(static_cast<size_t>(i)) : nullptr;
 }
@@ -131,8 +140,9 @@ void ComboBoxPeer::Expand() { CB(*this).SetDropDownOpen(true); }
 void ComboBoxPeer::Collapse() { CB(*this).SetDropDownOpen(false); }
 std::wstring ComboBoxPeer::GetValue() const { return CB(*this).Text(); }
 bool ComboBoxPeer::IsReadOnly() const { return !CB(*this).IsEditable(); }
+// Typing's path, not SetText: TextChanged must reach the app's bound model.
 void ComboBoxPeer::SetValue(const std::wstring& v) {
-    if (CB(*this).IsEditable()) CB(*this).SetText(v);
+    if (CB(*this).IsEditable()) CB(*this).ReplaceTextAsUserEdit(v);
 }
 
 // --- TreeView -------------------------------------------------------------------------
@@ -187,7 +197,8 @@ bool TreeViewPeer::IsIndexSelected(size_t i) const {
     const int r = TV(*this).RowIndexAtVisible(static_cast<int>(i));
     return r >= 0 && TV(*this).IsRowSelected(r);
 }
-AutomationPeer* TreeViewPeer::ItemAtPoint(float, float y) {
+AutomationPeer* TreeViewPeer::ItemAtPoint(float x, float y) {
+    HostToOwner(x, y);
     const int v = TV(*this).VisibleRowAt(y);
     return v >= 0 ? ItemAt(static_cast<size_t>(v)) : nullptr;
 }

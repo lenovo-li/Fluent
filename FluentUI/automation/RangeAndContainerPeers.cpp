@@ -92,9 +92,10 @@ std::wstring ExpanderPeer::GetName() const {
 ExpandState ExpanderPeer::GetExpandState() const {
     return As<Expander>(*this).IsExpanded() ? ExpandState::Expanded : ExpandState::Collapsed;
 }
-// Animated like a header click: UIA-driven expansion looks the same as the user's.
-void ExpanderPeer::Expand() { As<Expander>(*this).SetExpanded(true, Expander::Transition::Animate); }
-void ExpanderPeer::Collapse() { As<Expander>(*this).SetExpanded(false, Expander::Transition::Animate); }
+// The header click's path: the app's user transition, and ExpandedChanged raised,
+// so content an app loads lazily in ExpandedChanged is there for a UIA Expand too.
+void ExpanderPeer::Expand() { As<Expander>(*this).PerformSetExpanded(true); }
+void ExpanderPeer::Collapse() { As<Expander>(*this).PerformSetExpanded(false); }
 
 // --- Hyperlink ------------------------------------------------------------------
 HyperlinkPeer::HyperlinkPeer(Hyperlink& o) : AutomationPeer(o) {}
