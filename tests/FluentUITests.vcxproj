@@ -75,6 +75,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="framework\TestMain.cpp" />
+    <ClCompile Include="smoke\UiaSmoke.cpp" />
     <ClCompile Include="unit\GeometryTests.cpp" />
     <ClCompile Include="unit\HangDetectorTests.cpp" />
     <ClCompile Include="unit\StackPanelTests.cpp" />
