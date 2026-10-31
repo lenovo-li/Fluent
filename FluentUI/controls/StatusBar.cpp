@@ -17,10 +17,13 @@ StatusBar::StatusBar() {
     SetVAlign(VAlign::Bottom);
 
     // Left text block.
+    // Caption size, secondary color: status text is ambient information, and at body
+    // size in primary color it competed with the page content above it.
     auto* text = Emplace<TextBlock>();
     text->SetVAlign(VAlign::Center);
     text->SetHAlign(HAlign::Left);
-    text->SetMargin(Thickness(kPadX, 0.0f, 0.0f, 0.0f));
+    text->SetTypographyRole(TypographyRole::Caption);
+    text->SetDimmed(true);
     text_ = text;
 }
 
@@ -72,6 +75,9 @@ void StatusBar::ArrangeOverride(const RectDip& content) {
     if (rightContent_) rightW = rightContent_->Desired().w;
 
     if (text_) {
+        // Inset by kPadX. This used to be a Margin on the TextBlock, but this panel
+        // arranges its children itself and never read margins, so the text sat flush
+        // against the left edge.
         const float textW = std::max(0.0f, content.w - rightW - kPadX * 3.0f);
         // Center using the text's OWN desired height, not the full strip height:
         // TextBlock draws its glyphs top-aligned within its bounds, so handing it
@@ -79,7 +85,7 @@ void StatusBar::ArrangeOverride(const RectDip& content) {
         // strip instead of centered in it.
         const float th = text_->Desired().h;
         const float ty = content.y + (content.h - th) * 0.5f;
-        text_->Arrange(RectDip{content.x, ty, textW, th});
+        text_->Arrange(RectDip{content.x + kPadX, ty, textW, th});
     }
 
     if (rightContent_) {
@@ -91,24 +97,15 @@ void StatusBar::ArrangeOverride(const RectDip& content) {
 }
 
 void StatusBar::OnRenderBackground(const DrawingContext& dc) {
-    const ColorTokens& pal = Theme().colors;
-    const SpacingTokens& spacing = Theme().spacing;
-
-    // StatusBar uses a darker, more prominent fill than cardFill (which is
-    // semi-transparent and meant to sit over Mica). In light theme cardFill reads
-    // as too bright for a status strip; use controlFillDefault (opaque, darker).
-    // Round the top corners to visually separate from content above — the bottom
-    // edge is flush with the window and stays square. Win11 status strips use the
-    // small radius, not the card radius.
-    const float radius = spacing.cornerRadiusSmall;
-    D2D1_ROUNDED_RECT rr = D2D1::RoundedRect(
-        D2D1::RectF(bounds_.x, bounds_.y, bounds_.right(), bounds_.bottom()),
-        radius, radius);
-    dc.FillRoundedRect(rr, pal.controlFillDefault);
-
-    // Subtle 1px top separator for depth.
+    // No fill of its own: the strip belongs to the surface it sits on (window Mica,
+    // a card), separated from the content above by one divider line — the Win11
+    // status-strip look. It used to paint an opaque controlFillDefault slab with
+    // rounded corners, which read as a stray button-like block, and inside a
+    // rounded container its square bottom corners poked out past the container's
+    // curve. A host that wants a distinct band puts the StatusBar in a Border with
+    // that background.
     dc.FillRect(D2D1::RectF(bounds_.x, bounds_.y, bounds_.right(), bounds_.y + 1.0f),
-                pal.controlStrokeDefault);
+                Theme().colors.controlStrokeDefault);
 }
 
 } // namespace fluent

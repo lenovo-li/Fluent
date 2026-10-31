@@ -88,3 +88,16 @@ TEST(StatusBar, ClearRightContent) {
     // After clearing, only the text block remains.
     EXPECT_EQ(sb.ChildCount(), 1u);
 }
+
+// The status text is inset from the left edge. It used to carry the inset as a Margin,
+// which StatusBar's own ArrangeOverride never read, so "Ready" sat flush against the
+// strip's edge.
+TEST(StatusBar, TextIsInsetFromTheLeftEdge) {
+    StatusBar sb;
+    sb.SetText(L"Ready");
+    sb.Measure(400.0f, 32.0f);
+    sb.Arrange(RectDip{10.0f, 0.0f, 400.0f, 32.0f});
+    const FrameworkElement* text = sb.ChildAt(0);
+    EXPECT_TRUE(text != nullptr);
+    if (text) EXPECT_NEAR(text->Bounds().x, 10.0f + 12.0f, 0.01f);
+}

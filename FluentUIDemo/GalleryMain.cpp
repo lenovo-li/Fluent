@@ -89,7 +89,7 @@ std::unique_ptr<Panel> GalleryApp::BuildContent() {
 
 void GalleryApp::BuildAllPages() {
     static constexpr int kPageIds[] = {
-        101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113,  // 基础控件
+        101, 102, 103, 104, 105, 106, 107, 108, 111, 112, 113,  // 基础控件
         201, 208, 202, 203, 204, 205, 206, 207,   // 输入控件
         301, 302,                            // 文本控件
         401, 402, 403, 404, 405, 406, 407, 408, 409,  // 数据控件（LogViewer + RichTextBox）
@@ -126,6 +126,9 @@ std::vector<TreeViewRow> GalleryApp::BuildNavigationTree() {
     rows.push_back({106, 100, L"Image", 1, false, false, true, TreeViewIcon::None});
     rows.push_back({107, 100, L"RepeatButton", 1, false, false, true, TreeViewIcon::None});
     rows.push_back({108, 100, L"Separator", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({111, 100, L"Rating", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({112, 100, L"Custom Controls", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({113, 100, L"Installer Controls", 1, false, false, true, TreeViewIcon::None});
 
     rows.push_back({200, -1, L"输入控件", 0, false, true, true, TreeViewIcon::Folder});
     rows.push_back({201, 200, L"TextBox", 1, false, false, true, TreeViewIcon::None});
@@ -152,20 +155,22 @@ std::vector<TreeViewRow> GalleryApp::BuildNavigationTree() {
     rows.push_back({408, 400, L"LogViewer", 1, false, false, true, TreeViewIcon::None});
     rows.push_back({409, 400, L"RichTextBox", 1, false, false, true, TreeViewIcon::None});
 
-    rows.push_back({100, -1, L"基础控件", 0, false, true, true, TreeViewIcon::Folder});
-    rows.push_back({101, 100, L"Button", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({102, 100, L"CheckBox", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({103, 100, L"RadioButton", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({104, 100, L"ToggleSwitch", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({105, 100, L"Hyperlink", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({106, 100, L"Image", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({107, 100, L"RepeatButton", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({108, 100, L"Separator", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({109, 100, L"ProgressBar", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({110, 100, L"Hyperlink", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({111, 100, L"Rating", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({112, 100, L"Custom Controls", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({113, 100, L"Installer Controls", 1, false, false, true, TreeViewIcon::None});
+    // 布局容器. This group was once overwritten by a pasted second copy of 基础控件
+    // (same node id 100), which showed two "基础控件" roots, hid every layout page, and
+    // made the first root impossible to collapse: TreeView resolves a node by id, so
+    // both roots mapped to the second one. Node ids must be unique.
+    rows.push_back({500, -1, L"布局容器", 0, false, true, true, TreeViewIcon::Folder});
+    rows.push_back({501, 500, L"Grid", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({502, 500, L"StackPanel", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({503, 500, L"WrapPanel", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({504, 500, L"DockPanel", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({505, 500, L"Border", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({506, 500, L"Canvas", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({507, 500, L"ScrollViewer", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({508, 500, L"Expander", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({509, 500, L"UniformGrid", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({510, 500, L"Viewbox", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({511, 500, L"GroupBox", 1, false, false, true, TreeViewIcon::None});
     rows.push_back({512, 500, L"动态列表 (RemoveAt/InsertAt)", 1, false, false, true, TreeViewIcon::None});
 
     rows.push_back({600, -1, L"窗口 & 对话框", 0, false, true, true, TreeViewIcon::Folder});
@@ -237,8 +242,6 @@ std::unique_ptr<ScrollPanel> GalleryApp::CreatePageForId(int id) {
         case 106: return CreateImagePage();
         case 107: return CreateRepeatButtonPage();
         case 108: return CreateSeparatorPage();
-        case 109: return CreateProgressBarPage();
-        case 110: return CreateHyperlinkPage();
         case 111: return CreateRatingPage();
         case 112: return CreateCustomControlsPage();
         case 113: return CreateInstallerControlsPage();

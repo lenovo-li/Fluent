@@ -377,7 +377,6 @@ std::unique_ptr<ScrollPanel> GalleryApp::CreateContentDialogPage() {
     CreateCodeExample(content, LR"(// 模态：ShowDialog 阻塞到关闭，栈变量即可
 ContentDialog dialog;
 dialog.SetTitle(L"设置");
-dialog.SetClientSize(420.0f, 300.0f);
 
 auto body = std::make_unique<StackPanel>();
 body->SetSpacing(12.0f);
@@ -459,7 +458,8 @@ void GalleryApp::ShowModalContentDialog() {
     // 可见期间都活着。非模态的那条路径不能这样写 —— 见下面的 modelessDialog_。
     ContentDialog dialog;
     dialog.SetTitle(L"模态对话框 — 设置");
-    dialog.SetClientSize(420.0f, 330.0f);
+    // No SetClientSize: it turns auto-size off, and a fixed height left an empty band
+    // under the buttons. The dialog sizes itself to its content.
     dialog.SetContent(BuildDialogBody(
         L"主窗口在对话框关闭前是禁用的（点它没有反应，标题栏也不响应）。"
         L"但它的背景仍在正常重绘 —— 模态泵服务的是整个 Application。"));
@@ -483,7 +483,6 @@ void GalleryApp::ShowModelessContentDialog() {
     // 实例必须挂在成员上。reset 掉旧的那个，保证同时最多一个。
     modelessDialog_ = std::make_unique<ContentDialog>();
     modelessDialog_->SetTitle(L"非模态对话框");
-    modelessDialog_->SetClientSize(420.0f, 320.0f);
     modelessDialog_->SetContent(BuildDialogBody(
         L"主窗口没有被禁用：现在就可以点左侧导航切页、拖窗口、切主题，"
         L"这个对话框会一直开着，并跟随主题变化。"));

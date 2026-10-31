@@ -124,6 +124,13 @@ private:
     // DWrite hot spot. The cache is keyed on the full set of layout inputs and
     // self-invalidates on any mismatch, so setters need no special handling.
     ComPtr<IDWriteTextLayout> CreateLayout() const;
+    // Line spacing every layout of this TextBlock gets: the explicit SetLineSpacing
+    // factor if set, else the primary font's own metrics (DWriteContext::
+    // PrimaryLineMetrics) so a pure-CJK string is as tall as a mixed one. Shared by
+    // Measure and CreateLayout so the measured and drawn heights cannot differ.
+    static void ApplyLineSpacing(IDWriteTextLayout* layout, DWriteContext* dwrite,
+                                 float fontSize, DWRITE_FONT_WEIGHT weight,
+                                 float lineSpacingFactor);
 
     // Cache key for CreateLayout: every field that changes the produced layout.
     struct LayoutKey {

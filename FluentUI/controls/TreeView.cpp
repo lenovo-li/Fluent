@@ -350,8 +350,19 @@ void TreeView::RebuildIndex()
 {
     idToIndex_.clear();
     idToIndex_.reserve(items_.size());
-    for (int i = 0; i < static_cast<int>(items_.size()); ++i)
-        idToIndex_[items_[i].id] = i;
+    for (int i = 0; i < static_cast<int>(items_.size()); ++i) {
+        // Ids are the node identity (parent links, expand/collapse, selection restore all
+        // go through this map), so a duplicate silently re-points every lookup at the
+        // LAST row carrying it: the Gallery once listed a group root twice, and clicking
+        // the first copy toggled the second. Report it; keep last-wins so behaviour is
+        // unchanged for callers that never hit this.
+        auto [it, inserted] = idToIndex_.emplace(items_[i].id, i);
+        if (!inserted) {
+            FL_TRACEF("TreeView", "duplicate node id %d at rows %d and %d; lookups use row %d",
+                      items_[i].id, it->second, i, i);
+            it->second = i;
+        }
+    }
 
     parentIndex_.assign(items_.size(), -1);
     for (int i = 0; i < static_cast<int>(items_.size()); ++i) {

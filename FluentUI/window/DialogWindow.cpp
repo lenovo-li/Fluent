@@ -14,7 +14,9 @@ namespace {
 // dialog chrome ever becomes themeable these move into ThemeTokens together.
 constexpr float kDialogPadDip = 16.0f;      // left/right inset
 constexpr float kDialogTopGapDip = 8.0f;    // gap below the title bar
-constexpr float kDialogBottomPadDip = 24.0f;
+// Same as the side inset. It was 24, which next to a 16 DIP side inset and an 8 DIP
+// gap under the title left a visibly empty band under the buttons of every dialog.
+constexpr float kDialogBottomPadDip = 16.0f;
 
 // Width an auto-sized dialog offers its content before measuring. Text wraps to
 // this, so it sets the shape of every auto-sized dialog: wide enough for a

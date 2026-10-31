@@ -146,6 +146,17 @@ note->SetDimmed(true);          // 走主题的 textSecondary
 - **字形下伸部**:em size 14 对应 line height 约 18.62,差值就是 `g`/`y`/`p` 的下伸部。
   容器按 em size 裁剪会切掉它 —— 修过一次。
 - `SetDimmed` 而不是给 `Foreground` 硬编码灰值:深色主题下硬编码的灰会看不见。
+- **行高按主字体统一,不随文字内容变化**。DirectWrite 默认按每行实际用到的物理字体取行高:
+  纯中文回退到微软雅黑,只要出现一个拉丁字母就改用 Segoe UI Variable,两者行高不同(14 DIP
+  下约 16.51 对 17.34)。于是"结果：非模态已打开（主窗口仍可交互）"和"结果：非模态关闭 Cancel
+  (取消)"互换时,TextBlock 高度变化,下面的布局整体跳动。现在没有 `SetLineSpacing` 时,
+  每个布局都用 `DWriteContext::PrimaryLineMetrics`(用 "Ag中" 探测主字体的行高和基线)做
+  `SetLineSpacing(UNIFORM)`:拉丁和中英混排的行保持原样,纯中文行抬到同样高度。Measure
+  和 CreateLayout 走同一个 `ApplyLineSpacing`,测量高度和绘制高度不会分家。同一问题在
+  TextArea 上的来龙去脉见 `docs/learn/技术笔记-DirectWrite字体回退与行高一致性.md`。
+  验证:`TextBlockLayoutCache.PureCjkAndMixedTextMeasureTheSameHeight` 用上面两句原文比较
+  高度,并先确认本机确实存在回退高度差(否则直接返回,不算通过);去掉统一行高后该测试
+  失败(16.51 vs 17.34)。
 
 ### 键盘导航
 

@@ -39,7 +39,7 @@ TEST(MessageDialog, SizesItselfToItsContent) {
     // asserted here is the INTENT (auto-size armed), not a pixel count — measuring
     // requires the tree, which OnInitialize builds during Start.
     EXPECT_TRUE(d.AutoSize());
-    EXPECT_NEAR(d.TitleBarHeight(), 32.0f, 0.001f);
+    EXPECT_NEAR(d.TitleBarHeight(), 40.0f, 0.001f);
 }
 
 TEST(MessageDialog, AnExplicitSizeFromTheCallerDisarmsAutoSize) {

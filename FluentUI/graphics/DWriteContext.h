@@ -49,6 +49,24 @@ public:
 
     bool Valid() const { return factory_ != nullptr; }
 
+    // Line height and baseline (DIP) of the PRIMARY font at this size/weight, for
+    // callers that need every line to have the same metrics regardless of script.
+    //
+    // WHY. With DWrite's default line spacing a line's height is that of whichever
+    // physical font its glyphs came from. Pure-CJK text falls back to Microsoft YaHei
+    // (12pt: 15.24 DIP); a line with any Latin glyph uses Segoe UI Variable (16.00
+    // DIP). So "结果：非模态已打开（主窗口仍可交互）" and "结果：非模态关闭 Cancel
+    // (取消)" are different heights, and swapping one for the other moves every
+    // element below it — see docs/learn/技术笔记-DirectWrite字体回退与行高一致性.md.
+    // Measured from a mixed probe ("Ag中") so the primary font wins, exactly as
+    // TextArea::LineHeight does; passing these to SetLineSpacing(UNIFORM) leaves
+    // Latin and mixed lines where they already were and lifts pure-CJK lines to match.
+    //
+    // Thread-safe and memoized per (size, weight), like Format(). Returns false if
+    // no layout could be built (caller keeps DWrite's default spacing).
+    bool PrimaryLineMetrics(float sizeDip, DWRITE_FONT_WEIGHT weight,
+                            float* height, float* baseline);
+
 private:
     // Full immutable cache key: size (quantized to 1/4 DIP) + weight + the three
     // layout attributes. Packed into a single 64-bit value for the map.
@@ -68,6 +86,10 @@ private:
     // initialized on the UI thread before any worker touches it, and taking a lock
     // there would imply otherwise. factory_ and family_ are read-only afterwards.
     mutable std::mutex formatCacheMutex_;
+
+    struct LineMetrics { float height; float baseline; };
+    std::unordered_map<unsigned long long, LineMetrics> lineMetrics_;  // under lineMetricsMutex_
+    std::mutex lineMetricsMutex_;
 };
 
 } // namespace fluent

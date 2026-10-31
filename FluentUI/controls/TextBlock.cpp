@@ -41,6 +41,7 @@ void TextBlock::Measure(float availW, float availH)
             if (SUCCEEDED(dwrite->Factory()->CreateTextLayout(
                     text_.c_str(), static_cast<UINT32>(text_.size()), fmt,
                     std::max(1.0f, wrapW), 100000.0f, layout.GetAddressOf()))) {
+                ApplyLineSpacing(layout.Get(), dwrite, fontSize, weight_, lineSpacing_);
                 DWRITE_TEXT_METRICS m{};
                 if (SUCCEEDED(layout->GetMetrics(&m))) {
                     measuredH = m.height;
@@ -116,14 +117,28 @@ ComPtr<IDWriteTextLayout> TextBlock::CreateLayout() const
     // Line spacing is per-layout (safe to set on this fresh object), not on the
     // shared format — otherwise it would leak into every other caller of the
     // same (size, weight) key.
-    if (lineSpacing_ > 0.0f) {
-        float lh = fontSize * lineSpacing_;
-        layout->SetLineSpacing(DWRITE_LINE_SPACING_METHOD_UNIFORM, lh, lh * 0.8f);
-    }
+    ApplyLineSpacing(layout.Get(), dwrite, fontSize, weight_, lineSpacing_);
 
     cachedLayout_ = layout;
     cachedKey_ = std::move(key);
     return layout;
+}
+
+void TextBlock::ApplyLineSpacing(IDWriteTextLayout* layout, DWriteContext* dwrite,
+                                 float fontSize, DWRITE_FONT_WEIGHT weight,
+                                 float lineSpacingFactor) {
+    if (lineSpacingFactor > 0.0f) {
+        const float lh = fontSize * lineSpacingFactor;
+        layout->SetLineSpacing(DWRITE_LINE_SPACING_METHOD_UNIFORM, lh, lh * 0.8f);
+        return;
+    }
+    // Default spacing is NOT DWrite's default: that takes each line's height from
+    // whichever font its glyphs fell back to, so a status line that switches between
+    // a pure-Chinese message and one containing a Latin word changes height and
+    // shifts everything laid out below it. Pin it to the primary font's metrics.
+    float h = 0.0f, baseline = 0.0f;
+    if (dwrite && dwrite->PrimaryLineMetrics(fontSize, weight, &h, &baseline))
+        layout->SetLineSpacing(DWRITE_LINE_SPACING_METHOD_UNIFORM, h, baseline);
 }
 
 UINT32 TextBlock::HitTextPosition(float dipX, float dipY, bool* trailing) const
