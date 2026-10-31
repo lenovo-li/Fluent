@@ -404,6 +404,25 @@ MenuBar 用借用来复用同一份菜单（每次打开都是同一个向量）
 - **重绘合并**：所有弹出层的失效请求合并成一次投递的重绘（`PopupRenderCoalescer`，见 [ComboBox.md](ComboBox.md)），
   鼠标在菜单上移动不再每个 WM_MOUSEMOVE 同步重绘一次
 
+## UI Automation
+
+每一级菜单是它自己的 popup 窗口，作为独立的 UIA 窗口暴露（`PopupHost::EnableAutomation`，只有 MenuFlyout 开启；ComboBox 的下拉列表不开启，它的项属于 ComboBox 的 peer）。
+
+| 项 | 值 |
+|---|---|
+| 菜单级 | Menu（popup 窗口的子节点） |
+| 项 | MenuItem，Name = `text`，HelpText = `accelerator`（peer 层还没有 AcceleratorKey 属性）；分隔线为 Separator；禁用项 IsEnabled = false |
+| 叶子项 | Invoke，走点击的路径：菜单先关闭，再触发 `MenuItem::Invoked` |
+| 有子菜单的项 | ExpandCollapse：Expand 打开子菜单（与点击相同），Collapse 关闭它 |
+| 键盘当前项 | 悬停/方向键选中的行；变化时发 AutomationFocusChanged（键盘焦点本身留在所属窗口，popup 是 WS_EX_NOACTIVATE）；该项的 HasKeyboardFocus 在所属窗口有焦点时为 true |
+| 打开/关闭 | 有客户端监听时发 MenuOpened / MenuClosed |
+
+没有客户端时：每个 popup 多一个空的 AutomationHost 对象，不创建 provider、peer，不投递消息。
+
+生命周期约定：popup 的内容必须先于 PopupHost 解除挂接或销毁（内容的 peer 要通过 popup 的 host 排队断开）。`MenuFlyout::Level` 先声明 popup 再声明列表，所以列表先销毁。
+
+验证：真实 UIA 客户端自测 `FluentUITests.exe --uia-smoke` 打开菜单，在 popup 窗口里找到 Menu 和 MenuItem “Copy”，Invoke 后应用的 `Invoked` 恰好触发一次、菜单关闭，元素级订阅收到 Invoked 事件。已知问题：MenuOpened 已发出（`UiaRaiseAutomationEvent` 返回 S_OK），但在本进程和另一个进程（PowerShell 的 UIA 客户端）里，订阅整个桌面的监听者都没有收到；元素级订阅能收到同一个 popup 发出的事件。讲述人是否播报“菜单”需要在真机上确认。
+
 ## 限制与未来
 
 - **无图标**：当前不支持菜单项前导图标（只有勾选标记）

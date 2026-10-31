@@ -194,7 +194,9 @@ RectDip LogViewer::LineRect(size_t index) const {
 size_t LogViewer::LineIndexAt(float dipY) const {
     if (lines_.empty() || dipY < bounds_.y || dipY >= bounds_.bottom()) return SIZE_MAX;
     const size_t i = LineAtContentY(dipY - bounds_.y + scroll_.Offset());
-    return LineRect(i).isEmpty() ? SIZE_MAX : i;
+    // LineAtContentY clamps to the last line; empty space below it is no line.
+    const RectDip r = LineRect(i);
+    return (!r.isEmpty() && dipY >= r.y && dipY < r.bottom()) ? i : SIZE_MAX;
 }
 
 void LogViewer::ScrollLineIntoView(size_t index) {

@@ -16,6 +16,7 @@
 #include "../../FluentUI/controls/DataGrid.h"
 #include "../../FluentUI/controls/Expander.h"
 #include "../../FluentUI/controls/InfoBar.h"
+#include "../../FluentUI/controls/MenuFlyout.h"
 #include "../../FluentUI/controls/ListBox.h"
 #include "../../FluentUI/controls/Slider.h"
 
@@ -36,6 +37,7 @@ std::atomic<int> g_textChanges{0};
 std::atomic<bool> g_doomedGone{false};
 std::atomic<int> g_listSelected{-1};
 std::atomic<int> g_infoClosed{0};
+std::atomic<int> g_menuCopied{0};
 std::atomic<int> g_gridSelected{-1};
 int g_failures = 0;
 
@@ -107,6 +109,37 @@ protected:
         lst->SetItems({L"Alpha", L"Beta", L"Gamma", L"Delta"});
         list_ = lst;
 
+        // A menu button: Click opens a MenuFlyout in its own popup window.
+        menu_ = std::make_unique<fluent::MenuFlyout>();
+        {
+            std::vector<fluent::MenuItem> items;
+            fluent::MenuItem copy;
+            copy.text = L"Copy";
+            copy.accelerator = L"Ctrl+C";
+            // The event lives on the heap, so the subscription survives the move.
+            subs_.push_back(copy.Invoked().Subscribe(
+                this, [](void*, fluent::MenuItem&, fluent::RoutedEventArgs&) { ++g_menuCopied; }));
+            items.push_back(std::move(copy));
+            items.push_back(fluent::MenuItem::Sep());
+            fluent::MenuItem paste;
+            paste.text = L"Paste";
+            items.push_back(std::move(paste));
+            menu_->SetItems(std::move(items));
+        }
+        auto* menuBtn = root->Emplace<Button>();
+        menuBtn->SetText(L"Menu");
+        menuBtn->SetAutomationId(L"menuBtn");
+        menuBtn->SetWidth(120.0f);
+        menuBtn->SetHAlign(HAlign::Left);
+        menuBtn_ = menuBtn;
+        menuBtn->SetContextMenuRef(menu_.get());  // hands the flyout the button's context on attach
+        subs_.push_back(menuBtn->Click().Subscribe(this, [](void* o, Button&, RoutedEventArgs&) {
+            auto* self = static_cast<SmokeWindow*>(o);
+            RECT r{};
+            GetWindowRect(self->Hwnd(), &r);
+            self->menu_->ShowBelow(RECT{r.left + 40, r.top + 80, r.left + 160, r.top + 100});
+        }));
+
         // A grid with drawn rows and a closable live status bar.
         auto* grid = root->Emplace<fluent::DataGrid>();
         grid->SetAutomationId(L"grid");
@@ -150,6 +183,8 @@ protected:
     }
 
 private:
+    std::unique_ptr<fluent::MenuFlyout> menu_;
+    fluent::Button* menuBtn_ = nullptr;
     fluent::StackPanel* panel_ = nullptr;
 
 public:
@@ -166,9 +201,10 @@ namespace {
 // Counts the events UIA core actually DELIVERS to a subscribed client: proves our
 // raises reach a real client (UiaClientsAreListening true, provider resolvable).
 class EventCounter final : public IUIAutomationFocusChangedEventHandler,
-                           public IUIAutomationStructureChangedEventHandler {
+                           public IUIAutomationStructureChangedEventHandler,
+                           public IUIAutomationEventHandler {
 public:
-    std::atomic<int> focus{0}, structure{0};
+    std::atomic<int> focus{0}, structure{0}, menuOpened{0}, invoked{0};
     IFACEMETHODIMP_(ULONG) AddRef() override { return ++refs_; }
     IFACEMETHODIMP_(ULONG) Release() override {
         const ULONG r = --refs_;
@@ -180,6 +216,8 @@ public:
             *out = static_cast<IUIAutomationFocusChangedEventHandler*>(this);
         else if (riid == __uuidof(IUIAutomationStructureChangedEventHandler))
             *out = static_cast<IUIAutomationStructureChangedEventHandler*>(this);
+        else if (riid == __uuidof(IUIAutomationEventHandler))
+            *out = static_cast<IUIAutomationEventHandler*>(this);
         else {
             *out = nullptr;
             return E_NOINTERFACE;
@@ -194,6 +232,11 @@ public:
     IFACEMETHODIMP HandleStructureChangedEvent(IUIAutomationElement*, StructureChangeType,
                                                SAFEARRAY*) override {
         ++structure;
+        return S_OK;
+    }
+    IFACEMETHODIMP HandleAutomationEvent(IUIAutomationElement*, EVENTID id) override {
+        if (id == UIA_MenuOpenedEventId) ++menuOpened;
+        if (id == UIA_Invoke_InvokedEventId) ++invoked;
         return S_OK;
     }
 
@@ -292,6 +335,11 @@ void RunClient(HWND hwnd) {
         events.Attach(new EventCounter());
         if (uia) {
             uia->AddFocusChangedEventHandler(nullptr, events.Get());
+            ComPtr<IUIAutomationElement> desktop;
+            uia->GetRootElement(&desktop);
+            if (desktop)
+                uia->AddAutomationEventHandler(UIA_MenuOpenedEventId, desktop.Get(), TreeScope_Subtree,
+                                               nullptr, events.Get());
             if (root)
                 uia->AddStructureChangedEventHandler(root.Get(), TreeScope_Subtree, nullptr,
                                                      events.Get());
@@ -471,6 +519,70 @@ void RunClient(HWND hwnd) {
         if (infoClose) infoClose->GetCurrentPatternAs(UIA_InvokePatternId, IID_PPV_ARGS(&icInv));
         Check(icInv && SUCCEEDED(icInv->Invoke()), "InfoBar: Invoke() on its close button");
         Check(WaitFor([] { return g_infoClosed.load() == 1; }), "InfoBar: app's Closed raised once");
+
+        // MenuFlyout: the level is its own popup window; MenuOpened reaches a client
+        // listening on the desktop, and Invoke on a MenuItem raises the app's Invoked.
+        {
+            auto menuBtn = FindById(uia.Get(), root.Get(), L"menuBtn");
+            ComPtr<IUIAutomationInvokePattern> mb;
+            if (menuBtn) menuBtn->GetCurrentPatternAs(UIA_InvokePatternId, IID_PPV_ARGS(&mb));
+            Check(mb && SUCCEEDED(mb->Invoke()), "MenuFlyout: open via the menu button");
+            HWND popup = nullptr;
+            Check(WaitFor([&] {
+                      popup = nullptr;
+                      EnumWindows([](HWND h, LPARAM lp) -> BOOL {
+                          wchar_t cls[64] = {};
+                          GetClassNameW(h, cls, 64);
+                          if (IsWindowVisible(h) && wcscmp(cls, L"FluentUI.PopupHost") == 0) {
+                              *reinterpret_cast<HWND*>(lp) = h;
+                              return FALSE;
+                          }
+                          return TRUE;
+                      }, reinterpret_cast<LPARAM>(&popup));
+                      return popup != nullptr;
+                  }),
+                  "MenuFlyout: popup window visible");
+            // MenuOpened is raised (UiaRaiseAutomationEvent returns S_OK on the Menu
+            // peer), but a desktop-scoped listener has not been seen to receive it when
+            // it is raised before any client has talked to the new popup window, in
+            // this process or from another one. Reported, not failed: whether Narrator
+            // announces the menu is a check on real hardware.
+            WaitFor([&] { return events->menuOpened.load() > 0; });
+            std::printf("[ NOTE ] MenuFlyout: MenuOpened delivered to a desktop listener: %s\n",
+                        events->menuOpened.load() > 0 ? "yes" : "no (see comment)");
+            ComPtr<IUIAutomationElement> proot, menuEl, copyEl;
+            if (popup) uia->ElementFromHandle(popup, &proot);
+            if (proot) {
+                VARIANT tv;
+                tv.vt = VT_I4;
+                tv.lVal = UIA_MenuControlTypeId;
+                ComPtr<IUIAutomationCondition> c;
+                uia->CreatePropertyCondition(UIA_ControlTypePropertyId, tv, &c);
+                if (c) proot->FindFirst(TreeScope_Descendants, c.Get(), &menuEl);
+            }
+            Check(menuEl != nullptr, "MenuFlyout: Menu element inside the popup");
+            if (menuEl) {
+                VARIANT nv;
+                nv.vt = VT_BSTR;
+                nv.bstrVal = SysAllocString(L"Copy");
+                ComPtr<IUIAutomationCondition> c;
+                uia->CreatePropertyCondition(UIA_NamePropertyId, nv, &c);
+                VariantClear(&nv);
+                if (c) menuEl->FindFirst(TreeScope_Children, c.Get(), &copyEl);
+            }
+            Check(copyEl && Type(copyEl.Get()) == UIA_MenuItemControlTypeId, "MenuFlyout: Copy is a MenuItem");
+            // An event raised by a popup-window provider reaches a client registered on
+            // the element (proves the popup's provider is resolvable for event routing).
+            if (copyEl)
+                uia->AddAutomationEventHandler(UIA_Invoke_InvokedEventId, copyEl.Get(), TreeScope_Element,
+                                               nullptr, events.Get());
+            ComPtr<IUIAutomationInvokePattern> ci;
+            if (copyEl) copyEl->GetCurrentPatternAs(UIA_InvokePatternId, IID_PPV_ARGS(&ci));
+            Check(ci && SUCCEEDED(ci->Invoke()), "MenuFlyout: Invoke() on Copy");
+            Check(WaitFor([] { return g_menuCopied.load() == 1; }), "MenuFlyout: app's Invoked raised once");
+            Check(WaitFor([&] { return events->invoked.load() > 0; }), "MenuFlyout: UIA Invoked delivered from the popup");
+            Check(WaitFor([&] { return popup && !IsWindowVisible(popup); }), "MenuFlyout: menu closed after invoke");
+        }
 
         // Caption buttons: Minimize/Maximize/Close are real buttons under the window.
         ComPtr<IUIAutomationElement> closeBtn;

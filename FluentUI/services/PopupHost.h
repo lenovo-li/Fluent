@@ -19,6 +19,7 @@
 #include "../graphics/ResourceCache.h"
 #include "../core/UIElement.h"
 #include "../input/InputManager.h"
+#include "../automation/AutomationHost.h"
 #include "PopupState.h"
 #include <functional>
 #include <algorithm>
@@ -85,7 +86,7 @@ private:
     bool pending_ = false;
 };
 
-class PopupHost {
+class PopupHost : private automation::IAutomationWindow {
 public:
     // Inset (DIP) between the card edge and the content on every side. The content is
     // arranged into (w - 2*kContentPadding) x (h - 2*kContentPadding), so a caller that
@@ -119,6 +120,18 @@ public:
     // The content Element to render inside the card. Not owned; caller (e.g.
     // ComboBox) owns it and must outlive the popup.
     void SetContent(UIElement* content);
+
+    // Expose this popup to UI Automation as its own window (a fragment root; the
+    // content element's peer is its child). Opt-in, per popup, before SetContent:
+    // MenuFlyout's levels use it; ComboBox's list does not (its items belong to the
+    // ComboBox peer, and a second copy in a popup root would list them twice).
+    // Costs one AutomationHost (no provider, no peer) until a client asks.
+    //
+    // Lifetime contract: content attached to an automation popup must be detached
+    // (SetContent(other) / DetachFromContext) or destroyed BEFORE this PopupHost,
+    // because its peer reaches this popup's host to queue its provider's disconnect.
+    // MenuFlyout::Level declares the popup before the list, so the list dies first.
+    void EnableAutomation();
 
     // Share the parent's resource cache so popup-hosted content reuses the same
     // text-layout / glyph-geometry caches. The cache is DWrite /
@@ -255,6 +268,12 @@ private:
     bool notifyOwnerOnOpen_ = true;  // Open() sends WM_FLUENT_POPUP_OPENED to the owner
 
     std::function<void()> onClose_;
+
+    // UI Automation (EnableAutomation). Null for popups that did not opt in.
+    std::unique_ptr<automation::AutomationHost> automation_;
+    size_t AutomationRootCount() const override { return content_ ? 1 : 0; }
+    UIElement* AutomationRootAt(size_t i) const override { return i == 0 ? content_ : nullptr; }
+    UIElement* AutomationFocusedElement() const override { return nullptr; }
 };
 
 } // namespace fluent

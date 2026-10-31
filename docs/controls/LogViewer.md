@@ -149,7 +149,7 @@ LogViewer 的 peer（`automation/DataPeers.h`）：
 
 行按序号作 key（新的公开 `FirstLineSerial()` + 下标），`SetMaxLines` 从前面裁掉旧行时序号继续增长：客户端停在第 900 行时，前面的行掉出去不影响它的节点，被裁掉的行的节点被释放。新的公开 `LineText` / `LineRect` / `VerticalOffset` / `MaxVerticalOffset` / `SetVerticalOffset`（滚离底部会停止跟随尾部，与滚轮相同）。
 
-代价：正在追加的日志每帧都在改变行数。有客户端监听时，每帧为它发一次 ChildrenInvalidated（合并后），每次检查最多 64 个可见行的名字；客户端离开后什么都不发，缓存在下一次行数变化时丢弃。新行不作为 live region 朗读（每秒上千行会让讲述人无法使用）。
+代价：正在追加的日志每帧都在改变子节点：行数变化，或者到了 `SetMaxLines` 上限后行数不变但第一行的序号前进。有客户端监听时，两种情况都在每帧为它发一次 ChildrenInvalidated（合并后），每次检查最多 64 个可见行的名字；客户端离开后什么都不发，缓存在下一次行数变化时丢弃。新行不作为 live region 朗读（每秒上千行会让讲述人无法使用）。
 
 惰性创建：只有 UIA 客户端访问到这个控件时才创建 peer，没有客户端时零开销。行（项）不是元素，客户端访问到才创建节点。模式操作经投递消息执行，执行前重新检查控件仍在树上且已启用。自定义方式见 inheritance-guide.md 的“UI Automation”一节。
 

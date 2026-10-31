@@ -40,7 +40,10 @@ RectDip ItemPeer::OwnerRectToHost(const RectDip& local) const {
 AutomationPeer* ItemsContainerPeer::ItemAt(size_t i) {
     if (i >= ItemCount()) return nullptr;
     const size_t key = KeyAt(i);
-    if (lastCount_ == SIZE_MAX) lastCount_ = ItemCount();  // a client now knows the count
+    if (lastCount_ == SIZE_MAX) {  // a client now knows the count and the first key
+        lastCount_ = ItemCount();
+        lastFirstKey_ = lastCount_ ? KeyAt(0) : SIZE_MAX;
+    }
     auto it = items_.find(key);
     if (it != items_.end()) {
         it->second->lastUse_ = ++useClock_;
@@ -84,16 +87,20 @@ void ItemsContainerPeer::OnOwnerInvalidated() {
 void ItemsContainerPeer::OnFlushRecheck() {
     IAutomationSite* site = Owner().AutomationSite();
     const size_t count = ItemCount();
+    const size_t firstKey = count ? KeyAt(0) : SIZE_MAX;
     const bool countChanged = lastCount_ != SIZE_MAX && count != lastCount_;
+    const bool firstMoved = lastCount_ != SIZE_MAX && firstKey != lastFirstKey_;
     bool removed = false;
     if (!site || !site->ClientsAreListening()) {
         // Nobody left to use the cache: drop it, and stop watching the count.
         ReleaseAll();
         lastCount_ = SIZE_MAX;
+        lastFirstKey_ = SIZE_MAX;
         trimRequested_ = false;
         return;
     }
     lastCount_ = count;
+    lastFirstKey_ = firstKey;
     if (countChanged && !KeysAreStable()) {
         // Index keys may all have shifted; no cached item is known to be right.
         removed = ReleaseAll();
@@ -115,7 +122,7 @@ void ItemsContainerPeer::OnFlushRecheck() {
     }
     // Rows added (an append, a TreeView expand) release nothing but change the
     // children just as much.
-    if ((removed || countChanged) && HasProvider()) site->QueueChildrenChanged(Provider());
+    if ((removed || countChanged || firstMoved) && HasProvider()) site->QueueChildrenChanged(Provider());
     QueueItemRechecks(*site);
 }
 

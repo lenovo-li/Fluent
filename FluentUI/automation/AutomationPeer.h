@@ -186,6 +186,11 @@ public:
     // A live region (InfoBar) announces its changes; the peer raises
     // LiveRegionChanged itself (IAutomationSite::QueueEvent) when its text changes.
     virtual LiveSetting GetLiveSetting() const { return LiveSetting::Off; }
+    // The root content of a popup window (a menu level) raises these when the popup
+    // is shown / hidden (UIA_MenuOpenedEventId / UIA_MenuClosedEventId for a menu).
+    // 0 = none. Read by AutomationHost::OnPopupShown / OnPopupHidden.
+    virtual int PopupOpenedEventId() const { return 0; }
+    virtual int PopupClosedEventId() const { return 0; }
     // Non-null only for an ItemPeer: the container peer that lists it.
     virtual AutomationPeer* ItemContainer() const { return nullptr; }
     // Containers: the item under a host-DIP point / the keyboard-focused item, or

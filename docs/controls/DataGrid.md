@@ -242,7 +242,7 @@ DataGrid 的 peer（`automation/DataPeers.h`）：
 |---|---|
 | ControlType | DataGrid |
 | 模式 | Selection（单选/多选）、Scroll（横向与纵向，范围与控件自己的滚动一致，冻结列不计入横向） |
-| 行 | DataItem，Name = 各单元格文本用 “, ” 连接（最多 16 列，新的公开 `CellText`）；SelectionItem：Select 走 `SetSelectedRow`，多选的 Add/Remove 走新的公开 `PerformToggleRowSelection`（与 Ctrl+点击相同），都触发 `SelectionChanged`；ScrollItem 走 `ScrollRowIntoView` |
+| 行 | DataItem，Name = 各单元格文本用 “, ” 连接（最多 16 列，新的公开 `CellText`）；SelectionItem：Select 走新的公开 `PerformSelectRow`（与点击相同：先提交另一行上正在进行的编辑，再 `SetSelectedRow`），多选的 Add/Remove 走新的公开 `PerformToggleRowSelection`（与 Ctrl+点击相同），都触发 `SelectionChanged`；ScrollItem 走新的公开 `PerformScrollRowIntoView`（视图需要移动时先提交编辑，同 `SetVerticalOffset` 的规则）；横向 ViewSize 用新的公开 `ScrollableViewportWidth`（去掉冻结列） |
 | 命中测试 | 新的公开 `RowIndexAt`（点击用的同一算式），O(1) |
 
 行按下标作 key：重新排序后行名会在下一次检查时更新，行数变化时全部释放并发 ChildrenInvalidated。尚未提供：列标题节点、单元格节点、Grid/Table 模式（讲述人可以按行读，不能按单元格导航）。新的公开 `MaxVerticalOffset` / `MaxHorizontalOffset`。

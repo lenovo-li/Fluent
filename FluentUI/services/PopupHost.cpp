@@ -198,6 +198,7 @@ HRESULT PopupHost::Open(const RECT& anchorScreenRect, float wDip, float hDip) {
 
     ShowWindow(hwnd_, SW_SHOWNOACTIVATE);
     UpdateWindow(hwnd_);
+    if (automation_) automation_->OnPopupShown(hwnd_);  // MenuOpened, only with a listener
 
     // DO NOT SetCapture on a WS_EX_NOACTIVATE window — the system immediately
     // revokes it (WM_CAPTURECHANGED), causing the popup to close instantly.
@@ -233,6 +234,7 @@ void PopupHost::Close() {
     ShowWindow(hwnd_, SW_HIDE);
     state_ = PopupState::Closed;
     TraceMsg(kTag, "Close: popup hidden");
+    if (automation_) automation_->OnPopupHidden();  // MenuClosed, only with a listener
 
     // The owner's callback runs LAST, with the popup already Closed. ComboBox and
     // DatePicker raise their public DropDownClosed / CalendarClosed from it, and a
@@ -253,6 +255,13 @@ bool PopupHost::ContainsScreenPoint(int screenX, int screenY) const {
     GetWindowRect(hwnd_, &rc);
     POINT pt = {screenX, screenY};
     return PtInRect(&rc, pt) != FALSE;
+}
+
+void PopupHost::EnableAutomation() {
+    if (automation_) return;  // a reused level keeps its host
+    automation_ = std::make_unique<automation::AutomationHost>();
+    automation_->Bind(this);
+    automation_->SetFocusProxy(hwndOwner_);
 }
 
 void PopupHost::SetContent(UIElement* content) {
@@ -285,6 +294,7 @@ void PopupHost::SetContent(UIElement* content) {
         // WindowServices host, and content must not grab the parent's active-popup
         // dismiss/key/wheel slots through it.
         ctx.animations = parentWindow_ ? parentWindow_->Anims() : nullptr;
+        ctx.automation = automation_.get();  // null unless EnableAutomation
         content_->AttachToContext(ctx);
         roots_.push_back(content_);
     }
@@ -453,8 +463,22 @@ LRESULT PopupHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         }
 
+        case WM_GETOBJECT:
+            if (automation_) {
+                LRESULT r = 0;
+                if (automation_->OnGetObject(hwnd_, wp, lp, false, r)) return r;
+            }
+            break;
+
+        case automation::WM_FLUENT_UIA_FLUSH:
+            if (automation_) automation_->OnFlush();
+            return 0;
+
         case WM_DESTROY:
             state_ = PopupState::Closed;
+            // Same order as a window (AutomationHost.h): stop serving, disconnect the
+            // providers the content's earlier detach froze, return the root.
+            if (automation_) automation_->OnWindowDestroyed(hwnd_);
             return 0;
     }
     return DefWindowProcW(hwnd_, msg, wp, lp);

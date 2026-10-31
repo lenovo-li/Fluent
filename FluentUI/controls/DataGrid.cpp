@@ -401,6 +401,19 @@ void DataGrid::SetHorizontalOffset(float dip) {
     Invalidate();
 }
 
+void DataGrid::PerformScrollRowIntoView(int row) {
+    if (row < 0 || row >= rowCount_) return;
+    const RectDip vp = ViewportRect();
+    const float top = row * rowHeight_, view = scroll_.Offset();
+    const bool moves = top < view || top + rowHeight_ > view + vp.h;
+    if (moves && editingRow_ >= 0) CommitEdit();
+    ScrollRowIntoView(row);
+}
+
+float DataGrid::ScrollableViewportWidth() const {
+    return std::max(0.0f, ViewportRect().w - FrozenWidth());
+}
+
 void DataGrid::ScrollRowIntoView(int row) {
     if (row < 0 || row >= rowCount_) return;
     const RectDip vp = ViewportRect();

@@ -536,6 +536,8 @@ More patterns are available to a peer: `IRangeValuePeer` (Slider, NumericUpDown,
 
 `NavRail` (`extensions/NavigationControls/NavRailPeer.cpp`) is the worked example of all of this written from outside the core library.
 
+**Popup windows.** Content shown in a `PopupHost` is in another HWND, so it is not under the owner window's UIA root. A popup whose content should be reachable calls `PopupHost::EnableAutomation()` before `SetContent`; the popup then answers WM_GETOBJECT itself, its content's peer is the popup root's child, and a content peer that overrides `PopupOpenedEventId()` / `PopupClosedEventId()` gets that event raised when the popup is shown / hidden (only while a client listens). The content must be detached or destroyed before the PopupHost. MenuFlyout's levels are the example (`controls/MenuFlyout.cpp`, `MenuListPeer`).
+
 **Live regions.** A peer whose element reports status (InfoBar) overrides `GetLiveSetting()` (Polite or Assertive) and raises LiveRegionChanged itself when its text changes: compare against a baseline in `OnFlushRecheck()` and call `IAutomationSite::QueueEvent(Provider(), 20024)`, which drops the event when nobody listens. `InfoBarPeer` (`automation/DataPeers.cpp`) is the example.
 
 **Per-item enabled state and item kinds.** `SelectableContainerPeer::ItemEnabled(i)` makes an item report IsEnabled false (a disabled date, a NavRail section header), so UIA refuses Select on it. An item that is not selectable (InfoBar's close button, a log line) derives from `ItemPeer` directly and maps its control-space rect with `OwnerRectToHost`. Data controls key their items so content changes stay correct: DataGrid by row index, Calendar by date, LogViewer by line serial (`automation/DataPeers.h` explains each choice).

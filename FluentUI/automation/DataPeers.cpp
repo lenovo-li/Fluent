@@ -118,16 +118,16 @@ RectDip DataGridPeer::ItemRect(size_t i) const {
     if (y1 <= y0) return {};
     return RectDip{vp.x, y0, vp.w, y1 - y0};
 }
-void DataGridPeer::SelectItem(size_t i) { Ctl<DataGrid>(*this).SetSelectedRow(static_cast<int>(i)); }
+void DataGridPeer::SelectItem(size_t i) { Ctl<DataGrid>(*this).PerformSelectRow(static_cast<int>(i)); }
 void DataGridPeer::SetItemInSelection(size_t i, bool on) {
     DataGrid& g = Ctl<DataGrid>(*this);
     if (g.GetSelectionMode() != DataGrid::SelectionMode::Multiple) {
-        if (on) g.SetSelectedRow(static_cast<int>(i));
+        if (on) g.PerformSelectRow(static_cast<int>(i));
         return;
     }
     if (g.IsRowSelected(static_cast<int>(i)) != on) g.PerformToggleRowSelection(static_cast<int>(i));
 }
-void DataGridPeer::ScrollItemIntoView(size_t i) { Ctl<DataGrid>(*this).ScrollRowIntoView(static_cast<int>(i)); }
+void DataGridPeer::ScrollItemIntoView(size_t i) { Ctl<DataGrid>(*this).PerformScrollRowIntoView(static_cast<int>(i)); }
 bool DataGridPeer::CanSelectMultiple() const {
     return Ctl<DataGrid>(*this).GetSelectionMode() == DataGrid::SelectionMode::Multiple;
 }
@@ -154,7 +154,7 @@ double DataGridPeer::VerticalPercent() const {
 }
 double DataGridPeer::HorizontalViewSize() const {
     const DataGrid& g = Ctl<DataGrid>(*this);
-    return ViewSize(g.ViewportRect().w, g.MaxHorizontalOffset());
+    return ViewSize(g.ScrollableViewportWidth(), g.MaxHorizontalOffset());  // frozen band excluded
 }
 double DataGridPeer::VerticalViewSize() const {
     const DataGrid& g = Ctl<DataGrid>(*this);

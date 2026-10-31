@@ -138,3 +138,52 @@ TEST(AutomationText, TextAndSelectionChangedAreRaisedFromTheControlsEvents) {
     EXPECT_TRUE(text);
     EXPECT_TRUE(sel);
 }
+
+TEST(AutomationText, ExpandAtTheDocumentEndCoversTheLastUnit) {
+    // The caret after the last character (the normal state while typing). Narrator's
+    // "read current line / word" expands the degenerate range there.
+    UiaFixture fx;
+    auto* tb = fx.root->Emplace<TextBox>();
+    tb->SetText(L"say hello");
+    fx.Attach();
+    auto tp = TextOf(fx);
+    if (!tp) return;
+    ComPtr<ITextRangeProvider> doc, r;
+    tp->get_DocumentRange(&doc);
+    doc->Clone(&r);
+    r->MoveEndpointByRange(TextPatternRangeEndpoint_Start, doc.Get(), TextPatternRangeEndpoint_End);
+    EXPECT_TRUE(RangeText(r.Get()).empty());
+    r->ExpandToEnclosingUnit(TextUnit_Line);
+    EXPECT_TRUE(RangeText(r.Get()) == L"say hello");
+    r->MoveEndpointByRange(TextPatternRangeEndpoint_Start, doc.Get(), TextPatternRangeEndpoint_End);
+    r->ExpandToEnclosingUnit(TextUnit_Word);
+    EXPECT_TRUE(RangeText(r.Get()) == L"hello");
+}
+
+TEST(AutomationText, InsertionPointMovesOntoTheEndAndCountZeroIsANoOp) {
+    UiaFixture fx;
+    auto* tb = fx.root->Emplace<TextBox>();
+    tb->SetText(L"ab");
+    fx.Attach();
+    auto tp = TextOf(fx);
+    if (!tp) return;
+    ComPtr<ITextRangeProvider> doc, r;
+    tp->get_DocumentRange(&doc);
+    doc->Clone(&r);
+    r->MoveEndpointByRange(TextPatternRangeEndpoint_End, doc.Get(), TextPatternRangeEndpoint_Start);
+    int moved = 0;
+    r->Move(TextUnit_Character, 1, &moved);  // insertion point at 1
+    EXPECT_EQ(moved, 1);
+    r->Move(TextUnit_Character, 1, &moved);  // onto the end
+    EXPECT_EQ(moved, 1);
+    int cmp = 1;
+    r->CompareEndpoints(TextPatternRangeEndpoint_Start, doc.Get(), TextPatternRangeEndpoint_End, &cmp);
+    EXPECT_EQ(cmp, 0);
+    // Count 0 leaves a non-degenerate range exactly as it was.
+    ComPtr<ITextRangeProvider> whole;
+    doc->Clone(&whole);
+    whole->MoveEndpointByUnit(TextPatternRangeEndpoint_Start, TextUnit_Character, 1, &moved);  // "b"
+    whole->Move(TextUnit_Word, 0, &moved);
+    EXPECT_EQ(moved, 0);
+    EXPECT_TRUE(RangeText(whole.Get()) == L"b");
+}

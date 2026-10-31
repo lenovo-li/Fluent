@@ -68,7 +68,43 @@ POINT AutomationHost::ClientOriginOnScreen() const {
     if (hwnd_) ClientToScreen(hwnd_, &p);
     return p;
 }
-bool AutomationHost::HostHasOsFocus() const { return hwnd_ && GetFocus() == hwnd_; }
+bool AutomationHost::HostHasOsFocus() const {
+    if (!hwnd_) return false;
+    const HWND f = GetFocus();
+    return f == hwnd_ || (focusProxy_ && f == focusProxy_);
+}
+
+// --- Popup windows --------------------------------------------------------------
+
+namespace {
+AutomationPeer* PopupContentPeer(IAutomationWindow* w) {
+    UIElement* content = w && w->AutomationRootCount() ? w->AutomationRootAt(0) : nullptr;
+    return content ? content->GetOrCreateAutomationPeer() : nullptr;
+}
+}  // namespace
+
+void AutomationHost::OnPopupShown(HWND hwnd) {
+    if (torn_down_ || !hwnd || !core_->ClientsAreListening()) return;
+    if (!root_) {
+        hwnd_ = hwnd;
+        const HRESULT hr = CreateWindowRootProvider(hwnd, GetCurrentThreadId(), this,
+                                                    root_.ReleaseAndGetAddressOf());
+        if (FAILED(hr)) {
+            Trace("Uia", "CreateWindowRootProvider(popup) FAILED", hr);
+            return;
+        }
+    }
+    AutomationPeer* peer = PopupContentPeer(window_);
+    if (peer && peer->PopupOpenedEventId()) QueueEvent(peer->Provider(), peer->PopupOpenedEventId());
+}
+
+void AutomationHost::OnPopupHidden() {
+    if (torn_down_ || !root_ || !core_->ClientsAreListening()) return;
+    UIElement* content = window_ && window_->AutomationRootCount() ? window_->AutomationRootAt(0) : nullptr;
+    AutomationPeer* peer = content ? content->AutomationPeerIfAny() : nullptr;  // never create on close
+    if (peer && peer->PopupClosedEventId() && peer->HasProvider())
+        QueueEvent(peer->Provider(), peer->PopupClosedEventId());
+}
 size_t AutomationHost::RootElementCount() const {
     return window_ ? window_->AutomationRootCount() : 0;
 }
@@ -186,8 +222,17 @@ void AutomationHost::FlushDisconnects() {
 }
 
 void AutomationHost::RaiseEvents() {
-    std::vector<Ref> changed, invoked, selected;
+    std::vector<Ref> changed;
     changed.swap(changed_);
+    // Container re-checks run FIRST, before the event queues are taken: what they
+    // queue (ChildrenInvalidated, an InfoBar's LiveRegionChanged, a menu item's
+    // focus) then goes out in this flush instead of costing a second posted one.
+    // Property raises stay below, after the listener check.
+    const bool listening = core_->ClientsAreListening();
+    if (listening)
+        for (const Ref& c : changed)
+            if (AutomationPeer* p = PeerFromProvider(c.Get())) p->OnFlushRecheck();
+    std::vector<Ref> invoked, selected;
     invoked.swap(invoked_);
     selected.swap(selected_);
     Ref focus = std::move(focus_);
@@ -200,12 +245,9 @@ void AutomationHost::RaiseEvents() {
     // The client stopped listening since these were queued: drop them unread.
     // (The baseline then lags; a later client's first diff may carry an old "old
     // value", which UIA clients treat as advisory.)
-    if (!core_->ClientsAreListening()) return;
+    if (!listening) return;
     // A frozen provider (element gone since queuing) has no peer: skipped inside.
-    for (const Ref& c : changed) {
-        if (AutomationPeer* p = PeerFromProvider(c.Get())) p->OnFlushRecheck();
-        RaiseChangedProperties(core_, c.Get());
-    }
+    for (const Ref& c : changed) RaiseChangedProperties(core_, c.Get());
     for (const Ref& i : invoked)
         if (PeerFromProvider(i.Get())) core_->RaiseEvent(i.Get(), kInvokedEventId);
     for (const auto& e : events)

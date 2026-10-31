@@ -95,6 +95,19 @@ public:
     bool HasRootProvider() const { return root_ != nullptr; }
     size_t PendingDisconnects() const { return disconnects_.size(); }
 
+    // --- Popup windows (services/PopupHost) ----------------------------------------
+    // A WS_EX_NOACTIVATE popup never has OS focus; the keyboard stays in its owner
+    // window. With a proxy set, "the host has OS focus" means the popup OR the proxy
+    // has it, so a hovered menu item can report HasKeyboardFocus.
+    void SetFocusProxy(HWND owner) { focusProxy_ = owner; }
+    // The popup became visible / was hidden. While a client listens, raises the
+    // content peer's PopupOpenedEventId / PopupClosedEventId. A screen reader learns
+    // of a new menu from MenuOpened, before it has ever sent this popup a
+    // WM_GETOBJECT, so Shown creates the root provider itself (only while a client
+    // listens: without one it does nothing and allocates nothing).
+    void OnPopupShown(HWND hwnd);
+    void OnPopupHidden();
+
     // IAutomationSite
     HWND Hwnd() const override { return hwnd_; }
     double Dpi() const override;
@@ -132,6 +145,7 @@ private:
 
     IUiaCore* core_;  // non-owning, never null
     IAutomationWindow* window_ = nullptr;
+    HWND focusProxy_ = nullptr;  // SetFocusProxy
     HWND hwnd_ = nullptr;  // captured from the first WM_GETOBJECT
     Ref root_;
     bool torn_down_ = false;

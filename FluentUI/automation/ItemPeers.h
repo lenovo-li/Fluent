@@ -113,6 +113,10 @@ private:
     // Item count a client last saw (at the first ItemAt, then each flush re-check);
     // SIZE_MAX = no client has enumerated items, so a count change concerns nobody.
     size_t lastCount_ = SIZE_MAX;
+    // KeyAt(0) at the last re-check, for stable-key containers: a capped log at its
+    // line limit drops one line and adds one per append, so the count never changes
+    // while every child shifts.
+    size_t lastFirstKey_ = SIZE_MAX;
     uint64_t useClock_ = 0;
 };
 

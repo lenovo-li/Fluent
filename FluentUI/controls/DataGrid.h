@@ -256,7 +256,22 @@ public:
     int RowIndexAt(float dipY) const { return RowAtPoint(dipY); }
     // Ctrl+click's path: add/remove one row and raise SelectionChanged. UI
     // Automation's AddToSelection / RemoveFromSelection in Multiple mode.
-    void PerformToggleRowSelection(int row) { ToggleRowSelection(row); }
+    void PerformToggleRowSelection(int row) {
+        if (editingRow_ >= 0 && editingRow_ != row) CommitEdit();
+        ToggleRowSelection(row);
+    }
+    // A click on a row: commits a live edit on another row first (keeps what was
+    // typed), then selects. UI Automation's SelectionItem.Select.
+    void PerformSelectRow(int row) {
+        if (editingRow_ >= 0 && editingRow_ != row) CommitEdit();
+        SetSelectedRow(row);
+    }
+    // ScrollRowIntoView for a caller that is not the keyboard: if the view has to
+    // move, a live edit is committed first (the SetVerticalOffset rule), so the edit
+    // box never floats over a row that scrolled under it.
+    void PerformScrollRowIntoView(int row);
+    // The horizontally scrolling band: the viewport minus the frozen columns.
+    float ScrollableViewportWidth() const;
 
     // --- Element contract -------------------------------------------------
     void Measure(float availW, float availH) override;

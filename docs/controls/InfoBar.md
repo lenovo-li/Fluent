@@ -196,6 +196,8 @@ InfoBar 的 peer（`automation/DataPeers.h`）：
 
 标题或消息变化时发 LiveRegionChanged：讲述人不移动焦点也会读出状态更新。同一帧内的多次修改合并为一次，文本没变的失效（如只改严重级别）不发，没有客户端监听时不发。
 
+已知限制：只有客户端已经访问过这个 InfoBar 之后的文本变化才会播报。新加入树的 InfoBar、或从隐藏变为可见的 InfoBar 不会自动播报（peer 是惰性创建的，创建时的文本被当作已读）；另一方面，隐藏状态下改文本仍会发事件。需要“出现即播报”时，应用在显示后修改一次文本即可。讲述人的实际表现需要在真机上听。
+
 惰性创建：只有 UIA 客户端访问到这个控件时才创建 peer，没有客户端时零开销。行（项）不是元素，客户端访问到才创建节点。模式操作经投递消息执行，执行前重新检查控件仍在树上且已启用。自定义方式见 inheritance-guide.md 的“UI Automation”一节。
 
 验证：无头测试 `tests/unit/AutomationDataPeerTests.cpp`，真实 UIA 客户端自测 `FluentUITests.exe --uia-smoke`；12 处变异（把操作换回不发事件的 setter、行名只取一列、日期按下标作 key、日志行序号不前进等）全部被测试抓到。讲述人实际朗读的效果需要在真机上听。

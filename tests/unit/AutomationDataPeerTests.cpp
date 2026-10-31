@@ -249,3 +249,104 @@ TEST(AutomationData, LogLinesKeepTheirNodesAcrossTheFrontTrim) {
     EXPECT_TRUE(PropString(Child(list.Get(), 2).Get(), UIA_NamePropertyId) == L"delta");
     EXPECT_TRUE(Count(fx.core.events, RecordingCore::kChildrenInvalidated) >= 1);
 }
+
+TEST(AutomationData, DataGridSelectCommitsALiveEditLikeAClick) {
+    UiaFixture fx;
+    auto* g = MakeGrid(fx, 20);
+    g->SetEditingEnabled(true);
+    int edits = 0;
+    auto sub = g->CellEdited().Subscribe(&edits, [](void* o, DataGrid&, RoutedEventArgs&) {
+        ++*static_cast<int*>(o);
+    });
+    fx.Attach();
+    Layout(fx);
+    auto row4 = Child(First(fx).Get(), 4);
+    g->BeginEdit(1, 0);
+    EXPECT_TRUE(g->IsEditing());
+    ComPtr<ISelectionItemProvider> si;
+    if (row4) row4.As(&si);
+    if (!si) return;
+    si->Select();
+    fx.host.OnFlush();
+    EXPECT_FALSE(g->IsEditing());  // the edit on row 1 ended
+    EXPECT_EQ(edits, 1);           // and was committed, not dropped
+    EXPECT_EQ(g->SelectedRow(), 4);
+}
+
+TEST(AutomationData, DataGridHorizontalViewSizeExcludesFrozenColumns) {
+    // Viewport 400 wide, 200 of it frozen; 1000 of columns => 800 scroll in a 200 band.
+    UiaFixture fx;
+    auto* g = fx.root->Emplace<DataGrid>();
+    g->SetHeight(150);
+    g->SetWidth(400);
+    g->SetHAlign(HAlign::Left);
+    std::vector<DataGrid::Column> cols;
+    for (int i = 0; i < 10; ++i) {
+        DataGrid::Column c{L"C" + std::to_wstring(i), 100.0f, DataGrid::Align::Left};
+        c.frozen = i < 2;
+        cols.push_back(c);
+    }
+    g->SetColumns(std::move(cols));
+    g->SetRowCount(5);
+    fx.Attach();
+    Layout(fx);
+    ComPtr<IScrollProvider> sc;
+    First(fx).As(&sc);
+    if (!sc) return;
+    double view = 0;
+    sc->get_HorizontalViewSize(&view);
+    const double band = g->ScrollableViewportWidth(), maxX = g->MaxHorizontalOffset();
+    EXPECT_TRUE(maxX > 0);
+    EXPECT_NEAR(view, 100.0 * band / (band + maxX), 0.5);
+    EXPECT_TRUE(band < g->ViewportRect().w);  // the frozen band was taken off
+}
+
+TEST(AutomationData, LogPointBelowTheLastLineIsNoLine) {
+    UiaFixture fx;
+    auto* log = fx.root->Emplace<LogViewer>();
+    log->SetHeight(200);
+    const D2D1_COLOR_F white{1, 1, 1, 1};
+    log->AppendLine({{L"one", white}});
+    log->AppendLine({{L"two", white}});
+    fx.Attach();
+    Layout(fx);
+    const RectDip b = log->Bounds();
+    EXPECT_EQ(log->LineIndexAt(b.y + 1.0f), size_t{0});
+    EXPECT_EQ(log->LineIndexAt(b.y + 150.0f), SIZE_MAX);  // empty space under "two"
+}
+
+TEST(AutomationData, CappedLogAtItsLimitStillReportsChildrenChanged) {
+    // At the cap every append drops one line and adds one: the count never changes.
+    // A client that cached a line in the middle (not the one that falls off) must
+    // still be told the children changed.
+    UiaFixture fx;
+    auto* log = fx.root->Emplace<LogViewer>();
+    log->SetHeight(200);
+    log->SetMaxLines(5);
+    const D2D1_COLOR_F white{1, 1, 1, 1};
+    for (int i = 0; i < 5; ++i) log->AppendLine({{L"line " + std::to_wstring(i), white}});
+    fx.Attach();
+    Layout(fx);
+    // LastChild caches only that line: walking from the first child would cache
+    // line 0 too, and its trim alone would raise the event.
+    auto mid = Nav(First(fx).Get(), NavigateDirection_LastChild);
+    EXPECT_TRUE(PropString(mid.Get(), UIA_NamePropertyId) == L"line 4");
+    fx.core.events.clear();
+    log->AppendLine({{L"line 5", white}});
+    FlushTwice(fx);
+    EXPECT_TRUE(Count(fx.core.events, RecordingCore::kChildrenInvalidated) >= 1);
+    EXPECT_TRUE(PropString(mid.Get(), UIA_NamePropertyId) == L"line 4");  // same line, kept
+}
+
+TEST(AutomationData, InfoBarAnnouncementGoesOutInTheSameFlush) {
+    UiaFixture fx;
+    auto* bar = fx.root->Emplace<InfoBar>();
+    bar->SetMessage(L"a");
+    fx.Attach();
+    Layout(fx);
+    First(fx);
+    fx.core.events.clear();
+    bar->SetMessage(L"b");
+    fx.host.OnFlush();  // one flush, not two
+    EXPECT_EQ(Count(fx.core.events, kLiveRegionChanged), 1);
+}

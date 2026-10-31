@@ -9,7 +9,8 @@
 // attributes are not reported (GetAttributeValue answers "not supported" via
 // UiaGetReservedNotSupportedValue). GetBoundingRectangles returns the control's
 // rect for a non-empty range: per-line rectangles need layout geometry the text
-// controls keep private; recorded in the design doc as the next refinement.
+// controls keep private, so a magnifier following the caret line does not move
+// within a multi-line TextArea.
 //
 // COST. Nothing runs without a client. A range holds a reference to the element's
 // provider and two integers; GetText copies only the requested span (capped by
@@ -72,7 +73,16 @@ size_t PrevBoundary(const std::wstring& t, size_t pos, TextUnit unit) {
     }
 }
 size_t StartOfUnit(const std::wstring& t, size_t pos, TextUnit unit) {
-    if (pos >= t.size()) pos = t.size();
+    if (pos >= t.size()) {
+        // The document end is not inside any unit; the unit it belongs to is the
+        // last one (the caret after "hello" is on the line "hello"). Without this,
+        // ExpandToEnclosingUnit at the end gave an empty range.
+        if (t.empty()) return 0;
+        // After a trailing line break the caret is on an empty last line: that line
+        // starts (and ends) at the document end.
+        if ((unit == TextUnit_Line || unit == TextUnit_Paragraph) && IsLineBreak(t.back())) return t.size();
+        pos = t.size() - 1;
+    }
     if (pos == 0) return 0;
     const size_t prev = PrevBoundary(t, pos, unit);
     return NextBoundary(t, prev, unit) == pos ? pos : prev;
@@ -261,8 +271,10 @@ HRESULT TextRange::Move(TextUnit unit, int count, int* ret) {
     Clamp(s);
     // UIA: a degenerate range moves its insertion point; a non-degenerate range is
     // first normalized to the start of its unit, then moved by whole units.
+    if (count == 0) return S_OK;  // UIA: count 0 leaves the range unchanged
     const bool degenerate = start_ == end_;
-    size_t pos = StartOfUnit(s, start_, unit);
+    // An insertion point moves from where it is; a range from the start of its unit.
+    size_t pos = degenerate ? start_ : StartOfUnit(s, start_, unit);
     int moved = 0;
     if (unit == TextUnit_Document || unit == TextUnit_Page) {
         if (count > 0 && pos < s.size()) { pos = s.size(); moved = 1; }
@@ -270,7 +282,9 @@ HRESULT TextRange::Move(TextUnit unit, int count, int* ret) {
     } else {
         for (; moved < count; ++moved) {
             const size_t nx = NextBoundary(s, pos, unit);
-            if (nx == pos || nx >= s.size()) break;
+            // An insertion point may land on the document end; a non-degenerate range
+            // may not (it would have no unit to cover there).
+            if (nx == pos || (nx >= s.size() && !degenerate)) break;
             pos = nx;
         }
         for (; moved > count; --moved) {
