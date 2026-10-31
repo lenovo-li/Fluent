@@ -381,8 +381,8 @@ std::unique_ptr<Control> MenuFlyout::MakeListView(const std::vector<MenuItem>* i
     cb.onInvoke = [this, levelIndex](int idx) { InvokeItem(levelIndex, idx); };
     cb.onOpenSub = [this, levelIndex](int idx) { OpenSubmenu(levelIndex, idx); };
     cb.onHover = [this, levelIndex](int idx) {
-        // Stage 3 will open/close submenus on hover; stage 2 root has no submenus,
-        // but wire it now so cascading works without touching the list view.
+        // Hover opens the hovered item's submenu (or closes a deeper level that no
+        // longer belongs to the hovered row).
         OnItemHovered(levelIndex, idx);
     };
     cb.onCloseAll = [this]() { Close(); };
@@ -505,11 +505,20 @@ void MenuFlyout::OpenSubmenu(int levelIndex, int itemIndex) {
     float wDip = 0.0f, hDip = 0.0f;
     MeasureLevel(level.list.get(), wDip, hDip);
 
-    level.popup = std::make_unique<PopupHost>();
-    if (FAILED(level.popup->Create(window_->Instance(), window_->Hwnd(),
-                                   &window_->D2D(), &window_->DWrite()))) {
-        TraceMsg(kTag, "OpenSubmenu: PopupHost::Create failed");
-        return;
+    // Reuse a retired level's window when there is one; create only when the pool is
+    // empty. Hovering back and forth between items with submenus used to create a
+    // fresh PopupHost — an HWND plus, on its first Open, a DComp target and surface —
+    // on every hover, synchronously inside WM_MOUSEMOVE, and park the old one in
+    // retired_ until the next OpenRoot. With reuse the window count is bounded by the
+    // deepest level ever shown, and a hover only re-points an existing window.
+    level.popup = TakeRetiredPopup();
+    if (!level.popup) {
+        level.popup = std::make_unique<PopupHost>();
+        if (FAILED(level.popup->Create(window_->Instance(), window_->Hwnd(),
+                                       &window_->D2D(), &window_->DWrite()))) {
+            TraceMsg(kTag, "OpenSubmenu: PopupHost::Create failed");
+            return;
+        }
     }
     level.popup->SetResourceCache(ctx_.resourceCache);  // share caches
     level.popup->SetTheme(ctx_.theme);            // share theme snapshot
@@ -581,6 +590,21 @@ void MenuFlyout::OnLeftRight(int levelIndex, bool right) {
         if (static_cast<int>(levels_.size()) > 1)
             CloseFrom(static_cast<int>(levels_.size()) - 1);
     }
+}
+
+std::unique_ptr<PopupHost> MenuFlyout::TakeRetiredPopup() {
+    // Moving a PopupHost OUT of a retired level is safe on any call stack: nothing
+    // is destroyed, the window just gets new content (SetContent detaches the old
+    // list from it) and a new position. The retired level keeps its list, which is
+    // freed with the rest at ReapRetired.
+    //
+    // Only a fully Closed host is taken. One in Closing is still inside its own
+    // Close() further up the stack, and re-opening it there would be rejected anyway.
+    for (Level& l : retired_) {
+        if (l.popup && l.popup->State() == PopupState::Closed)
+            return std::move(l.popup);
+    }
+    return nullptr;
 }
 
 void MenuFlyout::ReapRetired() {

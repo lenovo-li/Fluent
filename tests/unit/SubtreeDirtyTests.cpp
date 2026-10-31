@@ -1,5 +1,5 @@
 // SubtreeDirtyTests.cpp — verifies subtree dirty queries and that size-affecting
-// setters mark Measure dirty (phase 2b: draw-time auto relayout).
+// setters mark Measure dirty (draw-time auto relayout).
 //
 // The host calls AnyDirtyInSubtree(Measure) before a frame and re-runs layout if
 // any descendant needs re-measuring; ClearDirtySubtree() resets the whole tree

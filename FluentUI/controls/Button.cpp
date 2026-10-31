@@ -143,7 +143,13 @@ void Button::Measure(float availW, float availH) {
     // WinUI Button metrics: MinHeight 32, horizontal padding 11+11, vertical 5+5.
     // The text is single-line body-size; use the shared label measurer so the
     // result matches CheckBox/RadioButton.
-    const float fontSize = Theme().typography.bodySize;
+    //
+    // The size is EffectiveFontSize(), the same expression Render passes to
+    // Format(). This used to read the raw theme token, so SetFontSize(24) measured
+    // the label at 14 DIP and drew it at 24: the centred, unclipped DrawText then
+    // spilled past bounds_ on both sides — outside the 3.75 DIP VisualOverflowDip
+    // the dirty-rect contract trusts — and left ghost glyphs over the neighbours.
+    const float fontSize = EffectiveFontSize();
     constexpr float kMinH = 32.0f;
     constexpr float kPadX = 11.0f * 2.0f;
     constexpr float kPadY = 5.0f * 2.0f;
@@ -201,7 +207,7 @@ float Button::VisualOverflowDip() const {
 }
 
 void Button::OnActivate() {
-    // P1-16: a Button with a flyout is a menu button — activation opens the menu
+    // A Button with a flyout is a menu button — activation opens the menu
     // instead of raising Click. Click stays unraised deliberately: a handler
     // subscribed to Click would otherwise run on every menu open, and the app has
     // no way to tell "the user picked me" from "the user opened my menu". The

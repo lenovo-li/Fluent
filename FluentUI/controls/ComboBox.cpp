@@ -364,6 +364,22 @@ void ComboBox::OnAttachedToTree() {
     window_ = Context().window;
     if (!window_) return;
 
+    // Re-attach to the window the popup was built for (a TabControl page switched
+    // back, a panel re-parented within the window): the kept popup and list are
+    // still valid — same owner HWND, same D2D/DWrite, same theme and caches — so
+    // there is nothing to rebuild. See OnDetachedFromTree for why they are kept.
+    if (popup_ && popupWindow_ == window_) return;
+
+    // First attach, or a move to a DIFFERENT window: build a popup owned by this
+    // one. A kept list is still attached to the old popup's context, whose
+    // InputManager lives inside that popup — detach it while the old popup still
+    // exists (DetachFromContext notifies that InputManager), then drop the popup.
+    // This path is not reachable from inside the old popup's dispatch in practice:
+    // that would take a handler moving the control into another window synchronously.
+    if (listView_ && listView_->IsAttached()) listView_->DetachFromContext();
+    popup_.reset();
+    popupWindow_ = nullptr;
+
     // Create the popup host (hidden, reused on each open).
     popup_ = std::make_unique<PopupHost>();
     if (FAILED(popup_->Create(window_->Instance(), window_->Hwnd(),
@@ -372,6 +388,7 @@ void ComboBox::OnAttachedToTree() {
         popup_.reset();
         return;
     }
+    popupWindow_ = window_;
     // Hook the dropdown content onto the parent window's animation clock (smooth
     // wheel scroll, scrollbar fade/expand). Must precede SetContent below, which
     // injects the registry into the list view's context.
@@ -384,30 +401,40 @@ void ComboBox::OnAttachedToTree() {
     // identically to the parent.
     popup_->SetTheme(Context().theme);
 
-    // Create the list view content. It reads DWrite through the context PopupHost
-    // injects on SetContent. The list binds to the shared base
-    // items_ vector (no copy — the list view does not mirror the items).
-    auto* list = new ComboListView();
-    list->SetItemsRef(&items_);
-    list->SetSelectedIndex(selectedIndex_);
-    list->SetOnSelect([this](int idx) { OnItemSelected(idx); });
-    listView_.reset(list);
+    // Create the list view content (once; a move to another window reuses it). It
+    // reads DWrite through the context PopupHost injects on SetContent. The list
+    // binds to the shared base items_ vector (no copy — the list view does not
+    // mirror the items).
+    if (!listView_) {
+        auto* list = new ComboListView();
+        list->SetItemsRef(&items_);
+        list->SetOnSelect([this](int idx) { OnItemSelected(idx); });
+        listView_.reset(list);
+    }
+    if (auto* list = dynamic_cast<ComboListView*>(listView_.get()))
+        list->SetSelectedIndex(selectedIndex_);
     popup_->SetContent(listView_.get());
-    popup_->SetOnClose([this]() {
-        popupOpen_ = false;
-        dismissSub_.reset();  // unregister the window's dismiss hook
-        Invalidate();
-    });
+    // Every close path, including the popup's own light dismiss, funnels here.
+    popup_->SetOnClose([this]() { OnPopupClosed(); });
 
     TraceMsg(kTag, "OnAttachedToTree: popup and list view created");
 }
 
 void ComboBox::OnDetachedFromTree() {
-    // Tear down the popup and its window registrations while the host is still
-    // valid, then drop the cached window pointer (the context is about to clear).
+    // Close the dropdown and release its window registrations while the host is
+    // still valid, then drop the cached window pointer (the context is about to
+    // clear).
     ClosePopup();
-    popup_.reset();
-    listView_.reset();
+    // popup_ and listView_ are deliberately KEPT, not reset. This detach can run
+    // synchronously from inside the popup's own dispatch: a click on a list row ->
+    // ComboListView's onSelect -> SetSelectedIndex -> SelectionChanged -> an app
+    // handler that switches the TabControl page (or removes this control) ->
+    // DetachFromContext -> here, all before the popup's WndProc and the list's
+    // pointer handler have returned. Resetting them here freed the PopupHost (and
+    // the InputManager mid-PointerPressed) and the list under their own frames.
+    // DatePicker had the same bug and keeps its popup the same way. Kept objects
+    // cost one hidden HWND; OnAttachedToTree reuses them on a re-attach to this
+    // window, and ~ComboBox destroys them.
     window_ = nullptr;
 }
 
@@ -697,7 +724,25 @@ void ComboBox::OpenPopup() {
 
 void ComboBox::ClosePopup() {
     if (!popup_ || !popupOpen_) return;
-    popup_->Close();
+    // A popup in the steady Open state closes through PopupHost::Close, whose
+    // SetOnClose callback (OnPopupClosed) does the bookkeeping and raises
+    // DropDownClosed as the last thing Close() does, with the popup already
+    // Closed. Return straight after it and touch nothing: the handler may have
+    // reopened the dropdown (popupOpen_ is true again and must stay so). It must not
+    // destroy this ComboBox synchronously (see PopupState.h), but returning at once
+    // keeps this frame from adding to that hazard.
+    if (popup_->IsOpen()) {
+        popup_->Close();
+        return;
+    }
+    // Close() would be a no-op (the popup is not in the steady Open state, so no
+    // callback would run): the control must still end up closed rather than stuck
+    // with popupOpen_ set.
+    OnPopupClosed();
+}
+
+void ComboBox::OnPopupClosed() {
+    if (!popupOpen_) return;  // already done (ClosePopup's fallback call)
     popupOpen_ = false;
     dismissSub_.reset();  // unregister the window's dismiss hook
     wheelSub_.reset();    // unregister the window's wheel-forwarding hook
@@ -726,6 +771,14 @@ void ComboBox::OnKeyDownRouted(KeyEventArgs& e) {
         return;
     }
 
+    // In editable mode Space is a character being typed, never a dropdown command.
+    // Handling the key-down does not stop the WM_CHAR (the host delivers TextInput
+    // unconditionally), so treating Space as "open" popped the list on every word
+    // break of "new york", and with the list open, forwarding it made ComboListView
+    // pick the hovered row and overwrite the typed text with it. Left unhandled so
+    // the space is simply inserted by OnTextInput.
+    if (editable_ && vk == VK_SPACE) return;
+
     // Forward navigation keys to the popup if it's open.
     if (popupOpen_ && popup_) {
         if (vk == VK_ESCAPE) {
@@ -739,11 +792,18 @@ void ComboBox::OnKeyDownRouted(KeyEventArgs& e) {
         }
     }
 
-    // Open the popup with Space/Enter/Down/Alt+Down.
+    // Open the popup with Space/Enter/Down/Alt+Down. Editable mode opens on Down
+    // (and Alt+Down) only: Space is text (above), and Enter in a text field means
+    // "done with this value", so it is left unhandled for the surrounding UI (a
+    // dialog's default button) instead of popping the list over what was typed.
+    // With the list OPEN, Enter still reaches the forward above and picks the
+    // highlighted row, which is the classic combo behavior.
     if (!popupOpen_) {
         bool altDown = (GetKeyState(VK_MENU) & 0x8000) != 0;
-        if (vk == VK_SPACE || vk == VK_RETURN || vk == VK_DOWN ||
-            (vk == VK_DOWN && altDown)) {
+        const bool opensList =
+            editable_ ? (vk == VK_DOWN)
+                      : (vk == VK_SPACE || vk == VK_RETURN || vk == VK_DOWN);
+        if (opensList || (vk == VK_DOWN && altDown)) {
             OpenPopup();
             e.handled = true;
             return;

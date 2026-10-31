@@ -84,10 +84,16 @@ struct UIContext {
     // the compositor showing correctly positioned pixels) and defers the
     // RASTERIZATION until the drag ends, where one exact redraw converges.
     //
-    // Deliberately a context flag rather than each control asking the window: the
-    // controls that need it (TreeView / TextArea) already read the context on
-    // every RefreshComposition, and a headless test wires this to false by simply
-    // not setting it.
+    // Deliberately a context flag rather than each control asking the window: a
+    // control can read it wherever it already reads its context, and a headless
+    // test wires this to false by simply not setting it.
+    //
+    // No FluentUI control reads it today. The composited TreeView / TextArea that
+    // the reasoning above was written for now scroll on the UI thread and never
+    // map a surface during a drag; the one composition user (ProgressBar's sweep)
+    // does not redraw its surface per frame. The host still maintains it
+    // (WM_ENTERSIZEMOVE / WM_EXITSIZEMOVE, UpdateContextModalResize) because it is
+    // public context API for composition-backed controls in other libraries.
     bool inModalResize = false;
 
     // Input routing services for the attached tree. `input`

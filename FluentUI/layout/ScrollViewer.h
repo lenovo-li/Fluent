@@ -121,6 +121,16 @@ public:
     void SetBarHover(bool over);
     // Wider hit strip near the right edge (for discoverability when thin).
     bool HitBarRegion(float dipX, float dipY) const;
+    // Pointer currently on either rail's hover strip (SetBarHover / SetHBarHover).
+    // While true the idle countdown is held, so a stale true keeps the bar shown.
+    bool IsBarHovered() const { return barHover_ || barHoverX_; }
+    // End the fade/expand cycle immediately: bars hidden, thin, not hovered, no
+    // countdown, so NeedsTick() is false unless a scroll is still in flight. For a
+    // host whose content stopped overflowing while the bar was awake: there is no
+    // rail left to draw (Render returns early without overflow), so easing the
+    // remaining ~1.5 s of fade towards nothing only spent frames. The next Wake on
+    // renewed overflow starts the bar from hidden, as if it had faded out.
+    void HideBarsNow();
 
     void Render(const DrawingContext& dc) override;
 

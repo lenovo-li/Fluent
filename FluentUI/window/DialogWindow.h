@@ -136,6 +136,16 @@ protected:
 
     NativeWindowHost* ownerWindow_ = nullptr;
 
+    // What closing this dialog does to its owner, kept pure so the rule is testable
+    // without a window. `disabledByThisDialog` is true only when ShowDialog found
+    // the owner enabled and disabled it; `ownerEnabledNow` is the owner's current
+    // state. See the definition for the nested-modal and non-modal cases.
+    struct OwnerRestorePlan {
+        bool enable = false;    // EnableWindow(owner, TRUE)
+        bool activate = false;  // SetForegroundWindow(owner)
+    };
+    static OwnerRestorePlan PlanOwnerRestore(bool disabledByThisDialog, bool ownerEnabledNow);
+
 private:
     HRESULT Start(NativeWindowHost& owner);
     void RestoreOwner();

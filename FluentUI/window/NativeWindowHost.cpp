@@ -113,10 +113,9 @@ void NativeWindowHost::Close() {
 // the owning control runs its normal close path (hiding the popup window and
 // resetting its Subscription). Idempotent — safe if no popup is open.
 void NativeWindowHost::CloseActivePopups() {
-    if (popupDismiss_) {
-        popupDismiss_(PopupDismissReason::Deactivate, nullptr, 0, 0);
-        popupDismiss_ = nullptr;
-    }
+    // Teardown: whatever the hook does, nothing may stay registered afterwards.
+    DispatchPopupDismiss(PopupDismissReason::Deactivate, nullptr, 0, 0);
+    if (popupDismiss_) { popupDismiss_ = nullptr; ++dismissGen_; }
     popupKey_ = nullptr;
 }
 
@@ -127,8 +126,8 @@ HRESULT NativeWindowHost::Create(HINSTANCE hInst, const wchar_t* title,
     title_ = title ? title : L"";
 
     WNDCLASSEXW wc = {sizeof(wc)};
-    // CS_DBLCLKS only. Still no CS_HREDRAW/CS_VREDRAW (CLAUDE.md #5: a DComp window
-    // must not be invalidated wholesale on resize) — the two are unrelated flags and
+    // CS_DBLCLKS only. Still no CS_HREDRAW/CS_VREDRAW (a DComp window must not be
+    // invalidated wholesale on resize) — the two are unrelated flags and
     // adding double-click delivery does not reintroduce that problem.
     //
     // WITHOUT CS_DBLCLKS WINDOWS NEVER SENDS WM_LBUTTONDBLCLK. That is worth stating
@@ -204,7 +203,8 @@ HRESULT NativeWindowHost::Create(HINSTANCE hInst, const wchar_t* title,
     w = std::max<int>(1, initialRect.right - initialRect.left);
     h = std::max<int>(1, initialRect.bottom - initialRect.top);
 
-    // CLAUDE.md #4: WS_EX_NOREDIRECTIONBITMAP so content is fully DComp-owned.
+    // WS_EX_NOREDIRECTIONBITMAP so content is fully DComp-owned (no GDI redirection
+    // surface underneath).
     //
     // WS_OVERLAPPED (not WS_POPUP) + WS_THICKFRAME: the OVERLAPPED bit is what
     // makes Windows give the window a real sizing frame — including the
@@ -231,13 +231,13 @@ HRESULT NativeWindowHost::Create(HINSTANCE hInst, const wchar_t* title,
     // DPI, InitGraphics and the first Render use the wrong scale and every
     // control is drawn too big/small until a WM_DPICHANGED arrives (which may be
     // too late — the content surface is already sized). Re-read the authoritative
-    // per-window DPI now so the initial frame is correct (CLAUDE.md pitfall #1).
+    // per-window DPI now so the initial frame is correct (never a cached global DPI).
     UINT winDpi = GetDpiForWindow(hwnd_);
     if (winDpi) dpi_ = winDpi;
 
     // The scheduler is the animation CLOCK (running_ flag + QPC dt); it no longer
     // drives an OS timer for normal animation — the main message loop pumps
-    // animation every turn (PumpAnimations), paced by the frame waiter, so we can
+    // animation once per due frame (PumpAnimations), paced by the frame waiter, so we can
     // run at the display refresh rate. A modal driver is needed ONLY while a system
     // modal loop (drag-resize) blocks our loop; that is armed/disarmed explicitly in
     // WM_ENTERSIZEMOVE / WM_EXITSIZEMOVE. So the arm/disarm edges here only need to
@@ -325,7 +325,8 @@ HRESULT NativeWindowHost::Create(HINSTANCE hInst, const wchar_t* title,
         TraceMsg(kTag, "OleInitialize failed — drop unavailable");
     }
 
-    // CLAUDE.md #6: draw the first frame, DwmFlush, then ShowWindow. Synchronous
+    // Draw the first frame, DwmFlush, then ShowWindow, so the window never appears
+    // with empty content. Synchronous
     // (RenderNow, not the coalesced Render) — the message loop is not running yet.
     //
     // SWP_FRAMECHANGED before ShowWindow: with WS_OVERLAPPED the window starts
@@ -345,7 +346,7 @@ HRESULT NativeWindowHost::Create(HINSTANCE hInst, const wchar_t* title,
 }
 
 HRESULT NativeWindowHost::InitGraphics(UINT pixelW, UINT pixelH) {
-    // Phase 1: delegate to GraphicsHost
+    // The device stack lives in GraphicsHost; this host only wires the frame request.
     FL_RETURN_IF_FAILED(kTag, graphics_.Initialize(hwnd_, pixelW, pixelH,
         [this] { RequestFrame(FrameReason::Paint); }));
     graphicsReady_ = true;
@@ -483,6 +484,30 @@ void NativeWindowHost::AddElement(UIElement* e) {
     }
 }
 
+bool NativeWindowHost::RemoveElement(UIElement* e) {
+    if (!e) return false;
+    auto it = std::find(elements_.begin(), elements_.end(), e);
+    if (it == elements_.end()) return false;
+    elements_.erase(it);
+
+    // The armed tooltip target and the drag-over target are raw pointers that may
+    // point anywhere inside the removed subtree, and walking the subtree to find out
+    // costs more than just dropping them. Dropping them is harmless: the next pointer
+    // move or DragOver re-derives both from a fresh hit test.
+    HideTooltip();
+    dragOverElement_ = nullptr;
+
+    // Same order as the WM_DESTROY teardown: clear input state for the root first,
+    // then detach the subtree (DetachFromContext notifies input for every
+    // descendant on the way down, while the context is still valid).
+    input_.Input().OnElementDetached(e);
+    if (e->IsAttached()) e->DetachFromContext();
+    if (!e->Parent()) e->SetInvalidateCallback(nullptr, nullptr);
+
+    if (IsOpen()) RequestFrame(FrameReason::Layout);
+    return true;
+}
+
 void NativeWindowHost::SetFocusElement(UIElement* e) {
     // Forward to the single focus authority; the caret-blink timer follows the
     // FocusChanged event (see UpdateBlinkTimer).
@@ -505,10 +530,15 @@ void NativeWindowHost::UpdateBlinkTimer(UIElement* newFocus) {
 
 void NativeWindowHost::UpdateAnimationTimer() {
     // Rebuild the active-animation set from the element tree (a leaf adds itself
-    // when it wants a tick; panels recurse). This runs at discrete triggers —
-    // input events and program state changes — not every frame, so the timer
-    // only ever ticks elements that are actually animating. Arm
-    // the clock iff something wants a tick; the scheduler owns the edge logic.
+    // when it wants a tick; panels recurse). It runs on input events AND at the end
+    // of every painted frame (see RenderNow), so it is a whole-tree walk per frame,
+    // not O(animating): the per-frame TICK is what stays O(animating), because
+    // between Collects the clock ticks only the collected set. A painted frame
+    // already walks the tree for its dirty queries, so this adds one more walk of
+    // the same order, and an idle window paints nothing and walks nothing. Making it
+    // event-driven (elements registering on their WantsAnimationTick rising edge)
+    // would remove the walk, but needs every animating control to report that edge.
+    // Arm the clock iff something wants a tick; the scheduler owns the edge logic.
     //
     // Auxiliary roots (open PopupHost content) have no FrameHost of their own and
     // share this clock. They MUST go through the same single Collect call:
@@ -544,23 +574,25 @@ void NativeWindowHost::RequestFrame(FrameReason reason) {
 void NativeWindowHost::RunDueFrame() {
     if (!frame_.Scheduler().NeedsFrame()) return;
     FrameReason serviced = frame_.Scheduler().BeginFrame();
-    // Phase 1A: fold any coalesced WM_SIZE into this frame (one ResizeBuffers +
+    // Resize coalescing: fold any coalesced WM_SIZE into this frame (one ResizeBuffers +
     // OnLayout at most) before painting. No-op when no resize is pending.
     ApplyPendingResize();
     RenderNow(serviced);
     frame_.Scheduler().EndFrame();
 }
 
-// THE animation clock. Called once per message-loop turn.
+// THE animation clock. Called once per painted frame, immediately before
+// RunDueFrame: by Application::PumpOneTurn only on a turn whose frame is due
+// (AnimationTickIsDue), by the self-frame timer, and by the modal-loop frame paths.
 // While the clock is armed (something is animating), advance the active set by
 // the real QPC elapsed time and request the next frame so the loop keeps
-// cycling — paced by the loop's FrameWaitTimeoutMs() wait, i.e. at the display's
-// refresh rate. (That pacing used to come free from the swap chain's blocking
-// Present1; Route 2 removed it, so the loop must supply the timeout itself.)
-// Ticking here (not only in WM_TIMER) means a slider drag or any
-// pointer-capture flood no longer starves the animation: our loop keeps running
-// and pumping. Does NOT paint — it only advances state + schedules the frame;
-// RunDueFrame does the actual paint later in the same turn.
+// cycling, paced by the loop's FrameWaitRemaining() wait through FrameWaiter,
+// i.e. at the display's refresh rate. (That pacing used to come free from the swap
+// chain's blocking Present1; the DComp surface's Commit does not block, so the loop
+// must supply the wait itself.) Ticking from our own loop (not only in WM_TIMER)
+// means a slider drag or any pointer-capture flood no longer starves the
+// animation: the loop keeps running and pumping. Does NOT paint; it only advances
+// state and schedules the frame, and RunDueFrame paints right after.
 bool NativeWindowHost::PumpAnimations() {
     if (!frame_.Scheduler().Running()) return false;
     const float dt = frame_.Scheduler().ComputeDt(QpcNow());
@@ -571,7 +603,11 @@ bool NativeWindowHost::PumpAnimations() {
     // in the whole scroll path). Without this the overscan refill cost is invisible.
     const int64_t tickStart = QpcNow();
     const bool stillAnimating = frame_.Anims().Tick(dt);
-    pendingAnimationMs_ = QpcToMs(QpcNow() - tickStart);
+    // Accumulate, do not overwrite: more than one tick can precede one painted frame
+    // (inside a system modal loop both the fallback anim timer and the frame
+    // heartbeat tick), and the frame's stats must carry all of that cost, not just
+    // the last tick's. RenderNow consumes and zeroes it.
+    pendingAnimationMs_ += QpcToMs(QpcNow() - tickStart);
     if (stillAnimating) {
         RequestFrame(FrameReason::Animation);
     } else {
@@ -620,7 +656,11 @@ void NativeWindowHost::RenderNow(FrameReason reason) {
     // dirtyElements count (every re-rendered element, not just measure roots).
     bool measureDirty = false;
     bool arrangeDirty = false;
-    std::vector<RectDip> dirtyBounds;
+    // Member scratch, cleared not reallocated: once it has grown to a typical
+    // frame's dirty count, a frame costs no heap allocation here. RenderNow is
+    // guarded against re-entry (rendering_), so the one buffer is never shared.
+    std::vector<RectDip>& dirtyBounds = dirtyBoundsScratch_;
+    dirtyBounds.clear();
     for (UIElement* e : elements_) {
         if (!e) continue;
         if (e->AnyDirtyInSubtree(DirtyFlags::Measure)) measureDirty = true;
@@ -802,9 +842,9 @@ void NativeWindowHost::RenderNow(FrameReason reason) {
     // is written on close to prove timing regressions after the fact, which made the
     // *worst* hitches the ones guaranteed to be absent from it.
     //
-    // Sharing the predicate also removes the second, redundant filter: RecordFrame
-    // already excludes SessionPhase::Idle from the jank list for the same reason, so
-    // an idle gap that reaches it is dropped there rather than being zeroed here.
+    // A frame that is not a cadence sample is passed as intervalMs = 0, which
+    // RecordFrame reads as "no sample": the frame is counted, but it enters neither
+    // the phase's average interval nor the jank list.
     if (sessionLogEnabled_) {
         float intervalMs = 0.0f;
         if (FrameIntervalIsCadenceSample(lastFrameQpc_ != 0, loopWasContinuous_))
@@ -1143,8 +1183,48 @@ LRESULT CALLBACK NativeWindowHost::WndProc(HWND hwnd, UINT msg, WPARAM wp,
         self = reinterpret_cast<NativeWindowHost*>(
             GetWindowLongPtrW(hwnd, GWLP_USERDATA));
     }
-    if (self) return self->HandleMessage(msg, wp, lp);
-    return DefWindowProcW(hwnd, msg, wp, lp);
+    if (!self) return DefWindowProcW(hwnd, msg, wp, lp);
+
+    // Hang watchdog bookkeeping (window/HangDetector.h). Any message reaching us
+    // proves the UI thread is pumping, so it is a beat. That matters inside loops
+    // we do not own (a system move/resize or menu loop, a MessageBox): there our
+    // pump is not running and frames may stop, but messages still arrive here.
+    //
+    // Those foreign loops then BLOCK waiting for input, exactly like our own idle
+    // wait, with nobody to say so. Two signals stand in for that: between
+    // WM_ENTER/EXITSIZEMOVE and WM_ENTER/EXITMENULOOP every nested message ends by
+    // marking idle again (the loop goes straight back to waiting), and WM_ENTERIDLE,
+    // which a modal dialog or menu sends its owner each time its queue empties,
+    // means "waiting now" by definition. A handler that hangs still hangs before it
+    // returns, so marking idle on the way OUT never hides a real stall.
+    //
+    // The idle decision is taken BEFORE dispatch: the outer message that runs the
+    // whole drag (WM_NCLBUTTONDOWN / WM_SYSCOMMAND) arrives with no loop open and
+    // returns after the loop closed, so it never marks idle and the next beat comes
+    // from our own pump as usual.
+    self->diagnostics_.Hang().Beat();
+    switch (msg) {
+        case WM_ENTERSIZEMOVE:
+        case WM_ENTERMENULOOP:
+            ++self->foreignModalLoops_;
+            break;
+        case WM_EXITSIZEMOVE:
+        case WM_EXITMENULOOP:
+            if (self->foreignModalLoops_ > 0) --self->foreignModalLoops_;
+            break;
+        default:
+            break;
+    }
+    const bool idleAfter = msg == WM_ENTERIDLE || self->foreignModalLoops_ > 0;
+    const LRESULT result = self->HandleMessage(msg, wp, lp);
+    // A handler may have destroyed the window, and an owner reacting to Closed may
+    // have deleted the host object with it (~NativeWindowHost destroys the HWND it
+    // still holds), so `self` is only touched again while the HWND is alive and
+    // still maps to it.
+    if (idleAfter && IsWindow(hwnd) &&
+        reinterpret_cast<NativeWindowHost*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA)) == self)
+        self->diagnostics_.Hang().EnterIdle();
+    return result;
 }
 
 LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
@@ -1213,7 +1293,7 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
                               LOWORD(lp), HIWORD(lp), sinceLast);
                 }
                 OnSize(LOWORD(lp), HIWORD(lp));
-                // Phase 1A: WM_SIZE arrives densely inside the system modal resize
+                // Resize coalescing: WM_SIZE arrives densely inside the system modal resize
                 // loop where our main loop (and the low-priority WM_TIMER heartbeat)
                 // is starved. Service a frame right here so the coalesced resize is
                 // applied and animation advances smoothly while dragging the edge.
@@ -1235,20 +1315,18 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
             TrackRefreshMonitor();
             // Dismiss active popup when the parent window moves.
             if (popupDismiss_) {
-                if (popupDismiss_(PopupDismissReason::Move, nullptr, 0, 0))
-                    popupDismiss_ = nullptr;
+                DispatchPopupDismiss(PopupDismissReason::Move, nullptr, 0, 0);
             }
             return 0;
 
         case WM_ENTERSIZEMOVE:
             // User started resizing/moving the window — dismiss popup immediately.
             if (popupDismiss_) {
-                if (popupDismiss_(PopupDismissReason::Resize, nullptr, 0, 0))
-                    popupDismiss_ = nullptr;
+                DispatchPopupDismiss(PopupDismissReason::Resize, nullptr, 0, 0);
             }
             // Entering a SYSTEM modal move/resize loop: our message loop (and thus
             // PumpAnimations / RunDueFrame) stops running. Arm the heartbeat timer
-            // UNCONDITIONALLY (not just when animating) — with Phase 1A, WM_SIZE no
+            // UNCONDITIONALLY (not just when animating) — with resize coalescing, WM_SIZE no
             // longer paints synchronously, so the heartbeat is now what applies the
             // coalesced resize and repaints the window during the drag. It also
             // keeps any active animation ticking. Disarmed on WM_EXITSIZEMOVE.
@@ -1261,8 +1339,9 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
             // UIContext is stored BY VALUE on every element (UIElement::context_), so
             // mutating the host's copy alone leaves the tree reading a stale flag —
             // exactly the same hazard UpdateContextDpi exists for. Push it down now, so
-            // the first RefreshComposition of the drag already sees it and skips its
-            // BeginDraw. Cheap: one bool write per element, no layout, no invalidation.
+            // a composition-backed control (none in FluentUI today; see UIContext.h)
+            // sees it from the drag's first frame and can skip its BeginDraw. Cheap:
+            // one bool write per element, no layout, no invalidation.
             for (UIElement* e : elements_)
                 if (e) e->UpdateContextModalResize(true);
             // Forget the previous drag's opportunity spacing: it described that
@@ -1305,8 +1384,8 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
             context_.inModalResize = false;
             // Clear the flag on the tree BEFORE the convergence layout below. Order is
             // load-bearing: that layout is what rasterizes the final pixels, and it can
-            // only do so if every host has already seen the falling edge (which is also
-            // where ScrollContentHost marks its surfaces stale — see SetModalResize).
+            // only do so if every element has already seen the falling edge (a control
+            // that deferred rasterization during the drag re-arms it there).
             for (UIElement* e : elements_)
                 if (e) e->UpdateContextModalResize(false);
             // Stop the tick BEFORE the final paint: Stop() joins the worker, so no
@@ -1321,11 +1400,10 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
                 RenderNow(FrameReason::Resize);
                 frame_.Scheduler().EndFrame();
             } else {
-                // No pending size, but we still ran a tree update in the drag —
-                // ScrollContentHost may have marked surfaces stale on the falling edge
-                // (SetModalResize), so paint once to converge to the exact final pixels.
-                // NOTE: UpdateContextModalResize(false) auto-invalidates Arrange on every
-                // element, so OnLayout will trigger OnBoundsChanged → RefreshComposition.
+                // No pending size, but we still ran a tree update in the drag, and a
+                // control that deferred work while inModalResize was set needs one
+                // more frame to converge to the exact final pixels. (The flag update
+                // itself invalidates nothing; this layout + paint is the convergence.)
                 frame_.Scheduler().BeginFrame();
                 OnLayout();
                 RenderNow(FrameReason::Resize);
@@ -1358,8 +1436,7 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
                 if (popupDismiss_) {
                     HWND other = reinterpret_cast<HWND>(lp);
                     // Pass the other HWND so the callback can check if it's the popup.
-                    if (popupDismiss_(PopupDismissReason::Deactivate, other, 0, 0))
-                        popupDismiss_ = nullptr;
+                    DispatchPopupDismiss(PopupDismissReason::Deactivate, other, 0, 0);
                 }
             }
             break;
@@ -1956,7 +2033,7 @@ LRESULT NativeWindowHost::HitTestNca(POINT ptScreen) {
 
 void NativeWindowHost::OnSize(UINT pixelW, UINT pixelH) {
     if (!graphicsReady_) return;
-    // Phase 1A (resize coalescing): a drag fires WM_SIZE at ~per-pixel frequency;
+    // Resize coalescing: a drag fires WM_SIZE at ~per-pixel frequency;
     // doing a full ResizeBuffers + OnLayout + synchronous RenderNow on each one
     // repaints every intermediate size and starves everything else (the animation
     // fallback timer, in particular). Instead, just record the latest size and
@@ -1991,7 +2068,7 @@ void NativeWindowHost::ApplyPendingResize() {
 
     const int64_t beforeCompResize = QpcNow();
     if (sizeChanged)
-        graphics_.Comp().Resize(pixelW_, pixelH_);  // CLAUDE.md #7: resize in place, no rebuild
+        graphics_.Comp().Resize(pixelW_, pixelH_);  // resize the surface in place, no rebuild
     const int64_t afterCompResize = QpcNow();
 
     // A resized content surface has undefined pixels in the newly exposed
@@ -2158,7 +2235,7 @@ void NativeWindowHost::OnDpiChanged(UINT newDpi, const RECT* suggested) {
     RecreateWindowIcon();
     // WM_DPICHANGED runs in a system modal path; paint synchronously and consume
     // any coalesced request so the on-demand loop doesn't repaint a stale frame.
-    // Phase 1A: the SetWindowPos above fired a synchronous WM_SIZE that only set
+    // Resize coalescing: the SetWindowPos above fired a synchronous WM_SIZE that only set
     // resizePending_ (deferred). Commit it here — ApplyPendingResize does the
     // surface Resize + OnLayout — so the content surface matches the new size/DPI before
     // we paint. If no size actually changed, force the layout the DPI change needs.
@@ -2471,8 +2548,23 @@ void NativeWindowHost::LightDismissAt(int px, int py) {
     if (!popupDismiss_) return;
     POINT pt = {px, py};
     ClientToScreen(hwnd_, &pt);
-    if (popupDismiss_(PopupDismissReason::Click, nullptr, pt.x, pt.y))
-        popupDismiss_ = nullptr;
+    DispatchPopupDismiss(PopupDismissReason::Click, nullptr, pt.x, pt.y);
+}
+
+bool NativeWindowHost::DispatchPopupDismiss(PopupDismissReason reason, HWND other,
+                                            int x, int y) {
+    // The hook used to be called in place and cleared with `if (hook(...)) hook =
+    // nullptr;`. Two things were wrong with that once a control's closed event may
+    // reopen the popup from inside the hook (the close now finishes before the event
+    // is raised, so a reopen succeeds):
+    //   * the reopen registers a NEW hook in this slot, and the unconditional clear
+    //     on return wiped it, so the reopened popup could no longer be dismissed by a
+    //     click outside, a window move or deactivation;
+    //   * the control's own Subscription reset empties the slot while the closure in
+    //     it is still executing, destroying a running std::function.
+    // So the hook runs from a local copy, and the slot is only touched afterwards if
+    // nobody re-registered or unregistered during the call (dismissGen_ unchanged).
+    return InvokeOwnedHook(popupDismiss_, dismissGen_, reason, other, x, y);
 }
 
 void NativeWindowHost::RefreshCursor() {
@@ -2529,7 +2621,8 @@ void NativeWindowHost::ApplyRestoreState(RECT& rect, UINT dpi,
     // the saved rect may live on a DIFFERENT monitor — rescaling by the primary
     // DPI then wrongly grows/shrinks the frame (the size looks right on the
     // primary but is doubled/halved on the actual target monitor). Use the DPI of
-    // the monitor the saved rect lands on as the rescale target (CLAUDE.md #1).
+    // the monitor the saved rect lands on as the rescale target (per-window DPI, never
+    // a global one).
     UNREFERENCED_PARAMETER(dpi);
     RECT savedRect = {restore->x, restore->y,
                       restore->x + restore->width, restore->y + restore->height};

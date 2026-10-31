@@ -148,16 +148,18 @@ TEST(PageHost, PageShownAfterAResizeIsMeasuredAtTheNewSize) {
 
 TEST(PageHost, BothPagesAreMeasuredDuringATransition) {
     // The leaving page still paints mid-transition, so it has to follow a resize
-    // too. A transition needs an attached host and the system "Animation effects"
-    // setting on; with it off ShowPage cuts instantly and there is nothing to test.
+    // too. A transition needs an attached host; the system "Animation effects"
+    // setting is bypassed (SetRespectSystemAnimationSetting(false)) so this runs
+    // where that setting is off too, instead of returning with nothing asserted.
     Rig r;
     r.host.SetTransition(PageTransition::Fade);
     UIContext ctx;
     ctx.dpiScale = 1.0f;
+    r.host.SetRespectSystemAnimationSetting(false);  // run on every machine
     r.host.AttachToContext(ctx);
     r.Frame(400.0f, 300.0f);
     r.host.ShowPage(1);
-    if (!r.host.IsTransitioning()) return;  // animation effects disabled here
+    EXPECT_TRUE(r.host.IsTransitioning());
 
     const int leaving = r.pages[0].leaf->measures;
     const int incoming = r.pages[1].leaf->measures;
@@ -166,4 +168,45 @@ TEST(PageHost, BothPagesAreMeasuredDuringATransition) {
     EXPECT_EQ(r.pages[0].leaf->measures, leaving + 1);
     EXPECT_EQ(r.pages[1].leaf->measures, incoming + 1);
     EXPECT_EQ(r.pages[2].leaf->measures, hidden);
+}
+
+TEST(PageHost, FadeTickDirtiesRenderNotArrange) {
+    // Fade only changes the two pages' opacity. A tick must leave a Render-level
+    // dirty on the pages and NO Arrange anywhere: an Arrange-dirty frame forces a
+    // full-window redraw and re-arranges both page trees, for every frame of the
+    // transition. The system "Animation effects" setting is bypassed, as above.
+    Rig r;
+    r.host.SetTransition(PageTransition::Fade);
+    UIContext ctx;
+    ctx.dpiScale = 1.0f;
+    r.host.SetRespectSystemAnimationSetting(false);  // run on every machine
+    r.host.AttachToContext(ctx);
+    r.Frame(400.0f, 300.0f);
+    r.host.ShowPage(1);
+    EXPECT_TRUE(r.host.IsTransitioning());
+    r.Frame(400.0f, 300.0f);  // consume the ShowPage dirt
+
+    r.host.OnAnimationTick(1.0f / 60.0f);
+    EXPECT_TRUE(r.host.IsTransitioning());  // one tick does not finish a fade
+    EXPECT_FALSE(r.host.AnyDirtyInSubtree(DirtyFlags::Arrange));
+    EXPECT_TRUE(Has(r.pages[1].page->Dirty(), DirtyFlags::Render));
+    EXPECT_TRUE(Has(r.pages[0].page->Dirty(), DirtyFlags::Render));
+}
+
+TEST(PageHost, FadeSlideTickStillArranges) {
+    // FadeSlide moves the incoming page's slot, so its ticks do need Arrange.
+    Rig r;
+    r.host.SetTransition(PageTransition::FadeSlide);
+    UIContext ctx;
+    ctx.dpiScale = 1.0f;
+    r.host.SetRespectSystemAnimationSetting(false);  // run on every machine
+    r.host.AttachToContext(ctx);
+    r.Frame(400.0f, 300.0f);
+    r.host.ShowPage(1);
+    EXPECT_TRUE(r.host.IsTransitioning());
+    r.Frame(400.0f, 300.0f);
+
+    r.host.OnAnimationTick(1.0f / 60.0f);
+    EXPECT_TRUE(r.host.IsTransitioning());
+    EXPECT_TRUE(Has(r.host.Dirty(), DirtyFlags::Arrange));
 }

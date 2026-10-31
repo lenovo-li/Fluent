@@ -57,6 +57,9 @@ void ListBox::OnSelectionSetChanged()
     // gesture is keyboard-reachable, so the target can be off-screen) and raise
     // the set event. Event::Raise takes Args& so the vector must be an lvalue.
     EnsureSelectedVisible();
+    // Nobody listening: skip materializing (and sorting) the whole set, which for a
+    // Shift+End over a large list is most of the gesture's cost.
+    if (!selectionSetChanged_.HasSubscribers()) return;
     std::vector<int> sel = SelectedIndices();
     selectionSetChanged_.Raise(*this, sel);
 }

@@ -69,6 +69,7 @@
     <ClInclude Include="framework\PixelSurface.h" />
     <ClInclude Include="framework\FakeCompositionBackend.h" />
     <ClInclude Include="unit\LayoutTestHelpers.h" />
+    <ClInclude Include="unit\ClipboardTestHelpers.h" />
     <ClInclude Include="unit\InheritanceExamples.h" />
   </ItemGroup>
   <ItemGroup>
@@ -176,6 +177,7 @@
     <ClCompile Include="unit\DebugHudTests.cpp" />
     <ClCompile Include="unit\HudFeedTests.cpp" />
     <ClCompile Include="unit\FileDialogFilterTests.cpp" />
+    <ClCompile Include="unit\PopupDismissDispatchTests.cpp" />
     <ClCompile Include="unit\SessionLogTests.cpp" />
     <ClCompile Include="unit\DirtyRegionTests.cpp" />
     <ClCompile Include="unit\DirtyBoundsOverflowTests.cpp" />
@@ -228,6 +230,8 @@
     <ClCompile Include="unit\MenuItemEventsTests.cpp" />
     <ClCompile Include="unit\WizardControlTests.cpp" />
     <ClCompile Include="unit\PageHostTests.cpp" />
+    <ClCompile Include="unit\CustomControlsTests.cpp" />
+    <ClCompile Include="unit\NavRailKeyboardTests.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\FluentUI\FluentUI.vcxproj">
@@ -235,6 +239,9 @@
     </ProjectReference>
     <ProjectReference Include="..\extensions\InstallerControls\InstallerControls.vcxproj">
       <Project>{f8e2d9a1-3b4c-5d6e-7f8a-9b0c1d2e3f4a}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\extensions\CustomControls\CustomControls.vcxproj">
+      <Project>{e8c9d8a1-9b4e-4f2c-8d3e-1a2b3c4d5e6f}</Project>
     </ProjectReference>
     <ProjectReference Include="..\extensions\NavigationControls\NavigationControls.vcxproj">
       <Project>{f9e3d8b2-4c5e-6f7a-8b9c-0d1e2f3a4b5c}</Project>

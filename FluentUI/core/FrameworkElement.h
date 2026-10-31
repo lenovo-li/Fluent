@@ -151,11 +151,11 @@ public:
     // page is opened" is that a hidden element is neither rendered nor ticked, so the
     // stray ease was spent whenever the page first became visible, and never again.
     //
-    // The rule: a state change is only ANIMATED once the control has actually been
-    // painted at least once. Before that there is no previous frame on screen, so there is
-    // nothing to animate from and the value is snapped. Controls call
-    // MarkAnimationPrimed() from Render() and check AnimationPrimed() in the setter that
-    // moves an AnimatedValue.
+    // The rule: a state change is only ANIMATED once the control has been laid out at
+    // least once. Before that there is no previous frame on screen, so there is nothing
+    // to animate from and the value is snapped. Priming is automatic (Arrange above sets
+    // it and calls SnapAnimationsToSettledState); a control only checks AnimationPrimed()
+    // in the setter that moves an AnimatedValue.
     //
     // Keyed on FIRST ARRANGE, and deliberately not on first Render. An invisible child is
     // skipped by both Measure and Arrange (Panel.cpp checks IsVisible() in each), so a
@@ -179,9 +179,9 @@ protected:
     // Enforces MinWidth/MaxWidth/MinHeight/MaxHeight on desired_. Called by
     // both the base Measure() and the ApplySizeConstraints hook, so it covers
     // direct Measure() calls (root, Image) and the normal MeasureCached path.
-    // Phase 3b: clamps whichever field the current thread owns. Reading the
-    // pre-clamp value from that same field is what makes this idempotent, so the
-    // double application on the normal panel-child path is harmless.
+    // Reads desired_ and writes the clamped value back to the same field, which
+    // is what makes this idempotent, so the double application on the normal
+    // panel-child path is harmless.
     void ClampDesiredSize() {
         const float minW = minWidth_.value_or(0.0f);
         const float maxW = maxWidth_.value_or(std::numeric_limits<float>::infinity());
@@ -258,7 +258,7 @@ protected:
     std::optional<float> minHeight_;
     std::optional<float> maxHeight_;
 
-    // False until the control has painted once; see AnimationPrimed() above.
+    // False until the first Arrange; see AnimationPrimed() above.
     bool animPrimed_ = false;
 };
 

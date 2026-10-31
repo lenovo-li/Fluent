@@ -19,9 +19,9 @@
 //   * every critical call traces its HRESULT.
 //
 // The content surface is premultiplied alpha, cleared to transparent so the DWM
-// Mica backdrop shows through where no control is drawn. Child visuals (an
-// indeterminate ProgressBar's sweep, a TreeView's overscan scroll layer) are
-// composited above the content and animate on the compositor thread.
+// Mica backdrop shows through where no control is drawn. Child visuals (today only
+// an indeterminate ProgressBar's sweep) are composited above the content and
+// animate on the compositor thread.
 #pragma once
 
 #include "../fl_common.h"
@@ -81,8 +81,8 @@ public:
     // visible until the next Commit().
     //
     // Controls do NOT call this directly — they go through ICompositionBackend, which
-    // is injected via WindowServices so an embedded member (a TreeView's scroll model)
-    // can reach the compositor without being a tree node. DCompCompositionBackend is
+    // is injected via WindowServices so a control, or an embedded helper object that
+    // is not itself a tree node, can reach the compositor without naming DComp. DCompCompositionBackend is
     // the only caller.
     HRESULT AddChildVisual(IDCompositionVisual2* visual);
     HRESULT RemoveChildVisual(IDCompositionVisual2* visual);

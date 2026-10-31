@@ -265,3 +265,29 @@ TEST(Grid, AllZeroStarWeights_DistributeEqually) {
     EXPECT_NEAR(left->Bounds().w, 100.0f, 0.1f);
     EXPECT_NEAR(right->Bounds().w, 100.0f, 0.1f);
 }
+
+// Removing a child must drop its cell entry. cells_ is keyed by address, and with
+// no erase a removed child's (row, col) outlived it: a Clear()+rebuild refresh made
+// the map grow forever, and a new child allocated at the recycled address inherited
+// the old cell instead of (0,0). ColumnOf/RowOf only look the address up (they never
+// dereference it), so querying the dead pointer is how the stale entry is observed
+// without depending on when the allocator happens to reuse an address.
+TEST(Grid, RemovedChildCellEntryIsDropped) {
+    Grid g;
+    g.SetColumns({GridLength::Star(), GridLength::Star(), GridLength::Star()});
+    g.SetRows({GridLength::Star(), GridLength::Star()});
+
+    auto* keep = g.Emplace<TestLeaf>();
+    g.SetCell(keep, 1, 1);
+    auto* gone = g.Emplace<TestLeaf>();
+    g.SetCell(gone, 1, 2);
+    EXPECT_EQ(g.ColumnOf(gone), 2);
+
+    g.RemoveAt(1);                        // destroys `gone`
+    EXPECT_EQ(g.ColumnOf(gone), -1);      // its entry went with it
+    EXPECT_EQ(g.RowOf(gone), -1);
+    EXPECT_EQ(g.ColumnOf(keep), 1);       // the survivor keeps its cell
+
+    g.Clear();                            // destroys `keep`
+    EXPECT_EQ(g.ColumnOf(keep), -1);
+}

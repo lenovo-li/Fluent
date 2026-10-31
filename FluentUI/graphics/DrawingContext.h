@@ -112,9 +112,13 @@ public:
 
     // --- Opacity ----------------------------------------------------------
     // The alpha multiplier applied to every color this context draws. This is the
-    // single choke point for element opacity: no control touches the raw brush
-    // (it is private and Dc() has no callers), so multiplying here covers every
-    // control uniformly — existing and future — with no per-control changes.
+    // choke point for element opacity: the shared brush is private, so every typed
+    // draw method below applies it, and a control that only uses those methods is
+    // covered with no per-control code. The exception is Dc(), the raw device
+    // context: anything drawn through it (a bitmap, a brush the control creates
+    // itself) must apply Opacity() / Faded() by hand. Image, TreeView's custom
+    // icons and RichTextBox's run colours do; the other Dc() callers only
+    // null-check it or push a transform/clip, which carries no colour.
     //
     // Composition: a parent renders a child through a context obtained from
     // WithOpacity(child->Opacity()), so nested opacities multiply the way they do
@@ -127,8 +131,7 @@ public:
     // which barely overlap) the result is visually identical at a fraction of the
     // cost — no D2D layer, no extra surface, no fill-rate hit. Where exact
     // subtree-composite semantics matter, put the element on its own composition
-    // visual and use ICompositionVisual::SetOpacity (which is what the composited
-    // TreeView / TextArea do).
+    // visual and use ICompositionVisual::SetOpacity (no control needs that today).
     float Opacity() const { return opacity_; }
 
     // A copy of this context whose opacity is multiplied by `factor`. Cheap (the
@@ -266,9 +269,11 @@ public:
     // partial-redraw frame to the dirty rect union.
     const RectDip& ClipHint() const { return clipHint_; }
 
-    // Escape hatch for host frame chrome (title-bar buttons, background card)
-    // that legitimately needs the raw context. Controls should not reach for it —
-    // the brush is private, so a control cannot bypass the typed draw methods.
+    // Escape hatch to the raw context, for host frame chrome and for the few
+    // controls that need something the typed methods do not offer (bitmaps,
+    // per-range text brushes, transforms, clips). Prefer the typed methods: a
+    // control that draws colour or a bitmap through this must apply Opacity() /
+    // Faded() itself, because nothing between it and D2D will.
     ID2D1DeviceContext* Dc() const { return dc_; }
 
 private:

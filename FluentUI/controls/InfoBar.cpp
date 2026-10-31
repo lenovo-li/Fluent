@@ -24,6 +24,41 @@ constexpr float kCloseGap = 8.0f;     // text -> close button
 constexpr float kTitleGap = 4.0f;     // title baseline -> message
 constexpr float kCornerDip = 4.0f;
 constexpr float kGlyphStroke = 1.5f;  // close "x" and icon ring stroke
+
+// Metrics of `text` laid out LEADING / NEAR at `maxW` x unbounded height. Measure and
+// Render both call this with the same key, so through the shared, epoch-versioned
+// ResourceCache the layout is built once and every later Measure (each frame of a
+// resize drag) and every Render (each repaint, including hover repaints) is a hash
+// lookup. Render used to build a fresh IDWriteTextLayout per text block per paint
+// only to read its height and advance y. Without a cache (headless tests that wire
+// only DWrite) it falls back to a one-off layout. Zeroed metrics on any failure.
+DWRITE_TEXT_METRICS LayoutMetrics(ResourceCache* cache, DWriteContext* dw,
+                                  const std::wstring& text, float size,
+                                  DWRITE_FONT_WEIGHT weight, DWRITE_WORD_WRAPPING wrap,
+                                  float maxW) {
+    DWRITE_TEXT_METRICS m{};
+    if (text.empty() || !dw || !dw->Valid()) return m;
+    ComPtr<IDWriteTextLayout> layout;
+    if (cache) {
+        TextLayoutKey key;
+        key.text = text;
+        key.fontSize = size;
+        key.weight = weight;
+        key.textAlign = DWRITE_TEXT_ALIGNMENT_LEADING;
+        key.paraAlign = DWRITE_PARAGRAPH_ALIGNMENT_NEAR;
+        key.wrapping = wrap;
+        key.maxWidth = maxW;
+        key.maxHeight = 100000.0f;
+        layout = cache->GetTextLayout(std::move(key));
+    } else if (IDWriteTextFormat* fmt = dw->Format(size, weight,
+                                                   DWRITE_TEXT_ALIGNMENT_LEADING,
+                                                   DWRITE_PARAGRAPH_ALIGNMENT_NEAR, wrap)) {
+        dw->Factory()->CreateTextLayout(text.c_str(), static_cast<UINT32>(text.size()),
+                                        fmt, maxW, 100000.0f, layout.GetAddressOf());
+    }
+    if (!layout || FAILED(layout->GetMetrics(&m))) m = DWRITE_TEXT_METRICS{};
+    return m;
+}
 }  // namespace
 
 InfoBar::InfoBar() {
@@ -108,35 +143,17 @@ void InfoBar::Measure(float availW, float availH) {
     if (dw && dw->Valid()) {
         // Title is one non-wrapping line (a title long enough to wrap is a message).
         if (!title_.empty()) {
-            if (IDWriteTextFormat* fmt = dw->Format(
-                    fontSize, DWRITE_FONT_WEIGHT_SEMI_BOLD,
-                    DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_NEAR,
-                    DWRITE_WORD_WRAPPING_NO_WRAP)) {
-                ComPtr<IDWriteTextLayout> layout;
-                if (SUCCEEDED(dw->Factory()->CreateTextLayout(
-                        title_.c_str(), static_cast<UINT32>(title_.size()), fmt,
-                        textW, 100000.0f, layout.GetAddressOf()))) {
-                    DWRITE_TEXT_METRICS m{};
-                    if (SUCCEEDED(layout->GetMetrics(&m))) textH += m.height;
-                }
-            }
+            textH += LayoutMetrics(Context().resourceCache, dw, title_, fontSize,
+                                   DWRITE_FONT_WEIGHT_SEMI_BOLD,
+                                   DWRITE_WORD_WRAPPING_NO_WRAP, textW).height;
             if (!message_.empty()) textH += kTitleGap;
         }
         // Message wraps. Measured at an unbounded height so a tall wrapped block reports
         // its real height instead of being silently clipped to the box we guessed.
         if (!message_.empty()) {
-            if (IDWriteTextFormat* fmt = dw->Format(
-                    fontSize, DWRITE_FONT_WEIGHT_NORMAL,
-                    DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_NEAR,
-                    DWRITE_WORD_WRAPPING_WRAP)) {
-                ComPtr<IDWriteTextLayout> layout;
-                if (SUCCEEDED(dw->Factory()->CreateTextLayout(
-                        message_.c_str(), static_cast<UINT32>(message_.size()), fmt,
-                        textW, 100000.0f, layout.GetAddressOf()))) {
-                    DWRITE_TEXT_METRICS m{};
-                    if (SUCCEEDED(layout->GetMetrics(&m))) textH += m.height;
-                }
-            }
+            textH += LayoutMetrics(Context().resourceCache, dw, message_, fontSize,
+                                   DWRITE_FONT_WEIGHT_NORMAL,
+                                   DWRITE_WORD_WRAPPING_WRAP, textW).height;
         }
     } else {
         // Headless / no DWrite: estimate so layout still produces a sane box and tests
@@ -201,14 +218,11 @@ void InfoBar::Render(const DrawingContext& dc) {
             dc.DrawText(title_.c_str(), static_cast<UINT32>(title_.size()), fmt,
                         D2D1::RectF(textX, y, textRight, bounds_.bottom()),
                         c.textPrimary, D2D1_DRAW_TEXT_OPTIONS_CLIP);
-            ComPtr<IDWriteTextLayout> layout;
-            if (SUCCEEDED(dw->Factory()->CreateTextLayout(
-                    title_.c_str(), static_cast<UINT32>(title_.size()), fmt,
-                    std::max(1.0f, textRight - textX), 100000.0f,
-                    layout.GetAddressOf()))) {
-                DWRITE_TEXT_METRICS m{};
-                if (SUCCEEDED(layout->GetMetrics(&m))) y += m.height + kTitleGap;
-            }
+            // Same key Measure used (textRight - textX equals Measure's textW once
+            // arranged at the measured width), so this is a cache hit, not a layout.
+            y += LayoutMetrics(Context().resourceCache, dw, title_, fontSize,
+                               DWRITE_FONT_WEIGHT_SEMI_BOLD, DWRITE_WORD_WRAPPING_NO_WRAP,
+                               std::max(1.0f, textRight - textX)).height + kTitleGap;
         }
     }
 

@@ -42,7 +42,7 @@ void UIElement::AttachToContext(const UIContext& ctx) {
     attached_ = true;
     // Feed the context menu the tree services so it can render/position without any
     // manual wiring (same "attach injects services" rule). Covers both
-    // ownership modes: the owned instance and a shared reference (P1-21). With a
+    // ownership modes: the owned instance and a shared reference. With a
     // shared menu the last-attached element's context wins, which is correct —
     // ShowAt re-feeds the context at open time (see Button::OpenFlyout), so the menu
     // always positions against whichever element actually invoked it.
@@ -89,7 +89,7 @@ void UIElement::SetFocused(bool f) {
     focused_ = f;
     OnFocusChanged();
     
-    // Raise GotFocus / LostFocus events (Phase 1)
+    // Raise GotFocus / LostFocus events
     if (f) {
         if (gotFocus_.HasSubscribers()) {
             RoutedEventArgs args;
@@ -114,7 +114,7 @@ void UIElement::OnPointerEnter() {
     pointerInside_ = true;
     UpdateState();
     
-    // Raise PointerEntered event (Phase 1)
+    // Raise PointerEntered event
     if (pointerEntered_.HasSubscribers()) {
         RoutedEventArgs args;
         args.source = this;
@@ -128,7 +128,7 @@ void UIElement::OnPointerLeave() {
     pointerInside_ = false;
     pointerDown_ = false;
     
-    // Raise PointerExited event (Phase 1)
+    // Raise PointerExited event
     if (pointerExited_.HasSubscribers()) {
         RoutedEventArgs args;
         args.source = this;
@@ -150,7 +150,7 @@ void UIElement::OnPointerLeave() {
 // with custom press/drag semantics overrides these without chaining to the base.
 
 void UIElement::OnPointerPressed(PointerEventArgs& e) {
-    // Raise PointerPressed event first (Phase 1)
+    // Raise PointerPressed event first
     if (pointerPressed_.HasSubscribers()) {
         pointerPressed_.Raise(*this, e);
         if (e.handled) return;  // Subscriber prevented default behavior
@@ -166,7 +166,7 @@ void UIElement::OnPointerPressed(PointerEventArgs& e) {
 }
 
 void UIElement::OnPointerReleased(PointerEventArgs& e) {
-    // Raise PointerReleased event first (Phase 1)
+    // Raise PointerReleased event first
     if (pointerReleased_.HasSubscribers()) {
         pointerReleased_.Raise(*this, e);
         if (e.handled) return;  // Subscriber prevented default behavior

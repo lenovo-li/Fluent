@@ -34,9 +34,55 @@ namespace fluent {
 //
 // WM_APP+n is the documented range for application-private messages. WM_APP+17 is
 // ModalFrameHeartbeat's tick, WM_APP+18 the tray callback (window/TrayIcon.h), WM_APP+20
-// the HUD ping (window/HudOverlay.h) —
-// keep the list consistent when adding another.
+// the HUD ping (window/HudOverlay.h), WM_APP+21 the popup's deferred render (below),
+// WM_APP+22 Window's deferred release of a replaced root (window/Window.h) — keep the
+// list consistent when adding another.
 constexpr UINT WM_FLUENT_POPUP_OPENED = WM_APP + 19;
+
+// Posted by a PopupHost to its OWN window to run one coalesced Render(); see
+// PopupRenderCoalescer.
+constexpr UINT WM_FLUENT_POPUP_RENDER = WM_APP + 21;
+
+// Coalesces a popup's repaint requests into one deferred Render().
+//
+// WHY. The popup's invalidate callbacks (the content root's, and its InputManager's,
+// which fires after EVERY routed pointer move) used to call Render() directly: a full
+// BeginDraw, card + content repaint, EndDraw and Commit, synchronously on the input
+// path, once per call. Moving the mouse across a ComboBox list therefore repainted the
+// whole popup at least once per WM_MOUSEMOVE and twice when the hovered row changed,
+// and every scrollbar-fade tick repainted again within the same frame. BeginDraw is a
+// GPU sync point, so that is real CPU and GPU time spent on pixels that mostly did not
+// change.
+//
+// HOW. The first request after a render posts WM_FLUENT_POPUP_RENDER to the popup's
+// own window; later requests only see the flag already set. The message is handled
+// after the messages already queued, so every invalidation from one drained batch of
+// input collapses into one paint. A synchronous Render() (Open, resize) clears the
+// flag, so a deferred render that was overtaken by it does nothing. Pure state so the
+// rule is testable without a window.
+class PopupRenderCoalescer {
+public:
+    // A repaint was requested. True only for the first request since the last
+    // render: that caller posts the wake-up message, the rest are absorbed.
+    bool Request() {
+        if (pending_) return false;
+        pending_ = true;
+        return true;
+    }
+    // The posted message arrived. True if a render is still owed (and clears it);
+    // false when a synchronous render already covered it.
+    bool Take() {
+        const bool owed = pending_;
+        pending_ = false;
+        return owed;
+    }
+    // A render is happening now; anything requested so far is covered by it.
+    void Covered() { pending_ = false; }
+    bool Pending() const { return pending_; }
+
+private:
+    bool pending_ = false;
+};
 
 class PopupHost {
 public:
@@ -57,10 +103,12 @@ public:
     // Position the popup at `anchorScreenRect` (screen pixels) with a DIP size
     // (wDip, hDip), then show. Picks the target monitor and DPI, flips above the
     // anchor if it would overflow the bottom of the work area, and clamps
-    // horizontally. SetCapture for light-dismiss. Reuses the existing HWND.
+    // horizontally. Does NOT SetCapture (the window is WS_EX_NOACTIVATE, and capture
+    // on it is lost immediately): light-dismiss is the parent window's job, which
+    // tests outside clicks with ContainsScreenPoint. Reuses the existing HWND.
     HRESULT Open(const RECT& anchorScreenRect, float wDip, float hDip);
 
-    // Hide and release capture.
+    // Hide the popup. Holds no capture, so there is none to release.
     void Close();
     // "Open" for callers means visible and interactive (Open or Closing counts as
     // not-yet-fully-closed; IsOpen reports true only in the steady Open state).
@@ -101,7 +149,9 @@ public:
     // can route keys to the popup content for navigation). Returns true if handled.
     bool ForwardKey(UINT vk);
 
-    // Trigger a repaint (content invalidate callback should call this).
+    // Repaint now, synchronously (Open and resize need the pixels before they
+    // continue). Invalidations do not call this: they go through RequestRender,
+    // which coalesces them into one deferred Render (PopupRenderCoalescer).
     void Render();
 
     // Check if a screen-pixel point is inside the popup client rect (for parent
@@ -162,9 +212,13 @@ private:
     void RouteMouseDown(int px, int py);
     void RouteMouseUp(int px, int py);
 
+    // Both invalidate callbacks (content root, InputManager) land here. Deferred,
+    // not Render(): see PopupRenderCoalescer.
     static void InvalidateThunk(void* ctx) {
-        static_cast<PopupHost*>(ctx)->Render();
+        static_cast<PopupHost*>(ctx)->RequestRender();
     }
+    void RequestRender();
+    PopupRenderCoalescer renderCoalescer_;
 
     HWND hwnd_ = nullptr;
     HWND hwndOwner_ = nullptr;

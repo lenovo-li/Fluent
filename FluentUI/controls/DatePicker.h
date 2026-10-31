@@ -57,6 +57,11 @@ protected:
 private:
     void OpenCalendar();
     void CloseCalendar();
+    // The one place the "calendar is now closed" bookkeeping lives (flag, dismiss
+    // hook, CalendarClosed). PopupHost's close callback calls it, so a close the
+    // popup starts itself (light dismiss on its card padding) is reported like any
+    // other. Idempotent via popupOpen_.
+    void OnPopupClosed();
     void AdjustDate(int daysDelta);
 
     int year_  = 2000;
@@ -72,6 +77,8 @@ private:
     // opened a calendar wired to nothing. Declared after calendar_ so it unregisters
     // before the calendar is destroyed.
     Subscription calendarSelectionSub_;
+    // The window's light-dismiss registration, held while the calendar is open.
+    Subscription dismissSub_;
     bool popupOpen_ = false;
     WindowServices* window_ = nullptr;
 

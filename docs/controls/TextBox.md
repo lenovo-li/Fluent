@@ -136,6 +136,13 @@ form->AddColumn(GridLength::Auto());           // 按钮按内容收缩
   钉住:`CaretRectMatchesDrawnCaretWhileComposing`)。
 - **撤销栈按操作分组**,不是逐字符 —— 连续输入算一次撤销。
 
+### 修过的 bug:右键菜单的「剪切」可撤销
+
+右键菜单的「剪切」以前用的是不进撤销栈的删除,而 Ctrl+X 用的是记录删除。菜单剪切之后,撤销栈描述的
+还是剪切前的缓冲区:Ctrl+Z 按错位的偏移重放上一条记录,删掉错误的文字,被剪切的文字永远回不来。
+现在两者走同一个记录删除(在 `TextEditBase` 里,TextArea 同样受益;密码模式本来就禁用剪切)。
+由 `TextEditUndo.ContextMenuCutIsUndoable` 锁定(它调用右键菜单真正的菜单项处理器)。
+
 ### 使用注意事项
 
 - **默认 `HAlign::Stretch`**,在表单里通常正是想要的(填满那一列)。

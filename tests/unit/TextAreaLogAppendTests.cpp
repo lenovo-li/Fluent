@@ -1,7 +1,7 @@
 // TextAreaLogAppendTests.cpp — the high-throughput log path on TextArea.
 //
-// Phase 2 of text virtualization: AppendText, the ring-buffer line cap, and tail
-// following. What separates this from the phase-1 tests is that almost nothing here is
+// The log path of text virtualization: AppendText, the ring-buffer line cap, and tail
+// following. What separates this from the NoWrap tests (TextAreaNoWrapTests.cpp) is that almost nothing here is
 // about the rendered result — the text is correct whether or not the append took the
 // fast path. The claims are about work NOT done:
 //
@@ -556,6 +556,51 @@ TEST(TextAreaLogAppend, CapOfOneKeepsOnlyTheLastLine) {
     f.area.AppendText(L"aaa\nbbb\nccc");
     EXPECT_EQ(f.area.NoWrapLineCount(), size_t{1});
     EXPECT_TRUE(f.area.Text() == L"ccc");
+}
+
+// A trim erases the front of the buffer, so every offset in the undo history now
+// points at different text. The scenario from the review: NoWrap, "l1\nl2\nl3", type
+// "xyz" at the end (Insert(8, "xyz")), then cap to one line, which removes six
+// characters. With the history kept, Ctrl+Z clamped the stale range to the end and
+// removed nothing, so "xyz" could not be undone; with a shorter trim it deleted other
+// text. The trim clears the history instead.
+TEST(TextAreaLogAppend, SetMaxLinesTrimClearsTheUndoHistory) {
+    Fixture f;
+    if (!f.Ready()) return;
+    f.Open(L"l1\nl2\nl3");
+    f.area.TestSetCaret(8);
+    for (const wchar_t* p = L"xyz"; *p; ++p) f.area.OnTextInput(*p);
+    EXPECT_TRUE(f.area.Text() == L"l1\nl2\nl3xyz");
+    EXPECT_TRUE(f.area.CanUndo());                 // premise: the typing was recorded
+
+    f.area.SetMaxLines(1);
+    EXPECT_TRUE(f.area.Text() == L"l3xyz");
+    EXPECT_FALSE(f.area.CanUndo());
+    EXPECT_FALSE(f.area.CanRedo());
+    f.area.Undo();                                 // a no-op now, never a wrong delete
+    EXPECT_TRUE(f.area.Text() == L"l3xyz");
+}
+
+// The same through the append path: an append that overflows the cap trims, and the
+// trim is what invalidates the history. An append that stays under the cap keeps it.
+TEST(TextAreaLogAppend, AppendTrimClearsTheUndoHistory) {
+    Fixture f;
+    if (!f.Ready()) return;
+    f.Open(L"a\nb");
+    f.area.SetMaxLines(3);
+    f.area.TestSetCaret(1);
+    f.area.OnTextInput(L'Q');                      // "aQ\nb", Insert(1, "Q")
+    EXPECT_TRUE(f.area.CanUndo());
+
+    f.area.AppendText(L"\nc");                     // three lines: no trim, history kept
+    EXPECT_TRUE(f.area.Text() == L"aQ\nb\nc");
+    EXPECT_TRUE(f.area.CanUndo());
+
+    f.area.AppendText(L"\nd");                     // four lines: "aQ\n" trimmed
+    EXPECT_TRUE(f.area.Text() == L"b\nc\nd");
+    EXPECT_FALSE(f.area.CanUndo());
+    f.area.Undo();
+    EXPECT_TRUE(f.area.Text() == L"b\nc\nd");
 }
 
 // ---------------------------------------------------------------------------

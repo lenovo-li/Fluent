@@ -75,7 +75,16 @@ private:
 - **The lock blocks user intent, not code.** While locked the buttons are disabled and
   `Next` / `Previous` / `Advance` / `Cancel` are no-ops; `GoToPage` still works.
 - **Hidden pages stay attached.** Non-current pages are `SetVisible(false)`: they cost no
-  layout, paint or input, and keep their state across Back/Next.
+  paint or input, no layout on a resize, and keep their state across Back/Next.
+- **A hidden page is measured on the frame its own content changes.** The host clears
+  dirty flags across the whole tree at the end of every frame, whatever is visible. A
+  control that changed inside a hidden page (a label updated by a worker, a checkbox set
+  from code) used to have its Measure-dirty bit cleared unserviced: when the page was
+  shown at an unchanged width, its panels handed back stale cached sizes and the changed
+  control kept its old layout until the next resize. The wizard now measures a hidden
+  page only when something inside it is Measure-dirty, so the change is consumed while
+  the bit still exists; the result never sizes the wizard. Covered by
+  `WizardControl.ContentChangedWhileHiddenIsLaidOutWhenShown`.
 - **Focus.** Focus inside a page being hidden, or on a button that becomes disabled or
   hidden, is cleared. Tab order is page content first, then Back / Next / Cancel.
 - **Fade.** The first page never fades in. Page switches fade with the theme's `fadeTau`.

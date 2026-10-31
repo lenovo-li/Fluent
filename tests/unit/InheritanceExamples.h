@@ -1,6 +1,6 @@
 // InheritanceExamples.h — Concrete inheritance examples for Calendar, Button, Slider
 //
-// These are WORKING, COMPILABLE examples demonstrating the Phase 1 inheritance APIs.
+// These are WORKING, COMPILABLE examples demonstrating the protected inheritance APIs.
 // Lives under tests/ because only tests/unit/InheritanceExamplesTest.cpp includes it;
 // the linkable, separate-library versions of these controls are in
 // extensions/CustomControls/.
@@ -163,7 +163,8 @@ private:
 // Logarithmic slider: drag linearly → output values snap to 1, 10, 100, 1000.
 // Demonstrates:
 // - Overriding CoerceValue to implement custom snapping
-// - Reading IsDragging to distinguish drag (preview) from keyboard/SetValue (commit)
+// - Preview vs commit through the ValueChanging / ValueChanged events, the pattern
+//   docs/controls/inheritance-guide.md documents (NOT IsDragging inside OnValueChanged)
 // - Using ValueToTrackPos to draw tick marks at snapped positions
 
 class LogSlider : public Slider {
@@ -173,7 +174,33 @@ public:
         SetMaximum(10000.0f);
         SetValue(100.0f);
         SetStep(1.0f);  // step is ignored by CoerceValue, set to 1 for consistency
+
+        // Preview vs commit. ValueChanging fires for every drag step; ValueChanged
+        // fires for keyboard steps, SetValue, and ONCE when a drag that moved the
+        // value is released. An earlier version of this example branched on
+        // IsDragging() inside OnValueChanged and committed in the else branch, but a
+        // drag's commit is raised from OnPointerReleased straight to ValueChanged and
+        // never passes through OnValueChanged: after a drag the else branch was never
+        // reached and the dragged value was never saved. Subscribing to the two
+        // events is the way that sees every commit.
+        //
+        // Subscribing to our own events is safe: the Subscriptions are members of
+        // this derived class, so they are destroyed (and unregister) before the
+        // Slider base that owns the events.
+        previewSub_ = ValueChanging().Subscribe(this, [](void* self, Slider&, float& v) {
+            static_cast<LogSlider*>(self)->UpdatePreview(v);
+        });
+        commitSub_ = ValueChanged().Subscribe(this, [](void* self, Slider&, float& v) {
+            static_cast<LogSlider*>(self)->CommitToSettings(v);
+        });
     }
+
+    // How many times a value was committed, and the last one. Stand-ins for the
+    // settings write, so the example's contract (every commit path reaches
+    // CommitToSettings, a drag step never does) can be checked.
+    int CommitCount() const { return commitCount_; }
+    float LastCommitted() const { return lastCommitted_; }
+    int PreviewCount() const { return previewCount_; }
 
 protected:
     // Snap to nearest power of 10
@@ -183,20 +210,6 @@ protected:
         float logVal = std::log10(v);
         float rounded = std::round(logVal);
         return std::pow(10.0f, rounded);
-    }
-    
-    void OnValueChanged(float oldVal, float newVal) override {
-        // Always call base first so ValueChanged/ValueChanging events fire
-        Slider::OnValueChanged(oldVal, newVal);
-        
-        // Distinguish drag (real-time preview) from keyboard/programmatic (final commit)
-        if (IsDragging()) {
-            // Mid-drag: update a live preview (e.g., volume indicator) but don't save
-            UpdatePreview(newVal);
-        } else {
-            // Committed: write to settings/config
-            CommitToSettings(newVal);
-        }
     }
     
     void Render(const DrawingContext& dc) override {
@@ -209,14 +222,16 @@ protected:
 
 private:
     void UpdatePreview(float v) {
-        // Placeholder: update a label or visual indicator
+        // Placeholder: update a label or visual indicator, but don't save
         UNREFERENCED_PARAMETER(v);
+        ++previewCount_;
         // e.g., volumeLabel_->SetText(std::to_wstring(static_cast<int>(v)));
     }
     
     void CommitToSettings(float v) {
         // Placeholder: write to persistent storage
-        UNREFERENCED_PARAMETER(v);
+        ++commitCount_;
+        lastCommitted_ = v;
         // e.g., settings_.volume = static_cast<int>(v); SaveSettings();
     }
     
@@ -236,6 +251,12 @@ private:
                        tickColor, 1.0f);
         }
     }
+
+    int commitCount_ = 0;
+    int previewCount_ = 0;
+    float lastCommitted_ = 0.0f;
+    Subscription previewSub_;   // RAII: unregister with the slider
+    Subscription commitSub_;
 };
 
 } // namespace fluent

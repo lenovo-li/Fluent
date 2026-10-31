@@ -1,6 +1,6 @@
 // Invalidation.h — layout/render dirty flags for the element tree.
 //
-// Phase 2 of the tree refactor separates "needs re-layout" from "needs repaint".
+// These flags separate "needs re-layout" from "needs repaint".
 // Historically every change funneled through Invalidate() and repainted the
 // whole window; content that changed its size still relied on the next WM_SIZE
 // to re-run layout. These flags let a change say precisely what it dirtied:

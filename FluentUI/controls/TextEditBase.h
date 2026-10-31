@@ -41,7 +41,7 @@ public:
     void SetMaxLength(size_t len) { maxLength_ = len; }
     size_t MaxLength() const { return maxLength_; }
 
-    // --- Input policy (P1-2) ----------------------------------------------
+    // --- Input policy -----------------------------------------------------
     // Force the case of inserted text, WinForms CharacterCasing-style. Applied to
     // typing, paste and IME commit alike, so a field declared Upper cannot be filled
     // with lower-case text by any route.
@@ -295,7 +295,11 @@ protected:
     // --- Shared editing helpers (index-based, layout-agnostic) ------------
     void SelectionRange(UINT32& start, UINT32& len) const;
     bool HasSelection() const { return caret_ != selAnchor_; }
-    void DeleteSelection();               // caret returns to selection start
+    // Caret returns to selection start. NOT recorded for undo — it is the raw buffer
+    // operation InsertText uses inside its own RecordReplace. Every user-facing
+    // delete (Backspace, Delete, Ctrl+X, the menu's Cut) must use
+    // DeleteSelectionRecorded instead, or the undo stack stops matching text_.
+    void DeleteSelection();
     void InsertText(const std::wstring& s);
     void MoveCaret(UINT32 to, bool extendSelection);
 

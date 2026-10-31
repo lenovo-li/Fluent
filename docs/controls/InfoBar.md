@@ -186,10 +186,14 @@ submitSub_ = submit->Click().Subscribe(this,
 
 ### 性能特征
 
-- **Measure 成本**：每次 Measure 构建 1~2 个 DirectWrite 布局（标题不换行、正文
-  换行）。文字或宽度不变时由 `MeasureCached` 挡住，不会每帧重建。
+- **Measure 成本**：标题（不换行）和正文（换行）各一个 DirectWrite 布局，经共享的
+  `ResourceCache` 取得，文字、字号、宽度和主题 epoch 不变时是一次哈希查找，不再新建。
 - **Render 成本**：一个圆角矩形填充 + 描边、一个圆环 + 圆点（几何绘制，不依赖
   图标字体）、1~2 次 DrawText、可选的关闭按钮两条线。无动画、无每帧 tick。
+  推进 y 需要的标题行高也从同一个缓存项读取。此前 Render 每次重绘都为此新建一个
+  `IDWriteTextLayout`，悬停关闭按钮的重绘也一样。由
+  `LabelMeasureCache.InfoBarMeasureAndRenderReuseLayouts` 锁定（第二次 Measure 和一次
+  Render 都不产生缓存 miss）。
 - **不请求动画帧**：`WantsAnimationTick()` 未被重写，所以它对空闲成本零贡献。
 
 ### 使用注意事项

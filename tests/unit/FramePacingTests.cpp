@@ -2,8 +2,8 @@
 // (window/FramePacing.h).
 //
 // Context: the window content used to be a swap chain whose Present1 blocked on
-// vsync, so the message loop got pacing for free and passed timeout=0. Route 2
-// replaced it with a DComp virtual surface and Commit() does not block, so a loop
+// vsync, so the message loop got pacing for free and passed timeout=0. The DComp
+// content surface replaced it with a DComp virtual surface and Commit() does not block, so a loop
 // still passing 0 spins — a real 36s session logged 69762 frames on a 120Hz panel
 // (~1927 fps). These tests pin the replacement arithmetic.
 
@@ -503,4 +503,24 @@ TEST(FramePacing, ModalTickYieldWindowIsMeasuredFromFrameEnd) {
     const double frameCost = 15.0, tickAfterEnd = 2.0;
     EXPECT_TRUE(ModalTickShouldYieldToInput(true, true, tickAfterEnd, 120));
     EXPECT_FALSE(ModalTickShouldYieldToInput(true, true, frameCost + tickAfterEnd, 120));
+}
+
+// The message loop ticks animations only on a turn that paints. A turn ends on any
+// input, so ticking every turn ran OnAnimationTick once per mouse report (~8x per
+// painted frame for a 1000Hz mouse on a 120Hz panel).
+TEST(FramePacing, AnimationTickWaitsForADueFrame) {
+    // Woken by input 3ms before the deadline: no tick, no paint.
+    EXPECT_FALSE(AnimationTickIsDue(/*framePending*/ true, /*remainingMs*/ 3.0));
+    // At the deadline: tick, then paint.
+    EXPECT_TRUE(AnimationTickIsDue(true, 0.0));
+    EXPECT_TRUE(AnimationTickIsDue(true, -2.0));
+    // Nothing pending: never tick, whatever the clock says.
+    EXPECT_FALSE(AnimationTickIsDue(false, 0.0));
+}
+
+// The tick and the paint use one threshold, so neither can happen without the other.
+TEST(FramePacing, AnimationTickAgreesWithFrameIsDue) {
+    const double probes[] = {-1.0, 0.0, kFrameDueEpsilonMs, kFrameDueEpsilonMs + 0.01, 0.5, 8.0};
+    for (double r : probes)
+        EXPECT_EQ(AnimationTickIsDue(true, r), FrameIsDue(r));
 }

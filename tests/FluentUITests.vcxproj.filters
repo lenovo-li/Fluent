@@ -69,6 +69,7 @@
     <ClCompile Include="unit\DebugHudTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\HudFeedTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\FileDialogFilterTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\PopupDismissDispatchTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\DirtyRegionTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\DirtyBoundsOverflowTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ElementOpacityTests.cpp"><Filter>unit</Filter></ClCompile>
@@ -150,6 +151,8 @@
     <ClCompile Include="unit\TabControlTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\WizardControlTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\PageHostTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\CustomControlsTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\NavRailKeyboardTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\DataGridTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ChartTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\InfoBarMetricTests.cpp"><Filter>unit</Filter></ClCompile>
@@ -179,6 +182,7 @@
     <ClInclude Include="framework\PixelSurface.h"><Filter>framework</Filter></ClInclude>
     <ClInclude Include="framework\FakeCompositionBackend.h"><Filter>framework</Filter></ClInclude>
     <ClInclude Include="unit\LayoutTestHelpers.h"><Filter>unit</Filter></ClInclude>
+    <ClInclude Include="unit\ClipboardTestHelpers.h"><Filter>unit</Filter></ClInclude>
     <ClInclude Include="unit\InheritanceExamples.h"><Filter>unit</Filter></ClInclude>
   </ItemGroup>
 </Project>

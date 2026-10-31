@@ -1,6 +1,6 @@
 // TextAreaNoWrapTests.cpp — the NoWrap virtualized path in TextArea.
 //
-// Phase 1 of text virtualization. Everything here exercises the path where one
+// NoWrap text virtualization. Everything here exercises the path where one
 // logical line is one visual line, which is what makes the line count, the line
 // height and the scroll extent all knowable without laying out the document.
 //
@@ -247,7 +247,7 @@ TEST(TextAreaNoWrap, CaretHeightIsOneLine) {
 // ---------------------------------------------------------------------------
 
 TEST(TextAreaNoWrap, ResizeDoesNotChangeLineCountOrHeight) {
-    // The headline claim of phase 1, and the one the user will feel: a resize drag
+    // The headline claim of NoWrap virtualization, and the one the user will feel: a resize drag
     // cannot reflow, so it cannot re-lay-out the document. Nothing here measures
     // TIME (that needs hardware) — it establishes the invariant that makes the time
     // claim true. If a resize changed the line count, the extent and every cached
@@ -523,6 +523,44 @@ TEST(TextAreaNoWrap, CompositionIsStillVisibleOnTheCaretLine) {
     // stayed on the same line.
     EXPECT_TRUE(during.x > before.x);
     EXPECT_NEAR(during.y, before.y, 0.5f);
+}
+
+TEST(TextAreaNoWrap, CompositionLineKeepsTheUniformLineBox) {
+    // The caret line is built uncached while composing. It must get the same uniform
+    // line box as the cached lines: a CJK composition on a Latin line is otherwise
+    // laid out with the fallback font's own line height and baseline, and the line's
+    // text shifts by under a DIP for exactly as long as the composition lasts.
+    // Read from the layout's line metrics — the caret rectangle does not show it.
+    Fixture f;
+    if (!f.Ready()) return;
+    f.Open(L"abc\ndef\nghi");
+    KeyEventArgs up{}; up.vk = VK_UP;
+    f.area.OnKeyDownRouted(up);                     // caret onto line 1, "def"
+    float h0 = 0, b0 = 0;
+    EXPECT_TRUE(f.area.LineBoxForTest(1, h0, b0));  // cached path
+
+    f.area.TestSetComposition(L"\u4e2d\u6587\u5b57");
+    float h1 = 0, b1 = 0;
+    EXPECT_TRUE(f.area.LineBoxForTest(1, h1, b1));  // uncached composition path
+    EXPECT_NEAR(h1, h0, 0.01f);
+    EXPECT_NEAR(b1, b0, 0.01f);
+}
+
+TEST(TextAreaComposition, WrapParagraphKeepsTheUniformLineBox) {
+    // Same contract for the Wrap path's composition paragraph.
+    Fixture f;
+    if (!f.Ready()) return;
+    f.Open(L"abc\ndef\nghi", TextWrapMode::Wrap);
+    KeyEventArgs up{}; up.vk = VK_UP;
+    f.area.OnKeyDownRouted(up);
+    float h0 = 0, b0 = 0;
+    EXPECT_TRUE(f.area.LineBoxForTest(1, h0, b0));
+
+    f.area.TestSetComposition(L"\u4e2d\u6587\u5b57");
+    float h1 = 0, b1 = 0;
+    EXPECT_TRUE(f.area.LineBoxForTest(1, h1, b1));
+    EXPECT_NEAR(h1, h0, 0.01f);
+    EXPECT_NEAR(b1, b0, 0.01f);
 }
 
 TEST(TextAreaNoWrap, IndexDescribesTextNotTheComposedDisplayString) {

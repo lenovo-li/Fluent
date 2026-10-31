@@ -1,5 +1,5 @@
 // FakeCompositionBackend.h — a headless, in-memory ICompositionBackend for unit
-// tests (Phase 2). No GPU, no window, no DirectComposition.
+// tests. No GPU, no window, no DirectComposition.
 //
 // It records what a control asks the compositor to do — visuals created, the
 // root membership, per-visual offset / opacity / clip, the animation attached to

@@ -37,7 +37,7 @@ DWriteContext& Ctx() {
 // DWrite is now injected through the tree UIContext instead of a
 // manual SetDWrite: build a context carrying the DWrite pointer and attach it.
 // Returns a pointer to avoid moving the TextBlock: UIElement now has Event<>
-// members which are not movable (Phase 1), so TextBlock is also not movable.
+// members which are not movable, so TextBlock is also not movable.
 std::unique_ptr<TextBlock> MakeBlock(DWriteContext& ctx) {
     auto tb = std::make_unique<TextBlock>();
     UIContext uictx;

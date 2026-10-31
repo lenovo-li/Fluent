@@ -72,6 +72,10 @@ public:
     // does not narrow the list. Which of those an app wants is a policy decision
     // (prefix vs substring, case sensitivity, whether to auto-commit) — TextChanged
     // hands the app the text and lets it call SetItems itself.
+    //
+    // Keys: Space is a typed character and Enter is left to the surrounding UI, so
+    // in editable mode only Down / Alt+Down open the list (read-only mode also opens
+    // on Space and Enter). With the list open, Enter picks the highlighted row.
     void SetEditable(bool editable);
     bool IsEditable() const { return editable_; }
 
@@ -136,13 +140,24 @@ protected:
     void OnSelectionChanged(int /*old*/, int newIdx) override;
 
     // Build the popup host + list content from the tree context (window/DWrite).
-    // Detach tears the popup down so nothing outlives the tree.
+    // Detach CLOSES the popup but keeps the PopupHost and the list alive: the detach
+    // can run synchronously inside the popup's own dispatch (see OnDetachedFromTree),
+    // and a re-attach to the same window reuses them.
     void OnAttachedToTree() override;
     void OnDetachedFromTree() override;
 
 private:
     void OpenPopup();
     void ClosePopup();
+    // The one place the "dropdown is now closed" bookkeeping lives: clear the open
+    // flag, release the window hooks, repaint the header, raise DropDownClosed.
+    // Reached from PopupHost's close callback, so every close path runs it exactly
+    // once — ClosePopup (click, Esc, item pick, detach) and the popup closing ITSELF
+    // when a click lands on its card padding (PopupHost::RouteMouseDown light
+    // dismiss). That self-close used to clear only the flag and the dismiss hook:
+    // DropDownClosed never fired and the wheel hook stayed registered.
+    // Idempotent via popupOpen_.
+    void OnPopupClosed();
     void OnItemSelected(int index);
 
     // --- Editable-mode helpers -------------------------------------------
@@ -167,6 +182,10 @@ private:
     // dismiss registry). Not an external injection — the tree provides it.
     WindowServices* window_ = nullptr;
     std::unique_ptr<PopupHost> popup_;
+    // The window popup_ was created for (owner HWND, D2D/DWrite contexts). A
+    // re-attach to the SAME window reuses popup_; a different window recreates it,
+    // because an HWND's owner is fixed at creation. Never dereferenced.
+    WindowServices* popupWindow_ = nullptr;
     // Remembered so a pre-attach SetPopupOpacity survives until the popup exists.
     float popupOpacity_ = 1.0f;
     std::unique_ptr<Control> listView_;  // ComboListView, defined in .cpp

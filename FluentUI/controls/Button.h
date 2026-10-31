@@ -70,7 +70,7 @@ public:
     // SetOnClick(void(*)(void*),ctx): app does Click().Subscribe(this, &thunk).
     Event<Button, RoutedEventArgs>& Click() { return click_; }
 
-    // P1-16: Button → Flyout integration. When set, clicking the button opens the
+    // Button → Flyout integration. When set, clicking the button opens the
     // flyout anchored below it instead of firing Click. The app wires
     // `btn->SetFlyout(menu)` once rather than `btn->Click().Subscribe` +
     // `menu->ShowBelow(...)`. Ownership: the Button holds a non-owning pointer; the

@@ -96,8 +96,10 @@ needs the user to verify on real hardware. Say so rather than implying otherwise
 Custom controls are built by inheriting FluentUI controls in a **separate
 library** that links `FluentUI.lib` — never by adding them to the FluentUI source
 tree. Those libraries live under `extensions/`: `extensions/CustomControls/`
-(LunarCalendar, BigButton, LogSlider), `extensions/InstallerControls/` and
-`extensions/NavigationControls/` are the working templates; the demo links them.
+(LunarCalendar, BigButton, LogSlider, SpinnerControl), `extensions/InstallerControls/`
+and `extensions/NavigationControls/` are the working templates. The demo links
+CustomControls and InstallerControls; NavigationControls is linked only by the
+tests (the tests also link the other two).
 `examples/` is kept for something different — minimal consumer programs
 (`Minimal/`, `PackageConsumer/`) that show how to *use* FluentUI, not how to
 extend it. A new reusable control library goes in `extensions/`, a new "how do I
@@ -120,9 +122,10 @@ renaming or changing them breaks downstream libraries.
 | `FluentUITests` | console | headless unit/component tests; count grows, so read it from a run rather than from here |
 | `FluentUIBench` | console | perf scenes; CPU-measurable ones run, GPU ones stub out |
 | `FluentSettings` | static lib | JSON config persistence (`nlohmann/json` vendored) |
-| `extensions/CustomControls` | static lib (template) | demonstrates user-library pattern: LunarCalendar, BigButton, LogSlider link FluentUI.lib |
+| `extensions/CustomControls` | static lib (template) | demonstrates user-library pattern: LunarCalendar, BigButton, LogSlider, SpinnerControl link FluentUI.lib |
 | `extensions/InstallerControls` | static lib | WizardControl + FolderPicker; linked by the demo and tests |
-| `extensions/NavigationControls` | static lib | NavRail, PageHost, OverlayHost |
+| `extensions/NavigationControls` | static lib | NavRail, PageHost, OverlayHost; linked by the tests, not the demo |
+| `demos/TrayAppDemo` | GUI app | close-to-tray sample (window tray icon, `ShutdownMode::OnExplicitShutdown`) |
 | `examples/Minimal`, `examples/PackageConsumer` | GUI app | minimal consumers (C++14/17/20 floor checks, CMake `find_package`) |
 
 ## Architecture
@@ -211,7 +214,9 @@ bundle. Inspect the original repository files instead.
 
 Do not label comments or docs with plan sections or work packages ("roadmap §6.2",
 "§S4", "WP-07", "Plan B"). The planning documents those labels pointed to were
-deleted, and the labels were removed from the tree; name the mechanism instead.
+deleted; name the mechanism instead. Some older comments, mostly in tests, still
+carry such labels (`P1-12`, `Phase 2`); replace one with the mechanism when you
+touch that code rather than copying the style.
 
 What actually exists under `docs/`:
 

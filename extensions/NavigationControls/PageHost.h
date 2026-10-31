@@ -54,6 +54,15 @@ public:
     void SetSlideDistance(float dip) { slideDistanceDip_ = dip; }
     float SlideDistance() const { return slideDistanceDip_; }
 
+    // Whether ShowPage consults the system "Animation effects" setting (default
+    // true: off there means an instant cut, which is what a user who turned
+    // animations off asked for). False animates regardless. Tests use it so the
+    // transition paths run on every machine instead of silently returning where the
+    // setting happens to be off (a CI session, a VM, a user with reduced motion) and
+    // reporting green with no assertion executed.
+    void SetRespectSystemAnimationSetting(bool on) { respectSystemAnimation_ = on; }
+    bool RespectSystemAnimationSetting() const { return respectSystemAnimation_; }
+
     // Panel / UIElement overrides.
     UIElement* HitTestDeep(float dipX, float dipY) override;
     void CollectFocusables(std::vector<UIElement*>& out) override;
@@ -84,6 +93,7 @@ private:
     AnimatedValue slideOffset_{0.0f};  // DIP below the resting position
     float durationSec_ = 0.25f;
     float slideDistanceDip_ = 24.0f;
+    bool respectSystemAnimation_ = true;
 };
 
 }  // namespace fluent

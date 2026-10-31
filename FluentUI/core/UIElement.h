@@ -40,13 +40,14 @@ public:
     // OnDetachedFromTree hook (that belongs to explicit, tree-driven detach).
     ~UIElement() override;
 
-    // The user-declared destructor suppresses the implicit move operations, and
-    // the move-only contextSubs_ member makes the copy operations ill-formed. Keep
-    // the element movable (it was before this step) so a control can still be
-    // returned/held by value in tests and builders; copy stays disabled. Moving an
-    // *attached* element is not a supported operation — this exists only for fresh
-    // (unattached) objects, whose contextSubs_ is empty and which are not yet in
-    // any animation set.
+    // Copy is deleted (the move-only contextSubs_ member makes it ill-formed anyway).
+    // The move operations are declared defaulted, but they are in fact DELETED: the
+    // Event<> members (pointerPressed_ and the rest) are non-movable by design,
+    // because a subscription captures the event's address (base/Event.h). So
+    // UIElement and every control is neither copyable nor movable; hold controls
+    // by unique_ptr or construct them in place (Panel::Emplace). The defaulted
+    // declarations are kept rather than spelled `= delete` because they are public
+    // API in every subclass's implicit declarations, and changing them buys nothing.
     UIElement() = default;
     UIElement(UIElement&&) = default;
     UIElement& operator=(UIElement&&) = default;
@@ -70,7 +71,7 @@ public:
         LayoutCostProbe::Scope probe(LayoutCostKey::BoundsChangedTotal);
         OnBoundsChanged();
         
-        // Raise SizeChanged event (Phase 1)
+        // Raise SizeChanged event
         if (sizeChanged_.HasSubscribers()) {
             RoutedEventArgs args;
             args.source = this;
@@ -329,9 +330,9 @@ public:
     // menu it finds (so a child with no menu inherits its container's).
     //
     // Two ownership modes:
-    //   1. SetContextMenu(unique_ptr) — this element owns the menu (P1-21 pre-reuse)
+    //   1. SetContextMenu(unique_ptr) — this element owns the menu
     //   2. SetContextMenuRef(raw ptr)  — menu owned elsewhere, shared by multiple
-    //                                    elements (P1-21: one MenuFlyout for 3+ elements)
+    //                                    elements (one MenuFlyout for several elements)
     //
     // If the element is already attached, the owner context is fed immediately;
     // otherwise it is fed on the next attach — no manual wiring in either mode.
@@ -369,7 +370,7 @@ public:
         UNREFERENCED_PARAMETER(dipY);
     }
 
-    // --- Routed Events (Phase 1: Expose virtual functions as Event<>) ----
+    // --- Routed Events (the OnXxx virtuals, exposed as Event<>) ----------
     // These events allow user code to subscribe to low-level interactions without
     // inheriting from controls. Handlers are invoked from the corresponding OnXxx
     // virtuals, which subclasses can still override for custom behavior.
@@ -532,8 +533,12 @@ public:
 
     // Whether this element participates in hit-testing. A false
     // value makes the pointer pass through to whatever is behind it, even though
-    // the element still renders. Disabled state is separate (a disabled element can
-    // still be hit, it just swallows the event) — both must hold for HitTest to pass.
+    // the element still renders. Enabled state is a separate gate with the same
+    // effect on hit-testing: HitTest requires visible AND hit-test-visible AND
+    // enabled, so a disabled element is not hit either and the pointer reaches
+    // whatever lies behind it (it does not swallow the event). The two flags differ
+    // elsewhere: disabled also drops pointer/pressed state and changes the visual
+    // state, while hit-test-invisible changes nothing but hit-testing.
     bool IsHitTestVisible() const { return hitTestVisible_; }
     void SetHitTestVisible(bool v) { hitTestVisible_ = v; }
 
@@ -718,15 +723,15 @@ private:
     bool attached_ = false;
     std::vector<Subscription> contextSubs_;
 
-    // Per-element right-click menu (null = none). Two slots for two ownership modes
-    // (P1-21): contextMenu_ is the owned instance (SetContextMenu), contextMenuRef_
+    // Per-element right-click menu (null = none). Two slots for two ownership modes:
+    // contextMenu_ is the owned instance (SetContextMenu), contextMenuRef_
     // is a non-owning reference (SetContextMenuRef, shared by multiple elements).
     // Only one is non-null at a time; ContextMenu() returns whichever is set. The
     // owner context is fed on attach (and immediately when set if already attached).
     std::unique_ptr<IContextMenu> contextMenu_;
     IContextMenu* contextMenuRef_ = nullptr;
 
-    // Routed events (Phase 1). These are invoked from the corresponding OnXxx
+    // Routed events. These are invoked from the corresponding OnXxx
     // virtuals, allowing user code to subscribe without subclassing. Zero overhead
     // when no subscribers (Event<> checks HasSubscribers before building args).
     Event<UIElement, PointerEventArgs> pointerPressed_;

@@ -104,6 +104,14 @@ bool Slider::WantsAnimationTick() const {
 
 void Slider::OnAnimationTick(float dtSec) {
     animFill_.Approach(value_, dtSec, kAnimTau, 0.01f * (max_ - min_ + 1.0f));
+    // Mark our own bounds dirty each tick (see CheckBox::OnAnimationTick). The
+    // AnimatedValue does not mark anything itself: with no dirty rect the host
+    // falls back to a FULL-window redraw every frame of the ease, and when another
+    // element is dirty in the same frame (a caret blink, a button hover fade) the
+    // partial redraw covers only that element and clips the moving fill and thumb
+    // out, so a keyboard step stalls and then jumps. Render level only: the ease
+    // never changes layout, and VisualBounds already covers the oversized thumb.
+    Invalidate();
 }
 
 // ---------------------------------------------------------------------------

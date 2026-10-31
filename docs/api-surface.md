@@ -8,9 +8,12 @@ internal ones: `Window.h` derives from `NativeWindowHost.h`, controls call into
 Installing only a curated subset would not protect anyone — it would simply fail
 to compile.
 
-The boundary is therefore expressed here, in documentation, plus the
-`FLUENTUI_INTERNAL` marker in `Api.h` and in the header comment of each internal
-header. Three tiers:
+The boundary is therefore expressed here, in documentation: the lists on this
+page are authoritative. `Api.h` defines the `FLUENTUI_INTERNAL` marker, and a few
+internal headers (`window/NativeWindowHost.h`, `window/FrameWaiter.h`,
+`window/ModalFrameHeartbeat.h`, `WindowRegistry.h`) also name it in their header
+comment, but most do not, so a header without the note is not thereby public.
+Three tiers:
 
 | Tier | Meaning | Compatibility |
 |---|---|---|
@@ -70,6 +73,13 @@ Everything below is exported by the umbrella header.
 | `input/DragDrop.h` | `MakeFileDropTarget`, low-level drag/drop types and payload helpers |
 | `styling/ThemeTokens.h` | `ThemeSnapshot`, `ThemeInputs`, token groups |
 
+**Test hooks inside stable headers are not stable API.** Several controls expose public
+members only so headless tests can observe what pixels cannot show: names ending in
+`ForTest` or starting with `TestSet` (`TextArea::LineBoxForTest`,
+`LogViewer::PrepareVisibleLayoutsForTest`, `RichTextBox::TestSetComposition`) and
+diagnostic counters (`TextArea::LineIndexRebuildCount`, `LogViewer::SpanLayoutsBuilt`).
+Treat them as Internal: they may change with the implementation they observe.
+
 ---
 
 ## Extension — writing a custom control
@@ -100,7 +110,8 @@ them.
 ## Internal — no guarantees
 
 Installed because the compiler needs them. Not supported; do not build against
-them. Each carries a `FLUENTUI_INTERNAL` note in its header comment.
+them. This list decides; only some of these headers repeat it with a
+`FLUENTUI_INTERNAL` note in their header comment.
 
 **Native host layer**
 

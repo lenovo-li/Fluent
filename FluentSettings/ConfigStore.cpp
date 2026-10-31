@@ -148,6 +148,19 @@ bool ConfigStore::Save() {
 
     // Write to a temp file then atomically replace, so a crash mid-write can't
     // corrupt the existing config.
+    //
+    // The replace is only safe if the temp file is COMPLETE. A full disk or an I/O
+    // error makes `out << dump` write a prefix and set failbit, and the buffered
+    // tail is flushed (and can fail again) only in close(). An ofstream destructor
+    // swallows that failure, so the old code went on to MoveFileEx a truncated
+    // .tmp over a good config.json and returned true; the next launch failed to
+    // parse it, moved it to .bak and fell back to defaults. Close explicitly and
+    // check the stream before replacing; on failure leave the existing config
+    // untouched and drop the partial temp file.
+    //
+    // This guards against write errors the process can see. It does not make the
+    // save durable across power loss (that would need FlushFileBuffers on the temp
+    // file before the move), which is outside what this store promises.
     std::wstring tmp = path_ + L".tmp";
     {
         std::ofstream out(tmp.c_str(), std::ios::binary | std::ios::trunc);
@@ -156,6 +169,12 @@ bool ConfigStore::Save() {
             return false;
         }
         out << impl_->root.dump(2);
+        out.close();
+        if (out.fail()) {
+            Trace("write temp config failed; existing config left untouched");
+            DeleteFileW(tmp.c_str());
+            return false;
+        }
     }
     if (!MoveFileExW(tmp.c_str(), path_.c_str(), MOVEFILE_REPLACE_EXISTING)) {
         Trace("replace config failed");

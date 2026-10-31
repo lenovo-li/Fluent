@@ -13,7 +13,7 @@ Navigation controls for FluentUI, built as a separate static library that links
   focus inside the card, fades in/out.
 - **PageHost**: multi-page container with animated transitions. Supports None/Fade/FadeSlide
   modes. Only the current page responds to input during transitions. Respects system
-  "Show animations in Windows" setting.
+  "Show animations in Windows" setting by default (`SetRespectSystemAnimationSetting`).
 
 ## Quick start
 
@@ -98,7 +98,7 @@ warning can stay on screen through the whole Progress state.
 | NavRail look | `SetRailBackground(color)` (default `windowBackground`), constants `kRailWidth` etc. |
 | NavRail pane mode | `SetPaneMode(true)` (opt-in, Win11 NavigationView look): `SetFooterItems`, `SetExpanded(bool, animate)`, `ExpandedChanged()`, `SetExpandedWidth`, `SetBackButtonVisible/Enabled`, `BackRequested()`, `SetItemEnabled(i, bool)`, item `header = true` (caption / separator), item `tooltip` (overrides the label tooltip), `SetPaneToggleTooltip`, `SetBackButtonTooltip`. Labels / captions that do not fit end in "…" and show the full label on hover |
 | PageHost | `AddPage(unique_ptr)` → index, `ShowPage(i)`, `CurrentPage()`, `IsTransitioning()` |
-| PageHost animation | `SetTransition(None/Fade/FadeSlide)`, `SetTransitionDuration(sec)`, `SetSlideDistance(dip)` |
+| PageHost animation | `SetTransition(None/Fade/FadeSlide)`, `SetTransitionDuration(sec)`, `SetSlideDistance(dip)`, `SetRespectSystemAnimationSetting(bool)` (default true: cut instantly when Windows "Animation effects" is off) |
 | Overlay | `Show(spec)`, `UpdateProgress(percent, message)`, `Hide()` (no event), `IsShown()` |
 | Overlay spec | `icon`, `title`, `message`, `primaryText`, `secondaryText`, `showProgress`, `details`, `warning` |
 | Overlay result | `Closed()` → `OverlayResultArgs{Primary / Secondary / Dismissed}` |
@@ -123,8 +123,41 @@ warning can stay on screen through the whole Progress state.
   from the handler reverses the fade, so Confirm → Progress has no flash.
 - **Fade** follows the theme's `fadeTau` and is skipped when Windows "Show
   animations" is off. A fading-out overlay still blocks input until it collapses.
+- **Disabled items in rail mode** keep their tooltip but get no hover fill (a fill would
+  promise a click that selection then refuses), and Up / Down skip them the same way pane
+  mode does. When only disabled items lie beyond the cursor, the cursor stays put instead
+  of parking the focus ring on an item where Enter does nothing.
+- **Pane labels are laid out once per text.** Each item keeps its pane label's
+  `IDWriteTextLayout` across paints; it is rebuilt only when the label text or the text
+  format changes, and the per-frame box size of the width ease only updates the layout's
+  max width / height. Before, every hover change rebuilt a layout (plus an ellipsis object
+  when trimmed) for every label on every paint.
+- **PageHost Fade ticks are Render-only.** `Fade` changes nothing but the two pages'
+  opacity, so each tick dirties Render on the pages, not Arrange on the host. Raising
+  Arrange there made every Fade frame a full-window redraw plus a re-arrange of both page
+  trees. `FadeSlide` still arranges each tick (the incoming page's slot moves).
+- **`SetRespectSystemAnimationSetting(false)`** animates even when Windows "Animation
+  effects" is off. Default true. Tests use it so the transition paths run on every machine
+  instead of silently cutting where the setting happens to be off (CI, a VM).
 - **Colors** come from `Theme()` tokens only. Set the accent (e.g. Lenovo blue) through
   `Window::SetThemeConfiguration` and both controls follow it.
+
+## Tests
+
+Headless, in `FluentUITests.exe` (`NavRailKeyboard`, `PageHost`):
+
+| Behavior | Test |
+|---|---|
+| Up / Down skip disabled items in rail mode | `NavRailKeyboard.DownSkipsADisabledItem`, `NavRailKeyboard.UpSkipsADisabledItem`, `NavRailKeyboard.CursorStaysWhenOnlyDisabledItemsLieBeyond` |
+| Fade tick dirties Render, not Arrange | `PageHost.FadeTickDirtiesRenderNotArrange` |
+| FadeSlide tick still arranges | `PageHost.FadeSlideTickStillArranges` |
+| Hidden pages are measured only when their content changed | `PageHost.HiddenPagesAreNotMeasuredWhenOnlyTheSizeChanges`, `PageHost.ContentChangedWhileHiddenIsLaidOutWhenShown`, `PageHost.HiddenPageWithAChangeIsMeasuredOnceNotEveryFrame` |
+
+Not verified headless (needs a real device): the pane-label layout cache and the
+disabled-item hover fill in rail mode. To check on hardware: in the demo, hover a
+disabled rail item and confirm no fill appears; with pane mode expanded, move the
+pointer up and down the items with the F12 HUD open and confirm CPU Max does not grow
+with the number of items.
 
 ## Building
 

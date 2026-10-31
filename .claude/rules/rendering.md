@@ -30,10 +30,13 @@ Consequences worth knowing before touching this layer:
 
 Controls draw through `DrawingContext` (`graphics/DrawingContext.h`), a thin
 wrapper over the frame's `ID2D1DeviceContext` plus one shared solid brush. The
-brush is private and `Dc()` has no callers, so the typed methods
-(`FillRoundedRect(rr, color)`, `DrawTextLayout(...)`) are the only path — which is
-exactly why folding opacity into `Faded()` covers every control, present and
-future, with no per-control change.
+brush is private, so the typed methods (`FillRoundedRect(rr, color)`,
+`DrawTextLayout(...)`) all go through `Faded()` — which is why element opacity
+needs no per-control code. `Dc()` is the escape hatch to the raw context
+(bitmaps, per-range text brushes, transforms, clips); whatever a control draws
+through it must apply `dc.Opacity()` / `dc.Faded()` by hand (Image, TreeView's
+custom icons and RichTextBox's run colours do), or it stays opaque inside a faded
+parent.
 
 ### Partial redraw and the dirty-bounds contract
 
@@ -45,9 +48,11 @@ contracts feed it, and violating either produces on-screen ghosting:
   widens the reported region afterwards. An element that paints outside
   `bounds_` (focus ring, a stroke centered on the bounds edge, an oversized drag
   thumb) must override `VisualOverflowDip()`; `VisualBounds()` then inflates
-  automatically. Current declarations: Button 3.75, CheckBox/RadioButton/
-  ToggleSwitch 4.75, ComboBox 3.75, `TextEditBase` 1.75 (inherited by TextBox and
-  TextArea), Slider ≈14.2.
+  automatically. Current declarations: Button, ComboBox, DataGrid, Expander,
+  InfoBar, NumericUpDown and Rating 3.75 (the default `FocusRingPadDip`),
+  CheckBox/RadioButton/ToggleSwitch 4.75, `TextEditBase` 1.75 (inherited by
+  TextBox and TextArea), Hyperlink 3.5 (or the underline's overhang below a
+  short explicit Height, whichever is larger), Slider ≈14.2.
 - **Overflow must be declared unconditionally**, not only while focused — the
   frame where focus leaves still needs those pixels cleared.
 
@@ -77,7 +82,7 @@ history.
 Three levels, and picking the wrong one is a real bug:
 
 - `DrawingContext::WithOpacity` / `Faded()` — per-primitive alpha multiply. The
-  single choke point; covers all controls automatically.
+  choke point for every typed draw method; raw `Dc()` draws apply it by hand.
 - `Visual::SetOpacity` + `RenderWithOpacity` — what containers call on children
   (`Panel::Render` uses `RenderWithOpacity`, not `Render`). Opacity 1.0 takes the
   original path at zero cost; 0.0 skips `Render` entirely.

@@ -1,7 +1,6 @@
-// ICompositionBackend.h — the compositor abstraction controls program against
-// (Phase 2 of the compositor migration).
+// ICompositionBackend.h — the compositor abstraction controls program against.
 //
-// The Plan B PoC (indeterminate ProgressBar sweep) reached DirectComposition
+// The first compositor user (the indeterminate ProgressBar sweep) reached DirectComposition
 // through the concrete WindowServices device/visual accessors, so a control had
 // to hold IDCompositionDevice2* / IDCompositionVisual2* / IDCompositionAnimation*
 // directly and could not be exercised without a real GPU + window. This header
@@ -34,10 +33,9 @@ struct ID2D1DeviceContext;
 
 namespace fluent {
 
-// The animatable / settable properties. Phase 2 needs offset (ProgressBar sweep,
-// future scroll translation) and opacity (future scrollbar fade). Scale / clip
-// animation arrive with the scrollbar work (Phase 3+); clip is set immediately
-// here via SetClip, not animated.
+// The animatable / settable properties: offset (the ProgressBar sweep) and opacity.
+// Scale and clip animation are not supported; clip is set immediately via SetClip,
+// not animated. Add a property here only together with a control that needs it.
 enum class CompositionProperty {
     OffsetX,
     OffsetY,

@@ -160,8 +160,8 @@ int  EditingRow() const;
 int  EditingColumn() const;
 ```
 
-Enter 提交（先过 `CellValidator`，被拒则编辑框保持打开），Escape 取消；编辑中点击其他行
-等于提交。编辑中的 Enter/Escape 由 DataGrid 先处理，不会落到行导航或外层对话框。
+Enter 提交（先过 `CellValidator`，被拒则编辑框保持打开），Escape 取消；编辑中点击其他行、
+滚轮滚动、拖动滚动条或调用 `SetVerticalOffset`、失去焦点都等于提交（否则行被滚走，编辑框还留在原处）。编辑中的 Enter/Escape 由 DataGrid 先处理，不会落到行导航或外层对话框。
 F2 和双击目前都打开**第 0 列**（双击尚未按点击位置定位列）；要编辑其他列用
 `BeginEdit(row, col)`。
 
@@ -241,10 +241,10 @@ grid->SetRowColorProvider([win](int row, D2D1_COLOR_F& out) {
 - **每帧成本 O(可见单元格)**，与总行列数无关。实测 41 列 × 60 行放进 820×220
   的区域 → 10 列 × 7 行 = **70 个单元格**是活的。
 - **`SetRowCount` 不分配**：它只是一个整数。
-- **单元格文本复用一个 scratch buffer**（`cellScratch_.assign(...)`），所以一屏
-  单元格不会每帧每格分配一次字符串。
-  ⚠️ 必须用 `assign()` 而不是 `operator=` —— 后者是移动赋值，会窃取临时对象的
-  内存块并释放已增长的容量，导致每格重新分配。
+- **单元格文本每格每帧分配一次**（超出短字符串缓冲时）。`CellProvider` 按值返回
+  `std::wstring`，这次分配发生在访问器返回时，grid 改变不了；grid 直接用这个返回值
+  绘制，不再复制。以前复制进一个复用的 scratch buffer，并没有省掉这次分配，反而每格
+  多一次 memcpy，所以去掉了。一屏 70 个单元格就是每帧最多 70 次小分配。
 - **平滑滚动**：`WantsAnimationTick()` 跟随内部 `ScrollViewer`，滚动停止后回到
   零成本空闲。
 
@@ -268,9 +268,12 @@ grid->SetRowColorProvider([win](int row, D2D1_COLOR_F& out) {
 | F2 | 编辑当前行（需 `SetEditingEnabled(true)`） |
 | Enter / Escape | 编辑中：提交 / 取消 |
 | Ctrl+C | 复制选中行为 TSV（`SetCopyEnabled`，默认开） |
-| 滚轮 | 平滑滚动 3 行/档 |
+| 滚轮 | 平滑滚动 3 行/档；所有行都放得下时不处理，冒泡给外层 `ScrollPanel` |
 
 鼠标：点击表体会取得焦点；Multiple 模式下 Ctrl+点击切换、Shift+点击按锚点扩展。
+
+方向键从**活动行**出发：最近一次选择手势落到的那一行（Shift 范围的移动端、Ctrl+点击切换的那一行、
+普通点击或方向键选中的那一行）。没有活动行时退回第一个选中行。
 
 ### 主题 Token
 
@@ -286,6 +289,30 @@ grid->SetRowColorProvider([win](int row, D2D1_COLOR_F& out) {
 | `dataPositive` / `dataNegative` | 由调用者在 RowColorProvider 里取用 |
 
 选中行的文字色**优先于**应用的行着色 —— 着色行叠在 accent 底上可能对比度不足。
+
+### 修过的 bug
+
+| 问题 | 修复 | 证明 |
+| --- | --- | --- |
+| Shift+↓ 只能扩展到两行：方向键从第一个选中行出发，`{5,6}` 的第一行还是 5，再按一次又要 6 | 新增活动行（`activeRow_`），方向键从它出发；Shift+↑ 从移动端收缩 | `DataGrid.ShiftDownKeepsGrowingTheRange` |
+| 范围不变的手势（末行上再按 Shift+↓、重复 Shift+点击同一行）也重绘并触发 `SelectionChanged` | 集合不变时直接返回 | `DataGrid.UnchangedRangeDoesNotRaiseSelectionChanged` |
+| 横向滚动后，滚动列的竖网格线穿过冻结列的文字（单元格裁剪到冻结带右侧，网格线只裁剪到视口） | `VerticalGridLineX` 丢弃滑到冻结带下面的滚动列边线 | `DataGrid.ScrolledGridLinesDoNotCrossTheFrozenBand` |
+| 指针划过列分隔线时整表重绘两次（进入、离开各一次），而 Render 根本不画分隔线悬停 | 只记录悬停（`Cursor()` 用），不标脏；反馈是窗口通过 WM_SETCURSOR 设的调整光标 | `DataGrid.DividerHoverDoesNotRepaint` |
+| 行数少、没东西可滚时滚轮仍标记 handled，指针在表上时外层页面滚不动 | 没有可滚距离时不处理滚轮 | `DataGrid.WheelBubblesWhenNothingToScroll` |
+
+编辑中滚动先提交的行为由 `DataGrid.ScrollingWhileEditingCommitsTheEdit`、`DataGrid.WheelWhileEditingCommitsTheEdit`、
+`DataGrid.ClickingADifferentRowWhileEditingCommitsTheEdit`、`DataGrid.LosingFocusCommitsTheEdit` 覆盖。
+
+新增的公开几何查询：
+
+```cpp
+// boundary 0 = 表格左边缘，b > 0 = 第 b-1 列的右边缘。应绘制时写出 x 并返回 true；
+// 在屏幕外或会落在冻结带上时返回 false。冻结列自己的边线不随滚动移动，总是绘制。
+bool VerticalGridLineX(int boundary, float& x) const;
+```
+
+未验证：网格线和光标是像素 / 窗口层面的效果，需真机。冻结一列后横向拖动，看冻结列文字上不再有
+扫过的竖线；指针划过表头分隔线时光标变成调整光标，F12 HUD 上不出现整表脏区。
 
 ### 尚未实现（刻意）
 

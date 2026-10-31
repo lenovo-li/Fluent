@@ -1,8 +1,22 @@
 // PopupState.h — explicit popup lifecycle state + pure transition rules.
 //
-// Phase B1 of the popup-lifetime refactor replaces the implicit
-// `bool open_` on PopupHost with a four-state machine so intermediate states
-// (Opening / Closing) are representable and re-entrancy during close is guarded.
+// PopupHost tracks its lifecycle as a four-state machine rather than a plain
+// `bool open_`, so the intermediate states (Opening / Closing) are representable
+// and re-entrancy during the close side effects is guarded.
+//
+// Closing covers only the popup's OWN side effects (unregistering its animation
+// root, hiding the HWND). The owner's onClose_ callback runs after the state has
+// already become Closed, as the very last thing Close() does. Two consequences the
+// owners (ComboBox, DatePicker) rely on, because they raise their public
+// DropDownClosed / CalendarClosed events from that callback:
+//   * a handler that reopens the popup works: Open() sees Closed, not Closing;
+//   * Close() itself touches no member after the callback returns.
+// That second point does NOT make it safe for a handler to destroy the owner
+// synchronously. The public event is raised by the owner's Event::Raise, which reads
+// its own slot list after each handler; and when the close came from a click inside
+// the popup, the popup's InputManager and the clicked element are still on the stack.
+// A handler that wants the control gone must defer it (post a message, or remove it
+// on the next frame).
 //
 // The transition *decisions* live here as pure functions so they can be unit
 // tested without a HWND / DComp device. PopupHost holds a PopupState and calls
@@ -15,7 +29,7 @@ enum class PopupState {
     Closed,   // not shown; the default and post-close state
     Opening,  // building graphics / drawing the first frame (transient)
     Open,     // fully shown and interactive
-    Closing,  // running close side effects (onClose_); rejects re-open (transient)
+    Closing,  // hiding the HWND, before onClose_ runs; rejects re-open (transient)
 };
 
 // Should an Open() request proceed given the current state? Only a Closed popup

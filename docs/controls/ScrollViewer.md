@@ -120,9 +120,18 @@ void SetBarHover(bool over);            // 指针悬停→淡入+展开成胶囊
 bool HitBarRegion(float dipX, float dipY) const;
 float Visibility() const;               // 当前不透明度 [0..1]
 float ExpandFactor() const;             // 当前展开系数 [0..1]
+bool IsBarHovered() const;              // 指针在任一轨道的悬停条带上
+void HideBarsNow();                     // 立即结束淡出周期
 ```
 
 `HitBarRegion` 是右边缘附近的**更宽命中条**（可发现性）。
+
+`IsBarHovered()` 为 true 时空闲倒计时被挂起，所以一个过期的 true 会让滚动条一直显示。
+
+`HideBarsNow()` 把滚动条直接置为隐藏、细轨、无悬停、倒计时结束，于是除非还有滚动在进行，
+`NeedsTick()` 立即为 false。给内容在滚动条醒着时停止溢出的宿主用：没有轨道可画了（不溢出时
+`Render` 直接返回），把剩下约 1.5 秒的淡出缓动跑完只是在浪费帧。之后内容再次溢出时 `Wake` 从隐藏
+状态开始，和正常淡出后一样。`ScrollPanel` 就是这样用的。
 
 `Visibility` 和 `ExpandFactor` 是只读状态查询，拥有者控件可据此判断滚动条是否仍在
 淡入淡出、是否需要继续请求重绘。
@@ -238,6 +247,8 @@ sv->SetScrollbarColor(D2D1::ColorF(D2D1::ColorF::White));
 - **Render**: 两个圆角矩形（垂直+水平拇指），alpha 混合。
 - **只在需要时 tick**：`NeedsTick()` 为 false 时零成本（无动画、已淡出、倒计时结束）。
 - **Tick 只推进浮点值**（偏移、淡出、展开），无布局。
+- **淡出帧该报多大的脏区由宿主决定**:ScrollViewer 是成员不是树节点,它自己的 `Invalidate()` 到不了帧调度器。
+  宿主在只推进了淡出/展开的帧上应只报轨道条,`ScrollPanel` 的做法和证明见 [ScrollPanel.md](ScrollPanel.md)。
 
 ### 淡出时机
 
@@ -288,5 +299,6 @@ demo 中 **ScrollViewer 本身没有单独的演示页**，但它被 TreeView、
 
 ## 相关控件
 
-- `TreeView`（文档待写，`controls/TreeView.h`）— 使用 ScrollViewer 管理垂直滚动
+- [TreeView](TreeView.md) — 使用 ScrollViewer 管理垂直滚动
+- [ScrollPanel](ScrollPanel.md) — 内嵌 ScrollViewer 的通用滚动容器
 - [TextArea](TextArea.md) — 在无换行模式下双向滚动

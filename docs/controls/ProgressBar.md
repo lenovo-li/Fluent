@@ -158,7 +158,10 @@ sub_ = slider->ValueChanged().Subscribe(this,
 ### 性能特征
 
 - **Render**:两个圆角矩形(轨道槽 + 已填充)。无文本布局。
-- **确定态的填充变化是 Render 级 O(1)**,不触发重新布局。
+- **确定态的填充变化是 Render 级 O(1)**,不触发重新布局。UI 线程上的两个 tick 分支
+  (确定态缓动、无合成器时的不确定态扫动)每帧都对自身 `Invalidate()`。缺了它,回落路径的
+  不确定态会让宿主因脏区为空而无限期每帧整窗重绘。由
+  `ProgressBarComposition.UiThreadTicksMarkRenderDirty` 锁定。
 - **不确定态在有合成器时不消耗 UI 线程 tick**:`WantsAnimationTick()` 在
   `indeterminate_` 分支返回 `!compositorActive_`,也就是只有回落路径(没有合成设备)才要
   每帧 tick。

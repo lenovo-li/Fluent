@@ -392,3 +392,57 @@ TEST(ComboBoxEditable, ReadonlySelectionStillReadsFromTheItemList) {
     cb.SetSelectedIndex(0);
     EXPECT_TRUE(cb.Text() == L"Shenzhen");
 }
+
+// --- Dropdown keys vs. typed text ---------------------------------------------
+//
+// The key-down's `handled` is the observable: OnKeyDownRouted marks a key handled
+// exactly when it took it as a dropdown command (OpenPopup is a no-op headless, but
+// the decision to call it is what these tests pin). Space used to open the list in
+// editable mode — the WM_CHAR still inserted the space, so typing "new york" popped
+// the list mid-word, and with it open the forwarded Space picked the hovered row and
+// replaced the typed text.
+
+TEST(ComboBoxEditable, SpaceIsTextNotADropdownCommand) {
+    ComboBox cb;
+    cb.SetItems({L"Shenzhen", L"Beijing"});
+    cb.SetEditable(true);
+    cb.SetText(L"new");
+    KeyEventArgs e = MakeKey(VK_SPACE);
+    cb.OnKeyDownRouted(e);
+    EXPECT_FALSE(e.handled);           // not taken as "open the list"
+    cb.OnTextInput(L' ');              // the WM_CHAR that follows
+    EXPECT_TRUE(cb.Text() == L"new ");
+}
+
+TEST(ComboBoxEditable, EnterIsLeftToTheSurroundingUi) {
+    // Enter in a text field means "done with this value" (a dialog's default
+    // button), not "open the list over what I typed".
+    ComboBox cb;
+    cb.SetItems({L"Shenzhen", L"Beijing"});
+    cb.SetEditable(true);
+    cb.SetText(L"new york");
+    KeyEventArgs e = MakeKey(VK_RETURN);
+    cb.OnKeyDownRouted(e);
+    EXPECT_FALSE(e.handled);
+    EXPECT_TRUE(cb.Text() == L"new york");
+}
+
+TEST(ComboBoxEditable, DownStillOpensTheListWhenEditable) {
+    ComboBox cb;
+    cb.SetItems({L"Shenzhen", L"Beijing"});
+    cb.SetEditable(true);
+    KeyEventArgs e = MakeKey(VK_DOWN);
+    cb.OnKeyDownRouted(e);
+    EXPECT_TRUE(e.handled);
+}
+
+TEST(ComboBoxEditable, ReadonlySpaceAndEnterStillOpenTheList) {
+    ComboBox cb;
+    cb.SetItems({L"Shenzhen", L"Beijing"});
+    KeyEventArgs space = MakeKey(VK_SPACE);
+    cb.OnKeyDownRouted(space);
+    EXPECT_TRUE(space.handled);
+    KeyEventArgs enter = MakeKey(VK_RETURN);
+    cb.OnKeyDownRouted(enter);
+    EXPECT_TRUE(enter.handled);
+}

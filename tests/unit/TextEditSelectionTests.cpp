@@ -1,7 +1,8 @@
-// TextEditSelectionTests.cpp — P1-3: programmatic selection API
+// TextEditSelectionTests.cpp — programmatic selection API
 
 #include "../framework/Test.h"
 #include "../../FluentUI/controls/TextBox.h"
+#include "../../FluentUI/controls/TextArea.h"
 
 using namespace fluent;
 
@@ -111,4 +112,23 @@ TEST(TextEditSelection, SelectionChangedReportsCollapsedSelection) {
     EXPECT_EQ(cap.fireCount, 1);
     EXPECT_EQ(cap.start, 3u);
     EXPECT_EQ(cap.length, 0u);
+}
+
+// TextArea overrides OnSelectionChanged (it repaints its own band). The override used
+// to stop at Invalidate() and never reach the base, which is where the event is
+// raised — so the documented SelectionChanged() was silent on TextArea only.
+TEST(TextEditSelection, SelectionChangedFiresOnTextArea) {
+    TextArea area;
+    area.SetText(L"hello world");
+    SelectionCapture cap;
+    auto sub = area.SelectionChanged().Subscribe(&cap, CaptureSelection);
+
+    area.Select(6, 5);
+    EXPECT_EQ(cap.fireCount, 1);
+    EXPECT_EQ(cap.start, 6u);
+    EXPECT_EQ(cap.length, 5u);
+
+    area.SelectAllForTest();                       // the Ctrl+A / menu path
+    EXPECT_EQ(cap.fireCount, 2);
+    EXPECT_EQ(cap.length, 11u);
 }

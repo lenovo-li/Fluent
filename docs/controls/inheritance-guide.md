@@ -1,7 +1,7 @@
 # Control Inheritance Guide
 
-**Last Updated**: 2026-09-27  
-**Status**: Complete (Phase 1-3, all evaluated)
+**Last Updated**: 2026-10-31  
+**Status**: Complete (inheritance-ready controls, then the controls evaluated and left as they are)
 
 ---
 
@@ -87,7 +87,7 @@ When you want to **add decorations or conditional rendering** without reimplemen
 Avoid inheriting **complex controls** where composition is simpler:
 
 - `DataGrid`, `TreeView`: Wrap them and configure, don't subclass
-- `ComboBox`, `ListBox`: Use `ItemTemplate` (if available) or style overrides
+- `ComboBox`, `ListBox`: configure through their public API and the `Control` property layer (`SetBackground` / `SetForeground`); there is no `ItemTemplate`
 - `MessageDialog`, `GridSplitter`: Marked `final`, cannot inherit
 
 ---
@@ -106,7 +106,7 @@ These are **real, compilable implementations** that link against `FluentUI.lib`.
 
 ---
 
-## Phase 1 Controls (Inheritance-Ready)
+## Inheritance-Ready Controls
 
 ### Calendar
 
@@ -207,65 +207,56 @@ virtual void RenderBorder(const DrawingContext& dc);
 virtual void RenderContent(const DrawingContext& dc);
 ```
 
-**Example: Big Button**
+**Example: Big Button** (the shipped version is
+`extensions/CustomControls/BigButton.cpp`; this is the same shape, shortened)
 
 ```cpp
 class BigButton : public Button {
 public:
-    void SetSubtitle(std::wstring s) { subtitle_ = s; Invalidate(); }
-    void SetIcon(std::wstring icon) { icon_ = icon; Invalidate(); }
+    void SetSubtitle(const std::wstring& s) { subtitle_ = s; Invalidate(); }
+    // Render-only: the height is fixed, so an icon never changes the desired size.
+    void SetIcon(const std::wstring& icon) { icon_ = icon; Invalidate(); }
 
 protected:
     void Measure(float availW, float availH) override {
         // Override size to 64dp height
         SetDesired(SizeDip(std::min(availW, 200.0f), 64.0f));
     }
-    
+
     void RenderContent(const DrawingContext& dc) override {
-        // Icon (top third)
-        if (!icon_.empty() && Dwrite()) {
-            if (auto* iconFmt = Dwrite()->Format(24.0f, DWRITE_FONT_WEIGHT_NORMAL,
-                                                 DWRITE_TEXT_ALIGNMENT_CENTER,
-                                                 DWRITE_PARAGRAPH_ALIGNMENT_CENTER)) {
-                D2D1_RECT_F iconRect = D2D1::RectF(
-                    bounds_.x, bounds_.y + 8,
-                    bounds_.right(), bounds_.y + 32);
-                // Sync color with base: onAccent for Accent, textPrimary otherwise
-                D2D1_COLOR_F textColor = ButtonTextColor(CurrentKind(), State(),
-                                                         AppearanceForRender(),
-                                                         Theme().colors);
-                dc.DrawText(icon_.c_str(), icon_.size(), iconFmt, iconRect, textColor);
-            }
-        }
-        
-        // Main title (middle)
-        if (!Content().empty() && Dwrite()) {
-            if (auto* titleFmt = Dwrite()->Format(14.0f, DWRITE_FONT_WEIGHT_SEMI_BOLD,
-                                                  DWRITE_TEXT_ALIGNMENT_CENTER,
-                                                  DWRITE_PARAGRAPH_ALIGNMENT_CENTER)) {
-                D2D1_RECT_F titleRect = D2D1::RectF(
-                    bounds_.x, bounds_.y + 28,
-                    bounds_.right(), bounds_.y + 44);
-                D2D1_COLOR_F textColor = ButtonTextColor(CurrentKind(), State(),
-                                                         AppearanceForRender(),
-                                                         Theme().colors);
-                dc.DrawText(Content().c_str(), Content().size(), titleFmt,
-                           titleRect, textColor);
-            }
-        }
-        
-        // Subtitle (bottom)
-        if (!subtitle_.empty() && Dwrite()) {
-            if (auto* subFmt = Dwrite()->Format(11.0f, DWRITE_FONT_WEIGHT_NORMAL,
-                                                DWRITE_TEXT_ALIGNMENT_CENTER,
-                                                DWRITE_PARAGRAPH_ALIGNMENT_CENTER)) {
-                D2D1_RECT_F subRect = D2D1::RectF(
-                    bounds_.x, bounds_.y + 44,
-                    bounds_.right(), bounds_.y + 60);
-                D2D1_COLOR_F subColor = Theme().colors.textSecondary;
-                dc.DrawText(subtitle_.c_str(), subtitle_.size(), subFmt, subRect, subColor);
-            }
-        }
+        DWriteContext* dw = Dwrite();
+        if (!dw) return;
+        // Stack the rows that have content (icon 24, title 20, subtitle 16 DIP)
+        // and centre the stack vertically inside the 64 DIP button.
+        const std::wstring& title = Text();   // ContentControl's label
+        const float iconH = icon_.empty() ? 0.0f : 24.0f;
+        const float titleH = title.empty() ? 0.0f : 20.0f;
+        const float subH = subtitle_.empty() ? 0.0f : 16.0f;
+        float y = bounds_.y + (bounds_.h - (iconH + titleH + subH)) * 0.5f;
+        auto row = [&](float h) {
+            D2D1_RECT_F r = D2D1::RectF(bounds_.x, y, bounds_.right(), y + h);
+            y += h;
+            return r;
+        };
+        const D2D1_RECT_F iconRect = row(iconH);
+        const D2D1_RECT_F titleRect = row(titleH);
+        const D2D1_RECT_F subRect = row(subH);
+
+        // Sync color with base: onAccent for Accent, textPrimary otherwise
+        const D2D1_COLOR_F textColor = ButtonTextColor(CurrentKind(), State(),
+                                                       AppearanceForRender(),
+                                                       Theme().colors);
+        if (!icon_.empty())
+            dc.DrawText(icon_.c_str(), static_cast<UINT32>(icon_.size()),
+                        dw->Format(24.0f), iconRect, textColor);
+        if (!title.empty())
+            dc.DrawText(title.c_str(), static_cast<UINT32>(title.size()),
+                        dw->Format(Theme().typography.bodySize, DWRITE_FONT_WEIGHT_SEMI_BOLD),
+                        titleRect, textColor);
+        if (!subtitle_.empty())
+            dc.DrawText(subtitle_.c_str(), static_cast<UINT32>(subtitle_.size()),
+                        dw->Format(Theme().typography.captionSize), subRect,
+                        Theme().colors.textSecondary);
     }
 
 private:
@@ -277,14 +268,14 @@ private:
 **Design Constraints**:
 - ✅ Can override `Measure()` to change size
 - ✅ Can read `CurrentKind()` to branch on Accent vs Standard
-- ✅ Can call `RenderBackground(dc)` to reuse base fill + tint
+- ✅ Overriding only `RenderContent()` keeps the base fill, tint and border (`RenderBackground` / `RenderBorder`)
 - ❌ Cannot modify `kind_` or `tintOpacity_` directly (they drive color resolution in sync)
 
 ---
 
 ### Slider
 
-**Scenario**: Logarithmic slider (drag linearly → output 1, 10, 100, 1000).
+**Scenario**: Slider that snaps to powers of ten (1, 10, 100, 1000), one decade per arrow key.
 
 **Protected API**:
 
@@ -323,6 +314,14 @@ public:
         SetValue(100.0f);
     }
 
+    // Slider's arrows add +/-Step(); CoerceValue below would round that straight
+    // back to the same power of 10, so step a decade per key instead.
+    void OnKeyDownRouted(KeyEventArgs& e) override {
+        if (e.vk == VK_RIGHT || e.vk == VK_UP) { SetValue(Value() * 10.0f); e.handled = true; }
+        else if (e.vk == VK_LEFT || e.vk == VK_DOWN) { SetValue(Value() / 10.0f); e.handled = true; }
+        else Slider::OnKeyDownRouted(e);
+    }
+
 protected:
     float CoerceValue(float v) const override {
         // Run the base clamp + step snap first, then snap to the nearest power
@@ -333,34 +332,86 @@ protected:
         float snapped = std::pow(10.0f, std::round(std::log10(v)));
         return std::clamp(snapped, Minimum(), Maximum());
     }
-    
-    void OnValueChanged(float old, float newVal) override {
-        // Call base first so ValueChanged/ValueChanging events fire
-        Slider::OnValueChanged(old, newVal);
-        
-        // Distinguish drag (preview) from keyboard/programmatic (commit)
-        if (IsDragging()) {
-            // Update live preview UI
-            UpdateVolumeDisplay(newVal);
-        } else {
-            // Write to settings
-            settings_.volume = static_cast<int>(newVal);
-            SaveSettings();
-        }
+};
+
+// Preview vs commit: subscribe to the two events rather than branching on
+// IsDragging() inside OnValueChanged. A drag's final commit is raised from
+// OnPointerReleased straight to ValueChanged and never passes through
+// OnValueChanged, so an `else { Save(); }` branch there is never reached after a
+// drag. ValueChanging = every drag step; ValueChanged = keyboard, SetValue, and
+// once on release of a drag that moved the value.
+class VolumePanel {
+public:
+    void Bind(LogSlider& s) {
+        previewSub_ = s.ValueChanging().Subscribe(this,
+            [](void* o, Slider&, float& v) { static_cast<VolumePanel*>(o)->Preview(v); });
+        commitSub_ = s.ValueChanged().Subscribe(this,
+            [](void* o, Slider&, float& v) { static_cast<VolumePanel*>(o)->Save(v); });
     }
 
 private:
-    void UpdateVolumeDisplay(float v) { /* ... */ }
-    void SaveSettings() { /* ... */ }
-    SettingsStore settings_;
+    void Preview(float v) { /* update the live volume display */ }
+    void Save(float v) { /* write settings */ }
+    Subscription previewSub_;   // RAII: unregisters with the panel
+    Subscription commitSub_;
 };
 ```
 
 **Design Constraints**:
 - ✅ `CoerceValue()` is called during drag, keyboard, and `SetValue()` — perfect for snapping
-- ✅ `IsDragging()` distinguishes real-time preview from final commit
+- ✅ `IsDragging()` tells a drag step from a keyboard/programmatic change inside `OnValueChanged`; for preview vs commit use `ValueChanging` / `ValueChanged` (the drag's commit on release bypasses `OnValueChanged`)
+- ⚠️ The track mapping stays linear in value (it is private), so on [1, 10000] the 1/10/100 snap points share the leftmost percent of the track; a true log drag would store the exponent as the value
 - ✅ `ValueToTrackPos(v)` maps snapped values to screen coords (for drawing tick marks at 1, 10, 100, 1000)
 - ❌ Cannot access `step_` to modify it at runtime (use `SetStep()` public API)
+
+### Panel (custom layout containers)
+
+**Scenario**: A new layout container (a flow layout, a radial panel, a scroller).
+
+**Protected API**:
+
+```cpp
+// Layout strategy. Both receive padding-deducted values: Panel::Measure subtracts
+// Padding before calling MeasureOverride and adds it back to the result.
+virtual SizeDip MeasureOverride(float availW, float availH) = 0;
+virtual void ArrangeOverride(const RectDip& content) = 0;
+static void ArrangeChild(FrameworkElement* child, const RectDip& slot);  // honors margin + alignment
+
+// Optional fill drawn before the children (transparent by default).
+virtual void OnRenderBackground(const DrawingContext& dc);
+
+// Called by RemoveAt and Clear for each child about to be destroyed, after it was
+// detached and unparented, while the pointer is still valid. Default: no-op.
+virtual void OnChildRemoved(FrameworkElement* child);
+
+// Context propagation into the owned children. Override only to filter which
+// children are live (TabControl attaches the selected page only); call the base
+// otherwise, or the children never receive a context.
+void AttachChildren(const UIContext& ctx) override;
+void DetachChildren() override;
+```
+
+**Design Constraints**:
+- ✅ Measure children with `MeasureCached()`, not `Measure()`: it short-circuits when the child is clean and the constraint is unchanged
+- ⚠️ **Per-child state keyed by the child's address must be dropped in `OnChildRemoved`.** The allocator hands that address to the next child, which then silently inherits the dead child's entry. `Grid`'s cell map had exactly this bug (a recycled address placed a new child in the old child's row/column); `Grid.RemovedChildCellEntryIsDropped` covers the fix
+- ✅ A container that clips its children to a viewport should paint them through `dc.WithClipHint(viewport)` so nested panels cull to what is visible (without it, a 10 000-row StackPanel inside a scroller draws every row to have it clipped away). A container that draws content under a transform (Viewbox) uses `dc.WithMappedClipHint(rectInContentSpace)` instead, because the window-space hint must be mapped, not intersected. Both are `DrawingContext` methods (Extension tier, see `docs/api-surface.md`)
+- ✅ A scrolling container with compositor-backed descendants also overrides `GetViewportClipForDescendants`; a D2D clip cannot reach a composition visual (`ScrollPanel` is the worked example)
+
+---
+
+### Selector (collection controls)
+
+`Selector<T>` (`controls/primitives/Selector.h`) holds the selected index, the multi-select set and the anchor. Protected hooks a collection control relies on:
+
+```cpp
+virtual void OnSelectionChanged(int oldIndex, int newIndex);  // raise your typed event, sync views
+virtual void OnSelectionSetChanged();                         // multi-select set changed (Toggle / Range)
+virtual void AddRangeToSelectionSet(int lo, int hi);          // fill the set for RangeSelectTo
+```
+
+`AddRangeToSelectionSet` receives the inclusive index range of a Shift gesture with the set already cleared. The default inserts every index, which is right for a flat list. Override it when some indices in the range are not on screen: `TreeView` does, because a collapsed node's rows sit numerically inside the range, and selecting them meant a delete over the selection removed nodes the user never saw. Cost is O(hi - lo) inserts on the input path.
+
+In `OnSelectionSetChanged`, check `HasSubscribers()` on your event before materializing the set into a vector: on a large Shift range that copy is most of the gesture's cost (ListBox and TreeView both skip it).
 
 ---
 
@@ -452,9 +503,9 @@ Now Calendar can change its layout algorithm (variable cell width, padding) with
 
 ---
 
-## Phase 2 (Evaluated - No Code Changes Needed)
+## Evaluated: Existing API Already Sufficient
 
-The following controls were **evaluated for Phase 2** and found to **already have sufficient APIs** for customization:
+The following controls were **evaluated** and found to **already have sufficient APIs** for customization:
 
 ### ComboBox
 **Status**: ✅ No changes needed
@@ -462,8 +513,8 @@ The following controls were **evaluated for Phase 2** and found to **already hav
 **Why**: 
 - Public API already sufficient: `Text()`, `SetText()`, `SetEditable(bool)`
 - Events: `DropDownOpened`, `DropDownClosed`, `SelectionChanged`
-- `popup_` and `listView_` are `unique_ptr` - exposing raw pointers has lifetime risks
-- Custom dropdown scenarios are rare; if truly needed, use **composition** (PopupHost + custom Panel) instead of inheritance
+- `popup_` and `listView_` are `unique_ptr` - exposing raw pointers has lifetime risks. They live until `~ComboBox`: detach only closes the popup, because a detach can run synchronously inside the popup's own dispatch
+- Custom dropdown scenarios are rare. `PopupHost` is **Internal** tier (`docs/api-surface.md`), so a custom dropdown built on it is building against an unsupported API. If you do it anyway, copy ComboBox's three rules: size the popup as content + `2 * PopupHost::kContentPadding` (the card inset), route every close path through the `SetOnClose` callback (the popup closes itself on a click on its card padding), and in that callback raise your closed event last and touch nothing afterwards (a handler may reopen the popup)
 
 ### TextBox / TextArea
 **Status**: ✅ No changes needed (base class already inheritable)
@@ -477,6 +528,8 @@ The following controls were **evaluated for Phase 2** and found to **already hav
   `SetMaskRevealed(bool)` (show a password in plain text without leaving password mode) and
   `ContentLeft()` / `ContentWidth()` (the text viewport) exist for in-box buttons;
   PasswordBox's reveal button is built on them
+- **If you override `OnSelectionChanged()`, call `TextEditBase::OnSelectionChanged()`**: the base is where the public `SelectionChanged()` event is raised. TextArea's override once only repainted, and the event never fired on TextArea (`TextEditSelection.SelectionChangedFiresOnTextArea`)
+- **Delete through `DeleteSelectionRecorded()`, never the bare `DeleteSelection()`**, from any user-facing edit path: the bare one does not record undo, so the stack stops matching `text_` and the next Ctrl+Z deletes the wrong text. The context menu's Cut had this bug (`TextEditUndo.ContextMenuCutIsUndoable`). Anything that removes text outside a recorded edit must clear the history instead (`ClearUndoHistory()`), the rule `SetText` and the `SetMaxLines` trim follow
 - TextEditBase's protected `AllowCopyToClipboard()` / `AllowImeComposition()` policy virtuals
   gate Ctrl+C/X + menu Cut/Copy and IME composition; a subclass whose answer changes while
   focused calls `SyncImeAssociation()` after the change
@@ -496,22 +549,23 @@ protected:
 
 ---
 
-## Phase 3 (Evaluated - Composition Preferred)
+## Evaluated: Composition Preferred
 
 Low-priority controls were evaluated and found to prefer **composition over inheritance**:
 
 ### CheckBox / RadioButton / ToggleSwitch
-**Status**: ✅ Base class (ToggleButton) already sufficient
+**Status**: ✅ Existing bases already sufficient
 
-- `ToggleButton` exposes `protected checked_`
+- CheckBox and ToggleSwitch derive `ToggleButton`, which exposes `protected checked_` and the `OnToggle()` / `OnToggleChanged()` hooks
+- RadioButton derives `ButtonBase` directly, not ToggleButton: its selected state is the shared group value, read through `IsSelected()`, and `OnActivate()` is the protected hook
 - Animation states (`checkAnim_`, `slide_`) are visual-only, low value for subclasses
-- Custom rendering: override `Render()` and read `IsChecked()`
+- Custom rendering: override `Render()` and read `IsChecked()` / `IsSelected()`
 
 ### ProgressBar / Rating
-**Status**: ✅ Base class (RangeBase) already sufficient
+**Status**: ✅ Existing APIs already sufficient
 
-- `RangeBase` exposes `protected value_`, `min_`, `max_`
-- Public APIs: `Value()`, `Minimum()`, `Maximum()` getters; ProgressBar adds `Fraction()`
+- ProgressBar derives `RangeBase`, which exposes `protected value_`, `min_`, `max_`; public `Value()`, `Minimum()`, `Maximum()`, plus `Fraction()`
+- Rating derives `Control`, not RangeBase (a rating is a small integer count whose count is also its maximum); its value is private, read through `Value()` / `MaxValue()`
 - Custom rendering: override `Render()` and read state
 
 ### DataGrid / TreeView
@@ -535,6 +589,15 @@ Low-priority controls were evaluated and found to prefer **composition over inhe
 
 ---
 
+## Not Extension Points
+
+Some `protected` / `public` members exist for the framework or for tests, not for subclasses:
+
+- `DialogWindow::PlanOwnerRestore` (protected static) is the pure owner-restore rule (re-enable the owner only if this dialog disabled it; hand foreground back only when the owner will be usable), split out so tests can cover nested modal dialogs without windows. Derive from `DialogWindow` for its public API, not to change this
+- `UIElement::ClearFocusOnDetach()` is for `FocusManager` only (it resets the focus bit without raising `LostFocus`, for an element mid-teardown). A control never calls it
+
+---
+
 **Related Documents**:
-- Individual control docs: `Calendar.md`, `Button.md`, `Slider.md` (Inheritance sections)
+- Individual control docs: `Button.md`, `Slider.md` (Slider.md links back here for its protected extension points)
 - Separate-library template: `extensions/CustomControls/README.md`

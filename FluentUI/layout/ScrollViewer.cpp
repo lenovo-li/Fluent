@@ -132,6 +132,16 @@ void ScrollViewer::Wake()
     Invalidate();
 }
 
+void ScrollViewer::HideBarsNow()
+{
+    visibility_ = visTarget_ = 0.0f;
+    expand_ = expandTarget_ = 0.0f;
+    expandX_ = expandXTarget_ = 0.0f;
+    barHover_ = barHoverX_ = false;
+    idleSec_ = idleHideDelaySec_;
+    Invalidate();
+}
+
 void ScrollViewer::SetBarHover(bool over)
 {
     if (over == barHover_) return;

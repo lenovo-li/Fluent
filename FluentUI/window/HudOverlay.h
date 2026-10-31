@@ -44,8 +44,10 @@
 
 namespace fluent {
 
-// The HUD thread's liveness ping (wParam = sequence). WM_APP+17/18/19 are taken by
-// ModalFrameHeartbeat, TrayIcon and PopupHost; see the list in services/PopupHost.h.
+// The HUD thread's liveness ping (wParam = sequence). WM_APP+17/18/19/21/22 are taken by
+// ModalFrameHeartbeat, TrayIcon, PopupHost (open notice, deferred render) and Window
+// (deferred root release); see the
+// list in services/PopupHost.h.
 constexpr UINT WM_FLUENT_HUD_PING = WM_APP + 20;
 
 class HudOverlay {

@@ -11,10 +11,12 @@
 //     calls BeginFrame()/EndFrame() to consume the pending state. A frame that is
 //     re-dirtied *during* rendering is preserved for the next frame, never lost.
 //
-//  2. The animation clock (F1/F2). The scheduler owns the "should a ~60fps timer
-//     be running?" edge logic (arm/disarm) and the framerate-independent dt, but
-//     owns no HWND: the host installs an arm/disarm pair that start/stop the real
-//     OS timer, and drives ComputeDt() from its tick. dt now comes from the
+//  2. The animation clock. The scheduler owns the "is something animating?" edge
+//     logic (arm/disarm) and the framerate-independent dt, but owns no HWND. The
+//     host's message loop ticks the clock itself (PumpAnimations, once per painted
+//     frame), so normal animation needs no OS timer at all; the host's arm/disarm
+//     pair only starts/stops the modal-loop frame heartbeat when an animation
+//     begins during a system drag-resize, where our loop is not running. dt comes from the
 //     high-resolution QPC clock (absolute time, not tick counts) so easing
 //     is stable regardless of timer granularity or stalls.
 //
@@ -104,10 +106,11 @@ public:
 
     bool FrameInProgress() const { return frameInProgress_; }
 
-    // ---- Animation clock (F1/F2) -----------------------------------------
+    // ---- Animation clock ---------------------------------------------------
 
-    // Install the host's timer controls. `arm` starts the real OS timer at
-    // kIntervalMs; `disarm` stops it. Both are invoked only on state edges.
+    // Install the host's edge callbacks: `arm` runs on the rising edge, `disarm` on
+    // the falling edge, never otherwise. What they start/stop is the host's business
+    // (NativeWindowHost uses them for the modal-loop frame heartbeat only).
     void SetCallbacks(std::function<void()> arm, std::function<void()> disarm) {
         arm_ = std::move(arm);
         disarm_ = std::move(disarm);

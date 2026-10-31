@@ -63,7 +63,7 @@ void PageHost::ShowPage(int index) {
     if (index == currentIndex_) return;
 
     const bool animate = (transition_ != PageTransition::None) &&
-                         SystemAnimationEnabled() &&
+                         (!respectSystemAnimation_ || SystemAnimationEnabled()) &&
                          IsAttached() &&
                          (currentIndex_ >= 0);
 
@@ -204,7 +204,15 @@ void PageHost::OnAnimationTick(float dtSec) {
     if (currentIndex_ >= 0 && currentIndex_ < PageCount())
         ChildAt(currentIndex_)->SetOpacity(fadeIn_.value);
 
-    InvalidateDirty(DirtyFlags::Arrange);
+    // Only FadeSlide moves anything: the incoming page's slot is offset by
+    // slideOffset_ in ArrangeOverride, so that mode needs an Arrange each tick.
+    // Fade changes nothing but the two pages' opacity, and SetOpacity above
+    // already records a Render-level dirty on each page (and requests the frame).
+    // Raising Arrange there too made every Fade tick a full-window redraw plus a
+    // full re-arrange of both page trees (an Arrange-dirty frame forces a full
+    // redraw in NativeWindowHost) for a change confined to this host's pages.
+    // FinishTransition keeps its own Arrange: the leaving page collapses then.
+    if (transition_ == PageTransition::FadeSlide) InvalidateDirty(DirtyFlags::Arrange);
 
     if (!fadeIn_.Animating(1.0f, 0.01f)) {
         FinishTransition();

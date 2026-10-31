@@ -87,3 +87,14 @@ TEST(MenuBarLayout, WideBarLeavesEveryTitleIntact) {
         x += 50.0f;
     }
 }
+
+// AddMenu grows the bar's desired width (the sum of the titles), so it must ask for
+// a re-measure. A Render-only invalidation left bounds_ at the old width once the bar
+// was laid out, and VisibleTitleRect then clamped the new title away: not drawn, not
+// clickable.
+TEST(MenuBarLayout, AddMenuRequestsMeasure) {
+    MenuBar bar;
+    bar.ClearDirty();
+    bar.AddMenu(L"Help", {});
+    EXPECT_TRUE(Has(bar.Dirty(), DirtyFlags::Measure));
+}

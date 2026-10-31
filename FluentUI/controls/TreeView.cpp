@@ -302,9 +302,25 @@ void TreeView::OnSelectionChanged(int /*oldIndex*/, int newIndex)
 // is the tree-specific consequence of a set change: invalidation and typed event.
 void TreeView::OnSelectionSetChanged()
 {
+    // Nobody listening: skip materializing (and sorting) the whole set, which for a
+    // large Shift range is the dominant cost of the gesture.
+    if (!selectionSetChanged_.HasSubscribers()) return;
     // Event::Raise takes Args& (non-const), so the vector must be an lvalue.
     std::vector<int> sel = SelectedIndices();
     selectionSetChanged_.Raise(*this, sel);
+}
+
+void TreeView::AddRangeToSelectionSet(int lo, int hi)
+{
+    // visibleRows_ holds the visible row indices in ascending (pre-order) order, so
+    // the visible rows in [lo, hi] are one contiguous slice of it, found by binary
+    // search. The ends themselves are normally visible (a click or arrow target),
+    // but the anchor may have been collapsed away since; it is then simply not in
+    // the slice, which is the honest answer — it is no longer on screen.
+    auto first = std::lower_bound(visibleRows_.begin(), visibleRows_.end(), lo);
+    auto last = std::upper_bound(first, visibleRows_.end(), hi);
+    selectedIndices_.reserve(static_cast<size_t>(last - first));
+    for (auto it = first; it != last; ++it) selectedIndices_.insert(*it);
 }
 
 void TreeView::OnBoundsChanged()
@@ -499,7 +515,7 @@ void TreeView::OnPointerReleased(PointerEventArgs& e)
     int visibleIndex = VisibleIndexByRow(rowIndex);
     if (visibleIndex >= 0) SetSelectedIndex(visibleIndex);
     
-    // Double-click detection (Phase 2): check if this click is within the double-click
+    // Double-click detection: check if this click is within the double-click
     // window and on the same row as the last click.
     DWORD now = GetTickCount();
     DWORD doubleClickTime = GetDoubleClickTime();  // System setting (usually 500ms)
@@ -805,8 +821,10 @@ void TreeView::DrawRow(const DrawingContext& dc, IDWriteTextFormat* fmt,
         const float iconSize = 16.0f;
         D2D1_RECT_F iconRect = D2D1::RectF(leftX + indent + 16.0f, y + 4.0f,
                                            leftX + indent + 16.0f + iconSize, y + 4.0f + iconSize);
+        // Raw-context draw, so the element opacity is ours to apply: a hard-coded
+        // 1.0 left the icon fully opaque inside a TreeView faded with SetOpacity.
         if (auto* dc2 = dc.Dc()) {
-            dc2->DrawBitmap(row.customIcon, iconRect, 1.0f,
+            dc2->DrawBitmap(row.customIcon, iconRect, dc.Opacity(),
                             D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC,
                             nullptr, nullptr);
         }

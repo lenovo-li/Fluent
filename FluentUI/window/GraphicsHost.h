@@ -1,7 +1,6 @@
 // GraphicsHost.h — D3D/D2D/DComp device lifetime and surface management.
 //
-// Extracted from NativeWindowHost as part of the Host refactoring (Phase 1).
-// Owns the graphics device stack: D2DContext, DWriteContext, DCompHost, the
+// Owns the graphics device stack on behalf of NativeWindowHost: D2DContext, DWriteContext, DCompHost, the
 // composition backend, resource cache, and device-lost recovery. The window
 // no longer directly holds these — it composes GraphicsHost and delegates.
 #pragma once

@@ -187,8 +187,8 @@ private:
     void DrawPaneButton(const DrawingContext& dc, int target, const wchar_t* glyph, bool enabled);
     void DrawPaneItem(const DrawingContext& dc, int index);
     // Single-line label ending in "…" when it does not fit `rect`. Returns true
-    // when it was trimmed.
-    bool DrawPaneLabel(const DrawingContext& dc, const std::wstring& text,
+    // when it was trimmed. `index` selects the per-item layout cache entry.
+    bool DrawPaneLabel(const DrawingContext& dc, int index, const std::wstring& text,
                        IDWriteTextFormat* fmt, const D2D1_RECT_F& rect,
                        const D2D1_COLOR_F& color);
     std::wstring PaneTooltipFor(int target) const;
@@ -220,6 +220,26 @@ private:
     std::wstring backTooltip_;
     // Per unified index: the label was ellipsised in the last paint (pane mode).
     std::vector<bool> labelTrimmed_;
+    // Per unified index: the pane label's text layout, kept across paints. Every
+    // hover change repaints all labels, and building an IDWriteTextLayout (plus an
+    // ellipsis inline object when it overflows) per label per paint was pure
+    // allocation churn. The layout is rebuilt only when the text or the format
+    // changes (a typography change hands out a different cached format pointer);
+    // a new box size, as on every frame of the width ease, just updates the
+    // layout's max width/height in place. The cached format pointer stays valid
+    // because DWriteContext never evicts formats. Device loss does not touch it:
+    // DWrite objects are device-independent.
+    struct PaneLabelLayout {
+        ComPtr<IDWriteTextLayout> layout;
+        ComPtr<IDWriteInlineObject> ellipsis;  // created once, on first overflow
+        IDWriteTextFormat* fmt = nullptr;      // borrowed, identity only
+        std::wstring text;
+        float w = -1.0f;
+        float h = -1.0f;
+        float naturalW = 0.0f;  // untrimmed line width, measured once per build
+        bool trimmed = false;
+    };
+    std::vector<PaneLabelLayout> labelLayouts_;
     Event<NavRail, bool> expandedChanged_;
     Event<NavRail, int> backRequested_;
 };

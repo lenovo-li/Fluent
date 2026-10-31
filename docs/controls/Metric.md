@@ -170,8 +170,12 @@ debt->SetInverted(true);            // 负债率上涨是坏消息
 
 ### 性能特征
 
-- **Measure 成本**：最多 3 个 DirectWrite 布局（label / value / delta）。
-- **Render 成本**：最多 3 次 DrawText。无填充、无描边、无动画。
+- **Measure 成本**：最多 3 个 DirectWrite 布局（label / value / delta），经共享的
+  `ResourceCache` 取得，内容不变时是哈希查找。
+- **Render 成本**：最多 3 次 DrawText。无填充、无描边、无动画。推进 y 的行高与 Measure
+  共用同一个缓存项（三行都不换行，所以两边用同一个布局宽度作键）。此前 Render 每次重绘
+  都为每行新建一个 `IDWriteTextLayout`。由 `LabelMeasureCache.MetricMeasureAndRenderReuseLayouts`
+  锁定。
 - **不请求动画帧**。
 
 ### 使用注意事项

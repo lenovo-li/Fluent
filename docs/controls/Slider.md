@@ -195,6 +195,10 @@ slider->SetHAlign(HAlign::Left);
 - **Render**:每帧固定 4~5 个图元 —— 轨道槽、已填充部分(两个圆角矩形;值在最小端时
   不画填充)、旋钮填充圆、旋钮描边圆,聚焦时再加一个焦点环圆。无文本布局。
 - **填充动画是 Render 级 O(1)**,在 UI 线程上逐帧缓动,不走 compositor,也不触发重新布局。
+  每个 tick 都对自身调用 `Invalidate()`(只标 Render)。`AnimatedValue` 不会自己标脏:
+  曾经漏掉这一步时,单独缓动的帧脏区为空,宿主退化为整窗重绘;和别的脏元素同帧时局部
+  重绘又把 Slider 裁掉,键盘步进的缓动表现为卡住再跳。由
+  `SliderEvents.EaseTickMarksRenderDirty` 锁定(删掉这行 `Invalidate()` 测试即失败)。
 - **idle 零成本**:缓动收敛后 `WantsAnimationTick()` 返回 false,不再占用帧。
 - **拖动时不缓动**:`OnPointerPressed` / `OnPointerMoved` 都走 `animFill_.SetImmediate(value_)`,
   让旋钮 1:1 跟随光标。缓动只用于键盘/程序改值 —— 拖动时的缓动会变成橡皮筋手感。

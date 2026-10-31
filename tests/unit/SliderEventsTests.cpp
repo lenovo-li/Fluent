@@ -224,3 +224,28 @@ TEST(SliderEvents, PressReleaseWithoutChangeFiresNothing) {
     EXPECT_EQ(changing.count, 0);
     EXPECT_EQ(changed.count, 0);
 }
+
+// 键盘步进触发的缓动，每一帧 tick 都必须把自己标成 Render 脏。AnimatedValue 不会
+// 自己标脏：漏掉 Invalidate 时，单独缓动的帧脏区为空，宿主退化为整窗重绘；和别的
+// 脏元素（光标闪烁、按钮悬停淡入）同帧时，局部重绘只覆盖对方，Slider 被裁掉，缓动
+// 表现为卡住再跳。
+TEST(SliderEvents, EaseTickMarksRenderDirty) {
+    ProbeSlider s;
+    s.SetMinimum(0.0f);
+    s.SetMaximum(100.0f);
+    s.SetStep(10.0f);
+    s.SetWidth(200.0f);
+    s.SetHeight(32.0f);
+    s.Measure(200.0f, 32.0f);
+    s.Arrange(RectDip{0, 0, 200.0f, 32.0f});
+
+    KeyEventArgs key;
+    key.vk = VK_RIGHT;
+    s.OnKeyDownRouted(key);
+    EXPECT_TRUE(s.WantsAnimationTick());      // 键盘步进走缓动
+
+    s.ClearDirty();
+    s.OnAnimationTick(1.0f / 60.0f);
+    EXPECT_TRUE(Has(s.Dirty(), DirtyFlags::Render));
+    EXPECT_FALSE(Has(s.Dirty(), DirtyFlags::Measure));  // 缓动从不改布局
+}

@@ -309,6 +309,10 @@ buttonPanel->Add(std::move(cancelBtn));
 2. **Flyout 所有权**: `SetFlyout` 接受非拥有指针，确保 flyout 对象在按钮生命周期内存活
 3. **焦点可见性**: 按钮默认显示焦点环，通过 Tab 导航时自动显示
 4. **禁用状态**: 调用 `SetEnabled(false)` 后，按钮变灰且不响应交互（由 UIElement 提供）
+5. **`SetFontSize` 同时影响测量与绘制**: Measure 用 `EffectiveFontSize()`，与 Render 一致。
+   此前 Measure 读主题的 `bodySize`，`SetFontSize(24)` 后按 14 DIP 测宽、按 24 DIP 居中绘制，
+   不裁剪的文字左右各溢出约 17 DIP，超出 3.75 DIP 的 `VisualOverflowDip`，在相邻控件上留下
+   残影。由 `LabelMeasureCache.ButtonMeasureHonoursFontSize` 锁定。
 
 ---
 

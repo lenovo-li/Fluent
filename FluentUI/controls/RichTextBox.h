@@ -202,6 +202,18 @@ public:
     void OnImeComposition(HWND hwnd, LPARAM flags) override;
     void OnImeEndComposition(HWND hwnd) override;
 
+    // Drive the IME composition string without an IME, the same hook TextEditBase
+    // offers. OnImeComposition needs a real HWND and a live input context, so how the
+    // composed text is spliced into the caret paragraph's layout (and which ranges the
+    // runs' formatting lands on around it) is otherwise unreachable from a headless
+    // test. Sets the same state the IME path sets and marks the layout dirty the same
+    // way.
+    void TestSetComposition(std::wstring s) {
+        composition_ = std::move(s);
+        layoutDirty_ = true;
+        Invalidate();
+    }
+
     // --- Events -----------------------------------------------------------
     // Raised after the text changes (typing, paste, delete, undo, redo, SetDocument).
     // The snapshot is the CURRENT text, post-change.
@@ -258,6 +270,25 @@ private:
     struct ParagraphLayoutInfo {
         ComPtr<IDWriteTextLayout> layout;
         std::vector<ComPtr<ID2D1SolidColorBrush>> runBrushes;
+        // What runBrushes were built for. The brushes and their SetDrawingEffect ranges
+        // stay valid across frames until the layout is rebuilt (which replaces this whole
+        // struct) or one of these changes, so Render rebuilds them only then instead of
+        // allocating one COM brush per run on every repaint, caret blinks included.
+        //
+        // Keyed on the D2D DEVICE, not the device context. A solid-colour brush is a
+        // device resource, usable from any context created on that device, and the
+        // context is not stable: DCompHost::BeginContentFrame takes it from
+        // IDCompositionSurface::BeginDraw every frame, and nothing promises BeginDraw
+        // hands back the same object twice. Keyed on the context, a fresh context per
+        // frame (or a rotation between a few) would miss every frame and the cache
+        // would do nothing; keying on the device hits whichever context the frame
+        // gets, and still misses when the device is replaced after device loss — the
+        // one case where the old brushes really are unusable. The device is held, not
+        // just compared by address: a released device's address can be reused by its
+        // replacement. Holding the device rather than the frame's context also means
+        // nothing keeps a BeginDraw context alive past its EndDraw.
+        ComPtr<ID2D1Device> brushDevice;
+        float brushOpacity = -1.0f;
         float spaceBefore = 0.0f;   // DIP gap before this paragraph
         float spaceAfter = 0.0f;    // DIP gap after this paragraph
         float leftIndent = 0.0f;    // DIP offset for left edge

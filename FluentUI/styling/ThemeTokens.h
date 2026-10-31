@@ -7,9 +7,12 @@
 // control reads them through the ThemeSnapshot handed to it via UIContext —
 // never by hard-coding a color or a size.
 //
-// A ThemeSnapshot is an IMMUTABLE VALUE plus a `generation` stamp (kept equal to
-// the host ResourceCache epoch, so a bumped generation is exactly the signal a
-// theme-derived cache entry — a text layout, a themed geometry — must rebuild).
+// A ThemeSnapshot is an IMMUTABLE VALUE plus a `generation` stamp. A bumped
+// generation is the signal a theme-derived cache entry (a text layout, a themed
+// geometry) must rebuild. It is ThemeManager's own counter, NOT the host
+// ResourceCache epoch: both move on every theme change, but the epoch also moves
+// on a DPI change and the generation does not, so the two are not equal and must
+// not be compared with each other.
 // The host owns one stable snapshot (ThemeManager::current_); when the theme
 // changes it overwrites that value in place and bumps the cache epoch, so the
 // pointer parked on every UIContext stays valid and only its pointee changes
@@ -177,6 +180,9 @@ struct SpacingOverrides {
 };
 
 struct TypographyOverrides {
+    // Carried into the snapshot's typography.fontFamily, but nothing renders with
+    // it: DWriteContext fixes its font family at Initialize and every text format
+    // uses that, so setting this changes no text on screen. Informational only.
     std::wstring fontFamily;  // empty = not set
     float captionSize = std::numeric_limits<float>::quiet_NaN();
     float bodySize = std::numeric_limits<float>::quiet_NaN();
@@ -255,11 +261,14 @@ struct MotionOverrides {
     float bezierY2 = std::numeric_limits<float>::quiet_NaN();
 };
 
-// The immutable per-frame theme value handed to controls. `generation` tracks
-// the ResourceCache epoch: a theme change bumps it so a theme-derived cache
-// entry keyed on it rebuilds. `dark` is carried through (Button reads it to pick
-// a light/dark tint; TextBlock reads it to set scrollbar alpha). `highContrast`
-// gates the high-contrast rendering path.
+// The immutable per-frame theme value handed to controls. `generation` is bumped
+// by every theme change (ThemeManager's counter, independent of the ResourceCache
+// epoch; see the top of this file), so a theme-derived cache entry keyed on it
+// rebuilds. `dark` is carried through (Button reads it to pick a light/dark tint;
+// TextBlock reads it to set scrollbar alpha). `highContrast` is carried through
+// but no control reads it today: there is no separate high-contrast rendering
+// path, and the window's own high-contrast handling reads the system setting
+// directly (WindowAppearance), not this field.
 struct ThemeSnapshot {
     ColorTokens colors;
     SpacingTokens spacing;

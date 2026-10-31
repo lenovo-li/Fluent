@@ -57,7 +57,12 @@ std::vector<MenuItem> TextEditBase::BuildEditMenuItems() {
     cut.enabled = hasSel && !readOnly_ && AllowCopyToClipboard();
     cut.AddInvokeHandler([this] {
         if (CopySelection(ClipboardOwner())) {
-            DeleteSelection();
+            // The RECORDED delete, same as Ctrl+X. The bare DeleteSelection() erases
+            // text_ without telling the undo stack, so the stack would still describe
+            // the buffer from before the cut: a following Ctrl+Z replays the previous
+            // entry against shifted offsets (ApplyUndoResult clamps them) and deletes
+            // the wrong characters, while the cut text itself can never come back.
+            DeleteSelectionRecorded();
             OnTextLayoutDirty();
             Changed();
         }
@@ -233,7 +238,7 @@ void TextEditBase::InsertText(const std::wstring& raw) {
     std::wstring s = SanitizeInput(raw);
     if (s.empty()) return;
 
-    // --- P1-2: CharacterCasing + InputFilter (applied before MaxLength) -------
+    // --- Input policy: CharacterCasing + InputFilter (applied before MaxLength) -
     // 1. CharacterCasing: force the case of every inserted character. Applied to
     //    typing, paste, IME commit alike — any route. SetText and undo replay are
     //    excluded deliberately: SetText is programmatic (caller already controls it),

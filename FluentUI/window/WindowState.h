@@ -8,7 +8,8 @@
 //
 // Geometry is in PHYSICAL PIXELS together with the DPI it was captured at, so a
 // rect saved on a 200% monitor can be rescaled with MulDiv when restored on a
-// 100% monitor (CLAUDE.md DPI pitfall #1).
+// 100% monitor (per-window DPI: a rect is only meaningful with the DPI it was
+// captured at).
 #pragma once
 
 #include "../fl_common.h"

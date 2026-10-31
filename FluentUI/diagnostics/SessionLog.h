@@ -55,6 +55,14 @@ public:
     // jank entry. `intervalMs` is the gap since the previous painted frame (the
     // real cadence); `f` supplies cpu/layout/render/present; `tSec` is the
     // session-relative timestamp.
+    //
+    // `intervalMs <= 0` means "this frame has no cadence sample": the first frame,
+    // or the first frame after the loop idled (FrameIntervalIsCadenceSample said
+    // no). Such a frame still counts in `frames` and in the CPU/tick worsts, but
+    // it does not enter the phase's average interval. Counting it as a 0 ms
+    // interval used to pull every phase's avgFps up (a 20-frame animation started
+    // from idle averaged one zero in twenty, ~5% optimistic). A real interval
+    // between two painted frames is always positive, so 0 is free to mean this.
     void RecordFrame(const FrameStats& f, float intervalMs, SessionPhase phase,
                      double tSec);
 
@@ -105,6 +113,9 @@ private:
     // Per-phase running aggregate (exact; no per-frame storage).
     struct PhaseAgg {
         uint32_t frames = 0;
+        // Frames that carried a cadence sample (intervalMs > 0). The average divides
+        // by this, not by `frames`, so a frame without a sample cannot dilute it.
+        uint32_t cadenceFrames = 0;
         double sumIntervalMs = 0.0;   // for average cadence -> avg FPS
         float maxIntervalMs = 0.0f;   // worst cadence in this phase
         // Worst single frame by CPU cost, with its stage breakdown.

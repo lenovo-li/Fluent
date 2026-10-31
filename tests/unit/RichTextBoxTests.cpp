@@ -17,6 +17,7 @@
 #include "../../FluentUI/graphics/DWriteContext.h"
 #include "../../FluentUI/input/FocusManager.h"
 #include "../../FluentUI/input/InputManager.h"
+#include "ClipboardTestHelpers.h"
 
 #include <chrono>
 #include <cstdio>
@@ -899,4 +900,86 @@ TEST(RichTextBox, ReadOnlyBlocksParagraphFormatting)
 
     // Alignment should remain default.
     EXPECT_EQ(f.box.GetCurrentParagraphStyle().alignment, DWRITE_TEXT_ALIGNMENT_LEADING);
+}
+
+
+// --- Edits that must not disturb undo/redo or the newline form ---------------
+
+namespace {
+
+void PressCtrl(RichTextBox& box, UINT vk) {
+    KeyEventArgs e;
+    e.modifiers = ModifierKeys::Ctrl;
+    e.vk = vk;
+    box.OnKeyDownRouted(e);
+}
+
+} // namespace
+
+TEST(RichTextBox, CutWithNoSelectionKeepsTheRedoHistory)
+{
+    // Ctrl+X with nothing selected used to PushUndo anyway: a snapshot identical to
+    // the current state, plus redoStack_.clear(). The user's redo history vanished on
+    // a keystroke that changed nothing. No selection also means Copy() returns before
+    // touching the clipboard, so this test needs none.
+    Fixture f;
+    f.box.OnTextInput(L'a');
+    f.box.OnTextInput(L'b');
+    PressCtrl(f.box, 'Z');
+    EXPECT_TRUE(f.box.CanRedo());
+    const std::wstring before = f.box.Document().GetPlainText();
+
+    PressCtrl(f.box, 'X');
+    EXPECT_TRUE(f.box.CanRedo());
+    EXPECT_EQ(f.box.Document().GetPlainText(), before);
+}
+
+TEST(RichTextBox, PasteNormalizesCrLfToParagraphBreaks)
+{
+    // Clipboard text from Notepad (and nearly everything else on Windows) is CRLF.
+    // RichTextDocument splits paragraphs on '\n' only, so an unnormalized paste left a
+    // '\r' at the end of each paragraph's run — which DWrite draws as an extra hard
+    // line break.
+    testclip::ClipboardTextGuard guard;
+    if (!testclip::WriteText(L"a\r\nb\rc")) return;   // clipboard held elsewhere: skip
+    Fixture f;
+    PressCtrl(f.box, 'V');
+
+    const std::wstring text = f.box.Document().GetPlainText();
+    EXPECT_EQ(text, std::wstring(L"a\nb\nc"));
+    EXPECT_TRUE(text.find(L'\r') == std::wstring::npos);
+    EXPECT_EQ(f.box.Document().Paragraphs().size(), size_t{3});
+}
+
+TEST(RichTextBox, CompositionAtParagraphStartShiftsTheRunsFormatting)
+{
+    // The caret at offset 0 of a paragraph is a real composition position — every new
+    // paragraph starts there. RebuildLayout used "offset > 0" to mean "composing in
+    // this paragraph", so at offset 0 the composed text was spliced in but the runs'
+    // ranges were not shifted past it: each run's size landed one character early.
+    //
+    // Observable through the layout width. Composing "i" in front of a 10 DIP "iiii"
+    // run followed by a 40 DIP "W" must lay out exactly like the committed text
+    // "iiiii" + "W" — composition text takes the paragraph's base (first-run) style.
+    // Unshifted, the 40 DIP range covers the last "i" instead of the "W", and the line
+    // comes out about a capital W's width narrower.
+    Fixture f;
+    f.box.SetWordWrap(false);
+
+    RichTextDocument reference;
+    reference.AppendRun(TextRun(L"iiiii", kInk, 10.0f));
+    reference.AppendRun(TextRun(L"W", kRed, 40.0f));
+    f.box.SetDocument(std::move(reference));
+    f.Layout();
+    const float expected = f.box.ContentWidth();
+
+    RichTextDocument doc;
+    doc.AppendRun(TextRun(L"iiii", kInk, 10.0f));
+    doc.AppendRun(TextRun(L"W", kRed, 40.0f));
+    f.box.SetDocument(std::move(doc));
+    f.box.Select(0, 0);                            // caret at the paragraph start
+    f.box.TestSetComposition(L"i");
+    f.Layout();
+
+    EXPECT_NEAR(f.box.ContentWidth(), expected, 0.5f);
 }

@@ -81,7 +81,24 @@ void InputManager::PointerMoved(Point p, ModifierKeys mods) {
         args.source = captured_;
         args.originalSource = captured_;
         captured_->DispatchPointerMoved(args);
-        RequestInvalidate();
+        // No RequestInvalidate here (nor at the end of the uncaptured path below).
+        // A move is the hottest input event there is, and an unconditional frame
+        // request turned every WM_MOUSEMOVE over static content into a full-window
+        // redraw: the request reaches RenderNow with an EMPTY dirty set, and
+        // PlanRedraw treats empty as "redraw everything". Every move-driven visual
+        // change reaches the scheduler by itself instead:
+        //   * hover enter/leave -> UIElement::UpdateState -> Invalidate();
+        //   * per-control hover (list rows, menu items, NavRail, PasswordBox eye,
+        //     ComboBox) and every drag path Invalidate themselves when the value
+        //     they paint actually changes;
+        //   * the embedded ScrollViewer scrollbars (whose own Invalidate has no
+        //     route to the host) only change animation TARGETS on a move; the
+        //     host re-collects animations after every move (UpdateAnimationTimer
+        //     in NativeWindowHost, RequestAnimationUpdate from PopupHost), and each
+        //     owner's OnAnimationTick invalidates itself.
+        // Press, release and key paths keep their request: they are discrete, and
+        // a few press/release visuals (GridSplitter's pressed fill, TextBlock's
+        // thumb alpha on release) still rely on it.
         return;
     }
 
@@ -92,7 +109,6 @@ void InputManager::PointerMoved(Point p, ModifierKeys mods) {
         args.originalSource = hot_;
         RoutePointer(route, args, nullptr, &UIElement::DispatchPointerMoved);
     }
-    RequestInvalidate();
 }
 
 void InputManager::PointerPressed(Point p, PointerButton button, ModifierKeys mods,
@@ -158,7 +174,11 @@ void InputManager::PointerWheel(Point p, int delta, ModifierKeys mods,
         args.wheelScrollLines = wheelScrollLines;
         RoutePointer(route, args, nullptr, &UIElement::DispatchPointerWheelChanged);
     }
-    RequestInvalidate();
+    // No RequestInvalidate, for the same reason as PointerMoved: a wheel over
+    // content that cannot scroll changed nothing, and every wheel handler that
+    // does scroll (ListBox, TreeView, DataGrid, LogViewer, TextArea, RichTextBox,
+    // TextBlock, ComboBox's list, ScrollPanel via SyncScrollArrange) invalidates
+    // itself or starts a tween the host collects right after the wheel message.
 }
 
 void InputManager::PointerLeftWindow() {

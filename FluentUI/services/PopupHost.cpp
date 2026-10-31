@@ -221,9 +221,9 @@ void PopupHost::Close() {
     // are no-ops). See CanClose() in PopupState.h.
     if (!CanClose(state_)) return;
 
-    // Enter Closing for the duration of the side effects: a reentrant Close() is
-    // a no-op (state != Open) and a reentrant Open() is rejected (CanOpen is
-    // false in Closing). IsOpen() also reads false throughout onClose_.
+    // Enter Closing for the duration of the popup's own side effects: a reentrant
+    // Close() is a no-op (state != Open) and a reentrant Open() is rejected
+    // (CanOpen is false in Closing).
     state_ = PopupState::Closing;
     
     // Unregister the auxiliary animation root so the parent window stops collecting
@@ -231,10 +231,20 @@ void PopupHost::Close() {
     auxAnimSub_.reset();
     
     ShowWindow(hwnd_, SW_HIDE);
-    if (onClose_) onClose_();
     state_ = PopupState::Closed;
-
     TraceMsg(kTag, "Close: popup hidden");
+
+    // The owner's callback runs LAST, with the popup already Closed. ComboBox and
+    // DatePicker raise their public DropDownClosed / CalendarClosed from it, and a
+    // handler may reopen the popup, which CanOpen rejected while this callback still
+    // ran in Closing. Nothing below the call touches a member and the callback runs
+    // from a local copy, so THIS function survives the owner being destroyed inside
+    // it; the owner's own Event::Raise and any input dispatch further up the stack do
+    // not (see PopupState.h), so handlers must not destroy the control synchronously.
+    if (onClose_) {
+        std::function<void()> cb = onClose_;
+        cb();
+    }
 }
 
 bool PopupHost::ContainsScreenPoint(int screenX, int screenY) const {
@@ -297,7 +307,20 @@ bool PopupHost::ForwardKey(UINT vk) {
     return args.handled;
 }
 
+void PopupHost::RequestRender() {
+    if (!renderCoalescer_.Request()) return;  // a render is already on its way
+    // PostMessage fails only without a window or with a full queue. Without a window
+    // Render() is a no-op anyway; with a full queue, paint now rather than lose it.
+    if (!hwnd_ || !PostMessageW(hwnd_, WM_FLUENT_POPUP_RENDER, 0, 0)) {
+        renderCoalescer_.Take();
+        Render();
+    }
+}
+
 void PopupHost::Render() {
+    // Whatever was requested so far is covered by this paint (or moot, if the
+    // popup is not showing), so a deferred render still in the queue can skip.
+    renderCoalescer_.Covered();
     if (!graphicsReady_ || !IsOpen()) return;
 
     ID2D1DeviceContext* dc = nullptr;
@@ -418,6 +441,10 @@ LRESULT PopupHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
 
         case WM_ERASEBKGND:
             return 1;  // DComp owns the content
+
+        case WM_FLUENT_POPUP_RENDER:
+            if (renderCoalescer_.Take()) Render();
+            return 0;
 
         case WM_PAINT: {
             PAINTSTRUCT ps;

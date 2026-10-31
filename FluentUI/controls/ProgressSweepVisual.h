@@ -7,7 +7,7 @@
 // a busy UI thread — a window resize in particular — made it stutter.
 //
 // This helper moves the motion onto the compositor thread via ICompositionBackend
-// (Phase 2): a clipped container visual positioned over the bar, holding a
+// (the compositor-thread sweep): a clipped container visual positioned over the bar, holding a
 // fixed-size accent segment surface whose OffsetX is driven by an infinitely
 // looping sweep (SweepSpec → MakeOffsetSweep in the real backend). Once started,
 // the compositor sweeps the segment on its own thread — it keeps moving even

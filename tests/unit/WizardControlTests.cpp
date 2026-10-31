@@ -481,6 +481,46 @@ TEST(WizardControl, InfiniteHeightMeasureStaysFinite) {
     EXPECT_TRUE(d.h >= WizardControl::kButtonBarHeight);
 }
 
+// page (StackPanel) > group (StackPanel) > leaf. The middle panel is the cache
+// that goes stale: a leaf that changes while its page is hidden drops only its own
+// measure cache, and the group learns of it solely through the dirty bit, which the
+// host clears tree-wide at frame end. If the wizard does not measure the hidden page
+// on that frame, the group hands back its old height when the page is shown at the
+// same size. Same mechanism as PageHost's ContentChangedWhileHiddenIsLaidOutWhenShown.
+TEST(WizardControl, ContentChangedWhileHiddenIsLaidOutWhenShown) {
+    WizardControl w;
+    w.SetTransitionStyle(WizardControl::TransitionStyle::None);
+    w.AddPage(L"a", std::make_unique<StackPanel>());
+    auto page = std::make_unique<StackPanel>();
+    page->SetOrientation(StackPanel::Orientation::Vertical);
+    auto* group = page->Emplace<StackPanel>();
+    group->SetOrientation(StackPanel::Orientation::Vertical);
+    auto* leaf = group->Emplace<FocusLeaf>();
+    leaf->SetHeight(20.0f);
+    w.AddPage(L"b", std::move(page));
+
+    // One host frame: layout, then the tree-wide dirty clear NativeWindowHost does
+    // after painting. Without the clear the stale-cache bug cannot be seen.
+    auto frame = [&w] {
+        w.UpdateLayout({0.0f, 0.0f, 600.0f, 400.0f});
+        w.ClearDirtySubtree();
+    };
+    frame();
+    w.Next();  // visit page 1 so its caches are warm, then leave it
+    frame();
+    w.Previous();
+    frame();
+    EXPECT_NEAR(group->Desired().h, 20.0f, 0.01f);
+
+    leaf->SetHeight(50.0f);  // page 1 is hidden; one frame at the same size
+    frame();
+
+    w.Next();
+    frame();
+    EXPECT_NEAR(group->Desired().h, 50.0f, 0.01f);
+    EXPECT_NEAR(leaf->Bounds().h, 50.0f, 0.01f);
+}
+
 TEST(WizardControl, HiddenPageIsNotHitTested) {
     WizardControl w;
     w.SetTransitionStyle(WizardControl::TransitionStyle::None);

@@ -78,10 +78,12 @@ void LogViewer::AppendLine(std::vector<TextSpan> spans) {
     line.height = PredictLineHeight(line);
     line.heightMeasured = false;
 
-    const float y = lines_.empty()
-        ? 0.0f
-        : (lineYPositions_.back() + lines_.back().height);
-    lineYPositions_.push_back(y);
+    // Absolute coordinate (see lineY_): an empty buffer starts at the origin, which
+    // after a Clear is 0 again.
+    const double y = lines_.empty()
+        ? yOrigin_
+        : (lineY_.back() + lines_.back().height);
+    lineY_.push_back(y);
     lines_.push_back(std::move(line));
 
     // The tail-follow flag is READ here, never recomputed — same rule as
@@ -100,7 +102,9 @@ void LogViewer::AppendLine(std::vector<TextSpan> spans) {
 
 void LogViewer::Clear() {
     lines_.clear();
-    lineYPositions_.clear();
+    lineY_.clear();
+    yOrigin_ = 0.0;
+    ResetLayoutCache();
     // The selection pointed into text that no longer exists.
     selAnchor_ = selCurrent_ = LogTextPos{};
     scroll_.SetContentHeight(0.0f);
@@ -122,16 +126,30 @@ void LogViewer::TrimToMaxLines() {
     // The height being dropped, measured BEFORE erasing: it is the exact amount the
     // scroll offset must shrink by for the visible text to hold still. Recomputing
     // it afterwards is impossible — the lines are gone.
-    const float droppedHeight = lineYPositions_[toRemove];
+    const float droppedHeight = LineTop(toRemove);
 
+    // Pop the front, O(toRemove). The previous version erased from the front of a
+    // vector and then subtracted droppedHeight from every surviving Y. With a full
+    // buffer that is O(maxLines) on EVERY append: ~10^9 element operations per second
+    // for a 100k-line cap at the 10k-lines/s target. Here the survivors' absolute Ys
+    // stay untouched and the origin moves to the new first line instead, which gives
+    // every one of them the same "shifted up by droppedHeight" in one assignment.
+    yOrigin_ = lineY_[toRemove];
     lines_.erase(lines_.begin(), lines_.begin() + static_cast<ptrdiff_t>(toRemove));
-    lineYPositions_.erase(lineYPositions_.begin(),
-                          lineYPositions_.begin() + static_cast<ptrdiff_t>(toRemove));
+    lineY_.erase(lineY_.begin(), lineY_.begin() + static_cast<ptrdiff_t>(toRemove));
 
-    // Every surviving line moved up by droppedHeight; rebase rather than re-walking
-    // from zero so measured heights are preserved.
-    for (auto& y : lineYPositions_)
-        y -= droppedHeight;
+    // The layout window is keyed by line index, and every index just dropped by
+    // toRemove. Rows for trimmed lines go; the rest are renumbered with their lines.
+    if (!layoutRows_.empty()) {
+        if (layoutFirst_ >= toRemove) {
+            layoutFirst_ -= toRemove;
+        } else {
+            const size_t gone = std::min(toRemove - layoutFirst_, layoutRows_.size());
+            layoutRows_.erase(layoutRows_.begin(),
+                              layoutRows_.begin() + static_cast<ptrdiff_t>(gone));
+            layoutFirst_ = 0;
+        }
+    }
 
     // A trim RENUMBERS lines: old line N+toRemove is now line N. A stored
     // (line, column) therefore designates different text than the user highlighted,
@@ -159,7 +177,17 @@ float LogViewer::PredictLineHeight(const LogLine& line) const {
 
 float LogViewer::GetContentExtent() const {
     if (lines_.empty()) return 0.0f;
-    return lineYPositions_.back() + lines_.back().height;
+    return LineTop(lines_.size() - 1) + lines_.back().height;
+}
+
+size_t LogViewer::LineAtContentY(float y) const {
+    // lineY_ is sorted ascending (each entry is the previous plus a positive height),
+    // so this is a binary search in the absolute coordinate. upper_bound - 1 is the
+    // last line whose top is at or above y.
+    const double abs = yOrigin_ + static_cast<double>(y);
+    const auto it = std::upper_bound(lineY_.begin(), lineY_.end(), abs);
+    const size_t idx = static_cast<size_t>(std::distance(lineY_.begin(), it));
+    return idx == 0 ? 0 : std::min(idx - 1, lines_.size() - 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -170,18 +198,19 @@ LogViewer::VisibleRange LogViewer::CalculateVisibleRange(float scrollTop,
                                                         float viewportHeight) const {
     if (lines_.empty() || viewportHeight <= 0.0f) return {0, -1};
 
-    // lineYPositions_ is sorted ascending (each entry is the previous plus a
-    // positive height), so both ends are a binary search. upper_bound - 1 gives the
-    // last line whose TOP is at or above scrollTop, which is the first line whose
-    // body can intersect the viewport.
-    const auto begin = lineYPositions_.begin();
-    const auto end = lineYPositions_.end();
+    // lineY_ is sorted ascending (each entry is the previous plus a positive
+    // height), so both ends are a binary search, in the absolute coordinate.
+    // upper_bound - 1 gives the last line whose TOP is at or above scrollTop, which
+    // is the first line whose body can intersect the viewport.
+    const auto begin = lineY_.begin();
+    const auto end = lineY_.end();
 
-    auto itFirst = std::upper_bound(begin, end, scrollTop);
+    auto itFirst = std::upper_bound(begin, end, yOrigin_ + static_cast<double>(scrollTop));
     int first = static_cast<int>(std::distance(begin, itFirst)) - 1;
     first = std::max(0, first);
 
-    auto itLast = std::lower_bound(begin, end, scrollTop + viewportHeight);
+    auto itLast = std::lower_bound(begin, end,
+                                   yOrigin_ + static_cast<double>(scrollTop + viewportHeight));
     int last = static_cast<int>(std::distance(begin, itLast)) - 1;
     last = std::min(last, static_cast<int>(lines_.size()) - 1);
     // A viewport shorter than one line still shows that line.
@@ -194,11 +223,11 @@ LogViewer::VisibleRange LogViewer::CalculateVisibleRange(float scrollTop,
 void LogViewer::RebuildYPositions(size_t fromIndex) {
     if (fromIndex >= lines_.size()) return;
 
-    float y = (fromIndex == 0)
-        ? 0.0f
-        : (lineYPositions_[fromIndex - 1] + lines_[fromIndex - 1].height);
+    double y = (fromIndex == 0)
+        ? yOrigin_
+        : (lineY_[fromIndex - 1] + lines_[fromIndex - 1].height);
     for (size_t i = fromIndex; i < lines_.size(); ++i) {
-        lineYPositions_[i] = y;
+        lineY_[i] = y;
         y += lines_[i].height;
     }
     scroll_.SetContentHeight(GetContentExtent());
@@ -251,26 +280,31 @@ ComPtr<IDWriteTextLayout> LogViewer::MakeSpanLayout(const TextSpan& span) const 
         span.text.c_str(), static_cast<UINT32>(span.text.size()),
         fmt, kUnboundedWidth, kUnboundedHeight, &layout);
     if (FAILED(hr) || !layout) return nullptr;
+    ++spanLayoutsBuilt_;
 
     if (span.underline)
         layout->SetUnderline(TRUE, {0, static_cast<UINT32>(span.text.size())});
     return layout;
 }
 
-void LogViewer::RenderLine(const DrawingContext& dc, LogLine& line, float y) {
+void LogViewer::RenderLine(const DrawingContext& dc, size_t lineIndex, float y) {
     DWriteContext* dw = Dwrite();
     if (!dw || !dw->Factory()) return;
 
+    LogLine& line = lines_[lineIndex];
     float x = bounds_.x + kPadding;
     float maxHeight = 0.0f;
 
-    for (const auto& span : line.spans) {
+    ComPtr<IDWriteTextLayout> scratch;
+    for (size_t s = 0; s < line.spans.size(); ++s) {
+        const TextSpan& span = line.spans[s];
         if (span.text.empty()) continue;
 
-        ComPtr<IDWriteTextLayout> layout = MakeSpanLayout(span);
+        // From the cache: PrepareVisibleLayouts built this line's row before the loop.
+        IDWriteTextLayout* layout = SpanLayout(lineIndex, s, scratch);
         if (!layout) continue;
 
-        dc.DrawTextLayout(D2D1::Point2F(x, y), layout.Get(), span.color);
+        dc.DrawTextLayout(D2D1::Point2F(x, y), layout, span.color);
 
         DWRITE_TEXT_METRICS tm{};
         if (SUCCEEDED(layout->GetMetrics(&tm))) {
@@ -320,10 +354,11 @@ void LogViewer::Render(const DrawingContext& dc) {
     const float scrollTop = SnapToPixel(scroll_.Offset(), dpiScale);
     const float viewportH = bounds_.h;
     const VisibleRange range = CalculateVisibleRange(scrollTop, viewportH);
+    PrepareVisibleLayouts(range);
 
     // Which lines were still estimates when this frame started. Drawing is
     // measuring here (same shape as TextArea's Wrap path), so the corrections have
-    // to be applied after the loop — mutating lineYPositions_ mid-walk would move
+    // to be applied after the loop — mutating lineY_ mid-walk would move
     // lines the loop has not reached yet.
     size_t firstCorrected = lines_.size();
 
@@ -336,14 +371,14 @@ void LogViewer::Render(const DrawingContext& dc) {
         const bool wasEstimate = !lines_[idx].heightMeasured;
         const float before = lines_[idx].height;
 
-        const float y = bounds_.y + lineYPositions_[idx] - scrollTop;
+        const float y = bounds_.y + LineTop(idx) - scrollTop;
 
         // Highlight first, glyphs second: the fill is opaque-ish and would cover the
         // text if drawn after it.
         if (hasSel && idx >= selFrom.line && idx <= selTo.line)
             RenderSelectionForLine(dc, lines_[idx], idx, y, selFrom, selTo);
 
-        RenderLine(dc, lines_[idx], y);
+        RenderLine(dc, idx, y);
 
         if (wasEstimate && lines_[idx].heightMeasured &&
             std::fabs(lines_[idx].height - before) > 0.5f) {
@@ -587,6 +622,9 @@ void LogViewer::OnAttachedToTree() {
     // back to the LIGHT default snapshot — drawing the rail in near-black ink
     // regardless of the real theme.
     scroll_.AttachToContext(Context());
+    // A row built while DWrite was absent holds nulls marked as built; the new
+    // context can lay them out, so start the cache over.
+    ResetLayoutCache();
 
     // Fix first-frame layout jump: if lines were appended before attach, their heights
     // are estimated (fontSize * kLineSpacing). Now that we have DWrite context, measure
@@ -621,7 +659,72 @@ void LogViewer::OnAttachedToTree() {
 }
 
 void LogViewer::OnDetachedFromTree() {
+    // The layouts came from this context's DWrite factory; the next context may
+    // bring a different one.
+    ResetLayoutCache();
     Control::OnDetachedFromTree();
+}
+
+// ---------------------------------------------------------------------------
+// Span layout cache
+// ---------------------------------------------------------------------------
+
+void LogViewer::SyncLayoutWindow(size_t first, size_t last) const {
+    if (first > last || first >= lines_.size()) { ResetLayoutCache(); return; }
+    last = std::min(last, lines_.size() - 1);
+
+    const size_t curFirst = layoutFirst_;
+    const size_t curEnd = layoutFirst_ + layoutRows_.size();   // one past the last
+    if (layoutRows_.empty() || last < curFirst || first >= curEnd) {
+        // No overlap (a jump, or the first paint): nothing to keep.
+        layoutRows_.clear();
+        layoutRows_.resize(last - first + 1);
+        layoutFirst_ = first;
+        return;
+    }
+    // Overlap: trim or extend each end. A scroll by a few lines touches only those
+    // few rows, which is what makes a tail-follow append cost one line of layouts.
+    while (layoutFirst_ < first) { layoutRows_.pop_front(); ++layoutFirst_; }
+    while (layoutFirst_ > first) { layoutRows_.emplace_front(); --layoutFirst_; }
+    const size_t want = last - first + 1;
+    if (layoutRows_.size() > want) layoutRows_.resize(want);
+    while (layoutRows_.size() < want) layoutRows_.emplace_back();
+}
+
+IDWriteTextLayout* LogViewer::SpanLayout(size_t lineIndex, size_t spanIndex,
+                                         ComPtr<IDWriteTextLayout>& scratch) const {
+    const LogLine& line = lines_[lineIndex];
+    if (spanIndex >= line.spans.size()) return nullptr;
+
+    if (lineIndex >= layoutFirst_ && lineIndex - layoutFirst_ < layoutRows_.size()) {
+        LayoutRow& row = layoutRows_[lineIndex - layoutFirst_];
+        if (!row.built) {
+            row.spans.resize(line.spans.size());
+            for (size_t s = 0; s < line.spans.size(); ++s)
+                row.spans[s] = MakeSpanLayout(line.spans[s]);
+            row.built = true;
+        }
+        return row.spans[spanIndex].Get();
+    }
+    // Outside the window (a hit test on a line that is not drawn): build it for this
+    // call only. Caching it would let the cache grow with every off-screen line that
+    // was ever queried.
+    scratch = MakeSpanLayout(line.spans[spanIndex]);
+    return scratch.Get();
+}
+
+void LogViewer::PrepareVisibleLayouts(const VisibleRange& range) const {
+    if (range.first > range.last) { ResetLayoutCache(); return; }
+    SyncLayoutWindow(static_cast<size_t>(range.first), static_cast<size_t>(range.last));
+    ComPtr<IDWriteTextLayout> unused;
+    for (int i = range.first; i <= range.last; ++i)
+        SpanLayout(static_cast<size_t>(i), 0, unused);   // builds the row if needed
+}
+
+void LogViewer::PrepareVisibleLayoutsForTest() {
+    // Same inputs Render uses: the pixel-snapped offset and the control's height.
+    const float scrollTop = SnapToPixel(scroll_.Offset(), Context().dpiScale);
+    PrepareVisibleLayouts(CalculateVisibleRange(scrollTop, bounds_.h));
 }
 
 // ---------------------------------------------------------------------------
@@ -799,17 +902,20 @@ bool LogViewer::CopySelectionToClipboard() const {
 // column has to be resolved by walking spans and asking the span that contains it.
 // This is why the walk uses widthIncludingTrailingWhitespace exactly as the draw
 // loop does — any disagreement here shows up as a highlight offset from the glyphs.
-float LogViewer::ColumnToX(const LogLine& line, size_t column) const {
+float LogViewer::ColumnToX(size_t lineIndex, size_t column) const {
+    const LogLine& line = lines_[lineIndex];
     float x = bounds_.x + kPadding;
     size_t consumed = 0;
 
-    for (const auto& span : line.spans) {
+    ComPtr<IDWriteTextLayout> scratch;
+    for (size_t s = 0; s < line.spans.size(); ++s) {
+        const TextSpan& span = line.spans[s];
         if (span.text.empty()) continue;
         const size_t spanLen = span.text.size();
 
         if (column <= consumed) return x;
 
-        ComPtr<IDWriteTextLayout> layout = MakeSpanLayout(span);
+        IDWriteTextLayout* layout = SpanLayout(lineIndex, s, scratch);
         if (!layout) { consumed += spanLen; continue; }
 
         if (column < consumed + spanLen) {
@@ -841,14 +947,7 @@ LogTextPos LogViewer::HitTestPosition(float dipX, float dipY) const {
     const float scrollTop = scroll_.Offset();
     const float contentY = dipY - bounds_.y + scrollTop;
 
-    size_t lineIdx;
-    if (contentY <= 0.0f) {
-        lineIdx = 0;
-    } else {
-        auto it = std::upper_bound(lineYPositions_.begin(), lineYPositions_.end(), contentY);
-        const size_t idx = static_cast<size_t>(std::distance(lineYPositions_.begin(), it));
-        lineIdx = (idx == 0) ? 0 : std::min(idx - 1, lines_.size() - 1);
-    }
+    const size_t lineIdx = (contentY <= 0.0f) ? 0 : LineAtContentY(contentY);
 
     const LogLine& line = lines_[lineIdx];
     const size_t lineLen = line.PlainText().size();
@@ -859,12 +958,16 @@ LogTextPos LogViewer::HitTestPosition(float dipX, float dipY) const {
     float x = bounds_.x + kPadding;
     if (dipX <= x) return LogTextPos{lineIdx, 0};
 
+    // The hit line is almost always on screen, so its layouts come from the cache;
+    // a press below the last drawn line (clamped onto it) builds into scratch.
     size_t consumed = 0;
-    for (const auto& span : line.spans) {
+    ComPtr<IDWriteTextLayout> scratch;
+    for (size_t s = 0; s < line.spans.size(); ++s) {
+        const TextSpan& span = line.spans[s];
         if (span.text.empty()) continue;
         const size_t spanLen = span.text.size();
 
-        ComPtr<IDWriteTextLayout> layout = MakeSpanLayout(span);
+        IDWriteTextLayout* layout = SpanLayout(lineIdx, s, scratch);
         if (!layout) { consumed += spanLen; continue; }
 
         DWRITE_TEXT_METRICS tm{};
@@ -904,12 +1007,12 @@ void LogViewer::RenderSelectionForLine(const DrawingContext& dc, const LogLine& 
 
     // A fully-selected line whose text is empty still gets a thin marker, otherwise a
     // blank line inside a multi-line selection reads as a gap in the highlight.
-    float x0 = ColumnToX(line, begin);
-    float x1 = (begin < end) ? ColumnToX(line, end) : x0 + 4.0f;
+    float x0 = ColumnToX(lineIndex, begin);
+    float x1 = (begin < end) ? ColumnToX(lineIndex, end) : x0 + 4.0f;
     if (lineIndex != to.line) {
         // Not the last line: the selection continues past the end of the text, so
         // extend a little to show the newline is included.
-        x1 = std::max(x1, ColumnToX(line, lineLen) + 4.0f);
+        x1 = std::max(x1, ColumnToX(lineIndex, lineLen) + 4.0f);
     }
     if (x1 <= x0) return;
 
@@ -1058,7 +1161,7 @@ bool LogViewer::ScrollByKey(UINT vk, bool ctrl) {
 
 void LogViewer::EnsureLineVisible(size_t line) {
     if (line >= lines_.size()) return;
-    const float top = lineYPositions_[line];
+    const float top = LineTop(line);
     const float bottom = top + lines_[line].height;
     const float viewTop = scroll_.Offset();
     if (top < viewTop) scroll_.SetOffset(top);

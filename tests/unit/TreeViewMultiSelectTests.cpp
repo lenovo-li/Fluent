@@ -254,3 +254,51 @@ TEST(TreeViewMultiSelect, SingleModeIgnoresShift) {
     EXPECT_TRUE(tv.IsRowSelected(3));
     EXPECT_FALSE(tv.IsRowSelected(1));
 }
+
+// --- Ranges skip collapsed subtrees ------------------------------------------
+//
+// Rows are stored pre-order, so a collapsed node's descendants sit numerically
+// INSIDE a Shift range between two visible rows. The range used to take every row
+// index in between: two rows highlighted on screen, but SelectedRowIndices() also
+// reported the hidden children, and an app deleting "the selection" deleted nodes
+// the user never saw.
+namespace {
+// A (collapsed, 3 children) then B: visible rows are A (row 0) and B (row 4).
+void FillCollapsedTree(TreeView& tv) {
+    std::vector<TreeViewRow> rows;
+    TreeViewRow a; a.id = 0; a.text = L"A"; a.hasChildren = true; a.expanded = false;
+    rows.push_back(a);
+    for (int i = 1; i <= 3; ++i) {
+        TreeViewRow c; c.id = i; c.parentId = 0; c.depth = 1;
+        c.text = L"child" + std::to_wstring(i);
+        rows.push_back(c);
+    }
+    TreeViewRow b; b.id = 4; b.text = L"B";
+    rows.push_back(b);
+    tv.SetRows(std::move(rows));
+    tv.SetBounds({0, 0, 200, 200});
+    tv.SetSelectionMode(SelectionMode::Multiple);
+}
+}  // namespace
+
+TEST(TreeViewMultiSelect, ShiftClickRangeSkipsRowsInsideACollapsedNode) {
+    TreeView tv; FillCollapsedTree(tv);
+    SimulateClick(tv, 0);                        // A (visible 0)
+    SimulateClick(tv, 1, ModifierKeys::Shift);   // B (visible 1, row 4)
+    auto sel = tv.SelectedRowIndices();
+    EXPECT_EQ(sel.size(), 2u);
+    EXPECT_TRUE(tv.IsRowSelected(0));
+    EXPECT_TRUE(tv.IsRowSelected(4));
+    for (int hidden = 1; hidden <= 3; ++hidden)
+        EXPECT_FALSE(tv.IsRowSelected(hidden));
+}
+
+TEST(TreeViewMultiSelect, ShiftArrowRangeSkipsRowsInsideACollapsedNode) {
+    TreeView tv; FillCollapsedTree(tv);
+    SimulateClick(tv, 0);                        // A
+    SimulateKey(tv, VK_DOWN, ModifierKeys::Shift);
+    auto sel = tv.SelectedRowIndices();
+    EXPECT_EQ(sel.size(), 2u);
+    EXPECT_FALSE(tv.IsRowSelected(2));
+    EXPECT_TRUE(tv.IsRowSelected(4));
+}

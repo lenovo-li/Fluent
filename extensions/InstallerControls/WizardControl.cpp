@@ -240,6 +240,24 @@ SizeDip WizardControl::MeasureOverride(float availW, float availH) {
         pageSize = page->Desired();
     }
 
+    // Hidden pages are measured ONLY when something inside them is Measure-dirty,
+    // and their result never sizes the wizard. The host clears dirty flags across
+    // the whole tree at the end of every frame (ClearDirtySubtree ignores
+    // visibility). A leaf that changes inside a hidden page drops only its own
+    // measure cache; its ancestors learn about it solely through the dirty bit
+    // (Panel::NeedsRemeasure). Skip the page on that frame and the bit is cleared
+    // unserviced: when the page is shown at an unchanged width, its intermediate
+    // panels hand back their old cached sizes and the changed leaf keeps stale
+    // layout until the next resize. Measuring the page on the frame its content
+    // changes consumes the bit while it still exists; a plain resize still skips
+    // every hidden page (PageHost does the same for the same reason).
+    for (int i = 0; i < PageCount(); ++i) {
+        if (i == currentPage_) continue;
+        FrameworkElement* hidden = pages_[i].content;
+        if (!hidden || hidden->IsVisible() || !hidden->NeedsRemeasure()) continue;
+        hidden->MeasureCached(availW, pageAvailH);
+    }
+
     float barW = kBarInsetX * 2.0f;
     int shown = 0;
     for (Button* b : {btnBack_, btnNext_, btnCancel_}) {

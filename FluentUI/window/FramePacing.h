@@ -3,7 +3,7 @@
 // WHY THIS EXISTS: the content used to be a swap chain, and Present1 blocked on
 // vsync, so the message loop got its pacing for free — it could ask
 // MsgWaitForMultipleObjectsEx for a 0 timeout and rely on Present for
-// backpressure. Route 2 replaced the swap chain with an IDCompositionVirtualSurface,
+// backpressure. Replacing the swap chain with an IDCompositionVirtualSurface removed that,
 // and Commit() does NOT block. With the frame-latency waitable gone too, a loop that
 // still passes timeout=0 whenever something animates spins as fast as the CPU allows:
 // a 36s session on a 120Hz display measured 69762 frames (~1927 fps, ~16x the panel)
@@ -103,6 +103,20 @@ inline constexpr double kFrameDueEpsilonMs = 0.05;
 // reached.
 inline bool FrameIsDue(double remainingMs) {
     return remainingMs <= kFrameDueEpsilonMs;
+}
+
+// Should the message loop advance a window's animations on this turn?
+//
+// Only when it is about to paint: a pending frame that is due. The loop turns once
+// per wake, and a wake can be any input message, so "once per turn" means "once
+// per mouse report" under a fast mouse, far more often than frames are painted.
+// The tick's dt comes from the real clock, so skipping the turns that do not paint
+// loses nothing: the tick before the paint advances by the whole elapsed time.
+// Same FrameIsDue as the paint decision, so the tick and the paint cannot drift
+// apart (a tick without its paint is wasted work; a paint without its tick shows a
+// stale animation state).
+inline bool AnimationTickIsDue(bool framePending, double remainingMs) {
+    return framePending && FrameIsDue(remainingMs);
 }
 
 // Should a frame be painted NOW, when the decision can only be made at discrete,

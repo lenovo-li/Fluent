@@ -205,10 +205,16 @@ bool Application::PumpOneTurn(bool stopWhenNoWindows) {
     if (shutdownRequested_) return false;
     if (stopWhenNoWindows && WindowCountStop()) return false;
 
+    // A running animation clock must keep a frame pending, or the wait below would
+    // block forever and the animation would never get its next tick. Arming the
+    // clock (UpdateAnimationTimer -> SetWanted) does not request a frame by itself;
+    // the tick used to do that at the top of every turn. Now that the tick only
+    // runs with a due frame (below), the request is made here instead.
     auto snapshot = windows_.Snapshot();
     for (const Entry& entry : snapshot)
-        if (windows_.Contains(entry) && entry.window->IsOpen())
-            entry.window->PumpAnimations();
+        if (windows_.Contains(entry) && entry.window->IsOpen() &&
+            entry.window->IsAnimating() && !entry.window->NeedsFrame())
+            entry.window->RequestFrame(FrameReason::Animation);
 
     // Pace on the SOONEST deadline among windows that actually want a frame, as a
     // real number of milliseconds. Whole-millisecond timeouts are rounded up to the
@@ -225,8 +231,31 @@ bool Application::PumpOneTurn(bool stopWhenNoWindows) {
     }
 
     // kWaitForever here means nothing is scheduled, so this blocks on input alone
-    // and idle stays at zero CPU.
+    // and idle stays at zero CPU. Before waiting, tell each window's hang watchdog
+    // whether THAT window is idle: a window that paints nothing and receives
+    // nothing for longer than the watchdog's threshold is idle, not hung, and its
+    // watchdog thread also stops polling for the duration (window/HangDetector.h).
+    //
+    // The decision is per window, not "is the whole wait unbounded". Each window
+    // has its own watchdog, and a quiet window next to a busy one (an
+    // indeterminate ProgressBar without a compositor, a long animation in a second
+    // window or a modal dialog) used to be neither marked idle — the wait was
+    // bounded — nor beaten — the after-wait beat only ran for unbounded waits — so
+    // its last beat stayed put and the watchdog reported the healthy UI thread as
+    // hung after the threshold. A window with a pending frame is not marked: its
+    // wait ends within a frame interval and the beat below follows it.
+    for (const Entry& entry : snapshot)
+        if (windows_.Contains(entry) && entry.window->IsOpen() && !entry.window->NeedsFrame())
+            entry.window->NoteLoopIdle();
     waiter_.Wait(remaining);
+    // Beat every window on every wake, bounded wait or not. It clears the idle
+    // mark set above (a window whose handler then hangs is judged from this beat,
+    // not from its last frame) and covers wakes that dispatch nothing to the
+    // window (a thread message, Application::Post work). Beat costs one relaxed
+    // store unless the window was idle.
+    snapshot = windows_.Snapshot();
+    for (const Entry& entry : snapshot)
+        if (windows_.Contains(entry)) entry.window->NoteLoopAwake();
 
     MSG msg;
     while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
@@ -241,12 +270,23 @@ bool Application::PumpOneTurn(bool stopWhenNoWindows) {
 
     snapshot = windows_.Snapshot();
     for (const Entry& entry : snapshot) {
-        if (!windows_.Contains(entry) || !entry.window->IsOpen() || !entry.window->NeedsFrame())
+        if (!windows_.Contains(entry) || !entry.window->IsOpen())
             continue;
         // Same predicate FrameWaiter used to decide not to sleep, so "we stopped
         // waiting" and "it is time to paint" can never disagree.
-        if (FrameIsDue(entry.window->FrameWaitRemaining()))
+        //
+        // The animation tick runs here, immediately before the paint and under the
+        // same predicate, not once per turn. A turn ends on ANY input: with a
+        // 1000Hz mouse moving over a 120Hz window the loop turns ~1000 times a
+        // second but paints ~120, and ticking every turn ran OnAnimationTick (which
+        // can re-rasterize a scroll surface) eight times per painted frame for
+        // nothing on screen. dt is measured from the real clock, so one tick per
+        // painted frame advances the animation exactly as far. Ticking after the
+        // drain also means the tick sees this turn's input.
+        if (AnimationTickIsDue(entry.window->NeedsFrame(), entry.window->FrameWaitRemaining())) {
+            entry.window->PumpAnimations();
             entry.window->RunDueFrame();
+        }
     }
     return !shutdownRequested_ && (!stopWhenNoWindows || !WindowCountStop());
 }

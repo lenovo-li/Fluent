@@ -151,6 +151,11 @@ list->SetSelectionMode(SelectionMode::Multiple);
   少了这一行,滚动动画只会在「碰巧有别的元素也失效」的那些帧上前进,表现为**分段跳动**。
 - `SetKeepVisibleWhenOverflow(true)`:内容溢出时滚动条常驻,避免它出现/消失导致内容宽度
   反复变化(那会引起布局抖动)。
+- **没有订阅者时不构造集合事件的载荷**:多选集合变化后,`SelectionSetChanged` 没人订阅时不再把整个
+  集合复制并排序成向量,大列表上 Shift+End 的大部分成本就在这一步。范围选择插入集合前也先 `reserve`
+  (在 `Selector::AddRangeToSelectionSet` 里)。没有专门的测试:没有订阅者时本来就没有可观测的输出。
+  已知上限:范围选择仍是 O(范围长度) 次插入,百万项列表上的 Shift+End 会感觉得到;集合访问器和集合事件都交出
+  完整的索引列表,改成区间表示需要连同它们一起改。
 
 ### 键盘导航
 

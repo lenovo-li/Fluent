@@ -283,7 +283,7 @@ TEST(DataGrid, EmptyGridReportsNothingVisible) {
     EXPECT_TRUE(last < first);          // the "empty" signal callers loop against
 }
 
-// --- Phase 1: Keyboard row navigation -----------------------------------------
+// --- Keyboard row navigation -------------------------------------------------
 
 TEST(DataGrid, ArrowDownSelectsNextRow) {
     Fixture f(50);
@@ -367,7 +367,7 @@ TEST(DataGrid, EndJumpsToLastRow) {
     EXPECT_TRUE(e.handled);
 }
 
-// --- Phase 2: Copy to clipboard -----------------------------------------------
+// --- Copy to clipboard -------------------------------------------------------
 
 // Copy is ON by default: Ctrl+C on a table is what every user expects, and a grid that
 // silently ignores it reads as broken. Apps that must block it call SetCopyEnabled(false).
@@ -578,4 +578,140 @@ TEST(DataGrid, LosingFocusCommitsTheEdit) {
     // The overlay loses focus → OnFocusChanged should commit.
     focusMgr.SetFocus(&grid);  // move focus away from the overlay
     EXPECT_FALSE(grid.IsEditing());
+}
+
+// --- Multi-select keyboard ranges ---------------------------------------------
+
+// Shift+Down must keep growing the range. The keys used to step from the FIRST
+// selected row, and {5,6}.front() is still 5, so every further Shift+Down asked for
+// row 6 again and the range was stuck at two rows (Shift+Up worked because the front
+// moves upward).
+TEST(DataGrid, ShiftDownKeepsGrowingTheRange) {
+    Fixture f(50);
+    f.grid.SetSelectionMode(DataGrid::SelectionMode::Multiple);
+    f.grid.SetSelectedRow(5);
+    for (int i = 0; i < 3; ++i) {
+        KeyEventArgs e;
+        e.vk = VK_DOWN;
+        e.modifiers = ModifierKeys::Shift;
+        f.grid.OnKeyDownRouted(e);
+    }
+    const std::vector<int>& sel = f.grid.SelectedRows();
+    EXPECT_EQ(sel.size(), 4u);                 // {5,6,7,8}
+    if (sel.size() == 4u) {
+        EXPECT_EQ(sel.front(), 5);
+        EXPECT_EQ(sel.back(), 8);
+    }
+
+    // And Shift+Up from there shrinks from the moving end, not the anchor.
+    KeyEventArgs up;
+    up.vk = VK_UP;
+    up.modifiers = ModifierKeys::Shift;
+    f.grid.OnKeyDownRouted(up);
+    EXPECT_EQ(f.grid.SelectedRows().size(), 3u);   // {5,6,7}
+    EXPECT_EQ(f.grid.SelectedRows().back(), 7);
+}
+
+namespace {
+void CountGridSelection(void* ctx, DataGrid&, RoutedEventArgs&) {
+    ++*static_cast<int*>(ctx);
+}
+}  // namespace
+
+// A range gesture that leaves the set as it was raises nothing.
+TEST(DataGrid, UnchangedRangeDoesNotRaiseSelectionChanged) {
+    Fixture f(50);
+    f.grid.SetSelectionMode(DataGrid::SelectionMode::Multiple);
+    f.grid.SetSelectedRow(5);
+    KeyEventArgs e;
+    e.vk = VK_DOWN;
+    e.modifiers = ModifierKeys::Shift;
+    f.grid.OnKeyDownRouted(e);                 // {5,6}
+
+    int raised = 0;
+    auto sub = f.grid.SelectionChanged().Subscribe(&raised, &CountGridSelection);
+    // Shift+click on the row that already ends the range: same set.
+    PointerEventArgs click{};
+    click.button = PointerButton::Left;
+    click.modifiers = ModifierKeys::Shift;
+    click.position = Point{10.0f, f.grid.CellRect(6, 0).y + 10.0f};
+    f.grid.OnPointerPressed(click);
+    EXPECT_EQ(f.grid.SelectedRows().size(), 2u);
+    EXPECT_EQ(raised, 0);
+}
+
+// --- Gridlines and the frozen band -------------------------------------------
+
+// A scrolling column's edge that has scrolled under the frozen band is not drawn:
+// the cells are clipped right of the band, the lines used to be clipped only to the
+// viewport, so they ran through the pinned column's text.
+TEST(DataGrid, ScrolledGridLinesDoNotCrossTheFrozenBand) {
+    MockHost host;
+    DataGrid grid;
+    grid.AttachToContext(MakeCtx(host));
+    std::vector<DataGrid::Column> cols;
+    for (int i = 0; i < 6; ++i) {
+        DataGrid::Column c{L"C" + std::to_wstring(i), 80.0f, DataGrid::Align::Left};
+        c.frozen = (i == 0);                   // band = [0, 80)
+        cols.push_back(c);
+    }
+    grid.SetColumns(std::move(cols));
+    grid.SetRowCount(10);
+    grid.Measure(300.0f, 300.0f);
+    grid.Arrange(RectDip{0.0f, 0.0f, 300.0f, 300.0f});
+
+    float x = 0.0f;
+    // Unscrolled: column 1's right edge is at 160, a normal visible line.
+    EXPECT_TRUE(grid.VerticalGridLineX(2, x));
+    EXPECT_NEAR(x, 160.0f, 0.01f);
+
+    // Scroll 100: column 1 now spans [-20, 60) — its right edge (60) is under the band.
+    grid.SetHorizontalOffset(100.0f);
+    EXPECT_FALSE(grid.VerticalGridLineX(2, x));
+    // Column 2's right edge (140) is right of the band: still drawn.
+    EXPECT_TRUE(grid.VerticalGridLineX(3, x));
+    EXPECT_NEAR(x, 140.0f, 0.01f);
+    // The frozen column's own edge and the grid's left edge never move.
+    EXPECT_TRUE(grid.VerticalGridLineX(1, x));
+    EXPECT_NEAR(x, 80.0f, 0.01f);
+    EXPECT_TRUE(grid.VerticalGridLineX(0, x));
+    EXPECT_NEAR(x, 0.0f, 0.01f);
+}
+
+// --- Idle-cost: hover and wheel ----------------------------------------------
+
+// Hovering a column divider changes the cursor only; Render draws nothing for it, so
+// it must not dirty the grid (it used to repaint every visible cell on enter and on
+// leave of each divider).
+TEST(DataGrid, DividerHoverDoesNotRepaint) {
+    Fixture f(50);
+    f.grid.ClearDirty();
+    PointerEventArgs move{};
+    move.position = Point{100.0f, 10.0f};      // column 0's right edge, in the header
+    f.grid.OnPointerMoved(move);
+    EXPECT_TRUE(f.grid.Cursor() != nullptr);   // the hover itself is still tracked
+    EXPECT_FALSE(Any(f.grid.Dirty()));
+
+    move.position = Point{50.0f, 10.0f};       // off the divider
+    f.grid.OnPointerMoved(move);
+    EXPECT_TRUE(f.grid.Cursor() == nullptr);
+    EXPECT_FALSE(Any(f.grid.Dirty()));
+}
+
+// With every row on screen there is nothing to scroll: the wheel must bubble (stay
+// unhandled) so an enclosing ScrollPanel can scroll the page.
+TEST(DataGrid, WheelBubblesWhenNothingToScroll) {
+    Fixture few(3);                            // 3 rows in a ~268 DIP body
+    PointerEventArgs wheel{};
+    wheel.position = Point{10.0f, 60.0f};
+    wheel.wheelDelta = -120;
+    few.grid.OnPointerWheelChanged(wheel);
+    EXPECT_FALSE(wheel.handled);
+
+    Fixture many(500);
+    PointerEventArgs wheel2{};
+    wheel2.position = Point{10.0f, 60.0f};
+    wheel2.wheelDelta = -120;
+    many.grid.OnPointerWheelChanged(wheel2);
+    EXPECT_TRUE(wheel2.handled);
 }

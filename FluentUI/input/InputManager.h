@@ -19,10 +19,13 @@
 //   The InputManager, the root element list it walks, and the invalidate target
 //   MUST outlive any single event it dispatches. A PointerXxx/KeyDown call routes
 //   into arbitrary control handlers and then touches its own members again (e.g.
-//   the trailing RequestInvalidate — needed because some input changes visible
-//   state without the element self-invalidating, such as a scrollbar rail's hover
-//   fade). So a handler MUST NOT synchronously destroy the InputManager (nor its
-//   host, nor the invalidate target) from inside a dispatched event.
+//   the trailing RequestInvalidate on press/release/key, kept because a few of
+//   those visuals change without the element self-invalidating — GridSplitter's
+//   pressed fill, TextBlock's thumb on release). Pointer MOVE and WHEEL make no
+//   such request: an unconditional one made every mouse move a full-window
+//   redraw, so move/wheel visuals must invalidate themselves (see PointerMoved).
+//   So a handler MUST NOT synchronously destroy the InputManager (nor its host,
+//   nor the invalidate target) from inside a dispatched event.
 //
 //   The one place this bites: a popup whose own content closes it (a menu item's
 //   onInvoke). MenuFlyout must NOT free a PopupHost (which owns an InputManager)

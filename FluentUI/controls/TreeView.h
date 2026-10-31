@@ -125,7 +125,7 @@ public:
     // Shift+click, or programmatic ToggleRowSelection / RangeSelectTo).
     Event<TreeView, std::vector<int>>& SelectionSetChanged() { return selectionSetChanged_; }
 
-    // Fired when a row is double-clicked (Phase 2). The default behavior (when
+    // Fired when a row is double-clicked. The default behavior (when
     // args.handled is false) toggles expansion for rows with children. Set
     // handled=true to prevent the toggle and implement custom behavior (e.g., open
     // a file). Control the default behavior via SetDoubleClickTogglesExpansion.
@@ -172,6 +172,9 @@ protected:
     // Selector hook: the multi-select set changed via ToggleSelection /
     // RangeSelectTo. Raise SelectionSetChanged.
     void OnSelectionSetChanged() override;
+    // Selector hook: a Shift range selects the VISIBLE rows between its ends, not
+    // every row index — rows inside a collapsed node are skipped (see Selector).
+    void AddRangeToSelectionSet(int lo, int hi) override;
 
 private:
     // The scroll offset currently shown. Kept as a named accessor (rather than
@@ -227,7 +230,7 @@ private:
     Event<TreeView, std::vector<int>> selectionSetChanged_;
     Event<TreeView, TreeViewItemDoubleClickArgs> itemDoubleClick_;
     
-    // Double-click detection state (Phase 2)
+    // Double-click detection state
     DWORD lastClickTime_ = 0;
     int lastClickRow_ = -1;
     bool doubleClickTogglesExpansion_ = true;

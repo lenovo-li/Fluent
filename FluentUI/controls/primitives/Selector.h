@@ -142,7 +142,7 @@ public:
         const int lo = std::min(anchor, index);
         const int hi = std::max(anchor, index);
         selectedIndices_.clear();
-        for (int i = lo; i <= hi; ++i) selectedIndices_.insert(i);
+        AddRangeToSelectionSet(lo, hi);
         selectedIndex_ = index;  // the end of the range becomes the active index
         OnSelectionSetChanged();
         this->Invalidate();
@@ -160,6 +160,22 @@ protected:
     // Called after selectedIndex_ actually changes. Subclass raises its Event<>
     // and runs side effects (list-view sync, ensure-visible). Default no-op.
     virtual void OnSelectionChanged(int /*oldIndex*/, int /*newIndex*/) {}
+
+    // Fill selectedIndices_ for RangeSelectTo's inclusive [lo, hi] (the set is
+    // already cleared). The default takes every index in between, which is right
+    // for a flat list. TreeView overrides it: its indices are rows of a pre-order
+    // tree, and a collapsed subtree's rows sit numerically INSIDE the range while
+    // being invisible, so "every index" selected nodes the user cannot see — and
+    // a delete over SelectedRowIndices() would act on them.
+    //
+    // Cost is O(hi - lo) inserts on the input path, which is a known limit for a
+    // huge virtualized list (Shift+End over 1M items); the public set accessors and
+    // the set-changed events hand out the full index list, so a range-based
+    // representation would have to change them too.
+    virtual void AddRangeToSelectionSet(int lo, int hi) {
+        selectedIndices_.reserve(static_cast<size_t>(hi - lo + 1));
+        for (int i = lo; i <= hi; ++i) selectedIndices_.insert(i);
+    }
 
     // Called after the multi-select SET changes without going through
     // SetSelectedIndex (i.e. from ToggleSelection / RangeSelectTo). Subclass

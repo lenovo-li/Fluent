@@ -75,6 +75,12 @@ public:
 protected:
     SizeDip MeasureOverride(float availW, float availH) override;
     void ArrangeOverride(const RectDip& content) override;
+    // cells_ is keyed by the child's address. Without this erase a removed child's
+    // entry outlived it: the map only grew under Clear()+rebuild refreshes, and a new
+    // child allocated at the recycled address inherited the old row/column instead
+    // of the (0,0) default — placed in the wrong cell, and GridSplitter's
+    // TrackIndex read the wrong column through ColumnOf.
+    void OnChildRemoved(FrameworkElement* child) override { cells_.erase(child); }
 
 private:
     struct Cell {

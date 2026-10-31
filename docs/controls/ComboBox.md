@@ -127,6 +127,15 @@ Event<ComboBox, RoutedEventArgs>& DropDownClosed();
 轻触关闭或 detach 导致的关闭。两者每次转换时恰好触发一次：`OpenPopup` 和 `ClosePopup`
 在弹出窗口已处于请求状态时提前返回，所以第二次点击不会重新触发。
 
+**`DropDownClosed` 在弹出窗口完全关闭之后才触发**，所以处理器里可以重新打开下拉框
+（打开不会被拒绝，重新打开的下拉框照样能被轻触关闭）。
+
+⚠️ **不要在 `DropDownClosed` 或 `SelectionChanged` 处理器里同步销毁这个 ComboBox**（也不要同步把它
+移出树再销毁）。`PopupHost::Close` 扛得住，但 `Event::Raise` 在每个处理器返回后还要读自己的订阅列表；
+由列表行点击触发的选择和关闭，调用栈上还有弹出窗口的 `WndProc`、它的 `InputManager` 和被点击的列表。
+要让控件消失，推迟到之后（`PostMessage`、下一帧）。同步 detach（例如在处理器里切换 TabControl 页）
+是安全的，见「使用注意事项」。
+
 **`DropDownOpened` 在弹出窗口已经起来之后触发**，所以处理器调用 `SetItems` 仍然赶在
 第一次绘制之前。这是延迟加载的挂钩点（只在用户真正要看时填充列表）。
 
@@ -237,6 +246,31 @@ combo->SetPopupOpacity(0.95f);  // 5% 透明
 刻意的：清空选择(-1)**不**清掉正在键入的文字（「没选东西」不等于「选了空字符串」）；
 键入仍然覆盖文字且不动选择。
 
+弹出窗口生命期、关闭顺序与按键：
+
+- **detach 不再释放正在执行的弹出窗口。** 点击列表行 → `SetSelectedIndex` → `SelectionChanged` →
+  应用处理器切换 TabControl 页（或移除这个控件）→ detach，这一串全部发生在弹出窗口的 `WndProc` 和
+  列表的指针处理器返回之前。以前 detach 里重置了 `popup_` 和 `listView_`，把调用栈上的 `PopupHost`
+  （以及正在处理 PointerPressed 的 `InputManager`）和列表释放掉。现在 detach 只关闭不销毁。
+  未验证：需真机。在某个 TabControl 页上放一个 ComboBox，在 `SelectionChanged` 里切到别的页，选一项后
+  不应崩溃；切回来再打开下拉框应正常。
+- **弹出窗口自己关闭时也报告关闭。** 点在卡片留白上时 `PopupHost` 走自己的轻触关闭。以前那条路径只清掉
+  打开标志和解散钩子：`DropDownClosed` 不触发，滚轮转发钩子一直挂着。现在所有关闭路径都经过同一个幂等的
+  收尾函数。未验证：需真机。打开下拉框后点卡片边缘的留白，确认 `DropDownClosed` 触发。
+- **关闭事件在弹出窗口完全关闭后才触发，重新打开后轻触关闭仍然有效。** 窗口调用解散钩子时用本地副本，只有
+  调用期间没人重新注册时才清空槽位。槽位规则由 `PopupDismiss.HookThatReopensKeepsTheNewHook`、
+  `PopupDismiss.HandledHookClearsSlotAndRetiresItsToken`、`PopupDismiss.DecliningHookStaysRegistered` 锁定；
+  `PopupHost::Close` 的回调顺序需要真实 HWND，未验证：需真机（在 `DropDownClosed` 里重新打开，再点外部应能关闭）。
+- **可编辑模式下 Space 和 Enter 不再打开下拉框**（见键盘导航表）。以前输入「new york」时每个空格都弹出列表，
+  列表打开后转发的 Space 还会选中悬停行、覆盖已输入的文字。由 `ComboBoxEditable.SpaceIsTextNotADropdownCommand`、
+  `ComboBoxEditable.EnterIsLeftToTheSurroundingUi`、`ComboBoxEditable.DownStillOpensTheListWhenEditable`、
+  `ComboBoxEditable.ReadonlySpaceAndEnterStillOpenTheList` 锁定。
+- **弹出窗口的重绘合并成一次。** 弹出窗口的失效回调（内容根的，以及每次指针移动后 `InputManager` 的）以前每次
+  都同步整窗重绘：鼠标划过列表时每个 WM_MOUSEMOVE 至少重绘一次，换悬停行时两次。现在第一次请求向弹出窗口投递
+  一条消息，之后的请求被吸收，一批输入只画一次。合并规则由 `PopupRenderCoalescer.BurstOfRequestsPostsOnce`、
+  `PopupRenderCoalescer.RequestAfterRenderPostsAgain`、`PopupRenderCoalescer.SynchronousRenderCoversQueuedRequest`
+  锁定；实际帧成本未验证：需真机，在下拉列表上快速移动鼠标看 F12 HUD 的 CPU Max。
+
 ### 性能特征
 
 - **头部 Render**: 一个圆角矩形 + 文本布局 + V 形箭头字形。
@@ -247,7 +281,7 @@ combo->SetPopupOpacity(0.95f);  // 5% 透明
 
 | 键 | 动作 |
 | --- | --- |
-| `Space` / `Enter` / `Alt+Down` | 打开下拉框 |
+| `Space` / `Enter` / `Down` / `Alt+Down` | 打开下拉框（只读模式） |
 | `Esc` | 关闭下拉框 |
 | `Up` / `Down` | 弹出打开时：导航列表项 |
 | `Home` / `End` | 弹出打开时：首项 / 末项 |
@@ -257,11 +291,16 @@ combo->SetPopupOpacity(0.95f);  // 5% 透明
 | `Left` / `Right` | 移动插入符 |
 | `Home` / `End` | 跳到文本开头 / 结尾 |
 | 可打印字符 | 插入到插入符位置 |
+| `Space` | 当作字符插入，不打开下拉框；下拉框打开时也不会选中悬停项 |
+| `Enter` | 下拉框关闭时不处理（留给外层，例如对话框默认按钮）；打开时选中高亮项 |
+| `Down` / `Alt+Down` | 打开下拉框 |
 
 ### 使用注意事项
 
 - **弹出窗口是独立顶层 HWND**：它不参与父窗口的 Z-order，可以溢出父窗口边界。
-- **detach 会关闭弹出窗口**：从树上移除组合框时弹出窗口立即销毁，订阅也随之清理。
+- **detach 关闭弹出窗口但不销毁它**：弹出窗口和列表保留到 `~ComboBox`，窗口钩子随关闭释放。
+  重新 attach 到同一个窗口时直接复用；attach 到另一个窗口时重建（HWND 的所有者在创建时固定）。
+  保留的代价是一个隐藏的 HWND。
 - **项目改变时选择重新钳制**：`SetItems` 后 `SelectedIndex` 保持不变（如果仍合法），
   或钳制到 `items.size() - 1`。超出范围时触发 `SelectionChanged`。
 - **可编辑模式不自动选择匹配项**：应用想要自动完成请自己在 `TextChanged` 里做。

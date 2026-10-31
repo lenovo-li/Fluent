@@ -78,7 +78,12 @@ void SessionLog::RecordFrame(const FrameStats& f, float intervalMs,
 
     PhaseAgg& a = AggFor(phase);
     ++a.frames;
-    a.sumIntervalMs += intervalMs;
+    // No cadence sample (first frame, or resumed from idle): see RecordFrame's
+    // contract in the header. It still counts as a painted frame above.
+    if (intervalMs > 0.0f) {
+        ++a.cadenceFrames;
+        a.sumIntervalMs += intervalMs;
+    }
     if (intervalMs > a.maxIntervalMs) a.maxIntervalMs = intervalMs;
     // Track the worst single frame by CPU cost so the report can show which
     // stage (layout/render/present) dominated the hitch.
@@ -159,7 +164,9 @@ std::string SessionLog::Serialize() const {
     for (int i = 0; i < kPhaseCount; ++i) {
         const PhaseAgg& a = phases_[i];
         if (a.frames == 0) continue;
-        const double avgInterval = a.sumIntervalMs / a.frames;
+        // 0 when the phase had no cadence sample at all; FpsFromInterval prints 0.
+        const double avgInterval =
+            a.cadenceFrames ? a.sumIntervalMs / a.cadenceFrames : 0.0;
         std::snprintf(line, sizeof(line),
             "%-10s frames=%-6u avgFps=%-5.0f worstInterval=%.1fms  "
             "worstFrame cpu=%.2f lay=%.2f ren=%.2f pre=%.2f  worstTick=%.2f\n",

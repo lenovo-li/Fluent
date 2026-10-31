@@ -147,6 +147,14 @@ grid->SetHeight(58.0f);             // ✗ 猜一个字体的行高
 给 Border 的子元素设 Margin 是有效的，它会与 Border 自己的 Padding 叠加。
 在 `Viewbox` / `Expander` 里要留白，请用容器自己的 `Padding`。
 
+**4. 移除子元素会一并清掉它的单元格分配。**
+
+`SetCell` 的分配以子元素地址为键保存在 Grid 里。`RemoveAt` / `Clear` 通过
+`Panel::OnChildRemoved` 把对应条目删掉。此前没有删除:反复 `Clear()` 再重建时映射只增不减,
+而新子元素如果恰好分到旧对象的地址,又没调 `SetCell`,就会继承旧的行列,不落在默认的
+(0,0)。由 `Grid.RemovedChildCellEntryIsDropped` 锁定。自定义 Panel 若也按子元素地址保存
+状态,同样要重写 `OnChildRemoved`。
+
 ### 性能特征
 
 - **轨道解算 O(轨道数)**,与子元素数量无关;`ResolveTracks` 是纯函数(private static,测试通过公开的 `ResolvedColumnSizes()` / `ResolvedRowSizes()` 间接覆盖)。

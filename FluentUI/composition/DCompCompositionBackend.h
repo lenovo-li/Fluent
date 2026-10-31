@@ -1,5 +1,5 @@
 // DCompCompositionBackend.h — the real DirectComposition implementation of
-// ICompositionBackend (Phase 2).
+// ICompositionBackend.
 //
 // Wraps the window's existing DComp stack: visuals are IDCompositionVisual2/3,
 // surfaces are IDCompositionSurface drawn with the shared D2D device context,

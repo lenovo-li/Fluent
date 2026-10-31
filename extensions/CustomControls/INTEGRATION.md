@@ -1,16 +1,20 @@
 # Integration Guide: CustomControls → FluentUIDemo
 
-**Status**: 🚧 Template ready, build integration TODO
+**Status**: Built and linked. `CustomControls.vcxproj` is in `Fluent.slnx`, the
+demo references it, and the demo's **Custom Controls** page
+(`FluentUIDemo/pages/CustomControlsPage.cpp`) shows every control. The test
+project references it too (`tests/unit/CustomControlsTests.cpp`).
 
 ---
 
 ## What This Is
 
-`extensions/CustomControls/` is a **separate library** demonstrating how end users should extend FluentUI by inheriting controls. It contains three working examples:
+`extensions/CustomControls/` is a **separate library** demonstrating how end users should extend FluentUI by inheriting controls. It contains four working examples:
 
 1. **LunarCalendar**: adds lunar dates below Gregorian days
-2. **BigButton**: 64dp tall button with icon + two-line text
-3. **LogSlider**: logarithmic snapping (1, 10, 100, 1000)
+2. **BigButton**: 64dp tall button with icon + title + subtitle
+3. **LogSlider**: snaps to powers of ten (1, 10, 100, 1000); arrow keys step one decade
+4. **SpinnerControl**: a fully custom animated control (derives `Control`)
 
 These are **real implementations** (`.h` + `.cpp` files), not header-only stubs.
 
@@ -34,166 +38,58 @@ FluentUIDemo.exe (demo application)
 
 ---
 
-## Build Integration (TODO)
+## How It Is Wired (MSBuild)
 
-### Step 1: Create CustomControls.vcxproj
+- `CustomControls.vcxproj` is a static library with `$(SolutionDir)` on the
+  include path and a `ProjectReference` to `..\..\FluentUI\FluentUI.vcxproj`.
+  The `<Project>` GUID inside that reference must equal `FluentUI.vcxproj`'s
+  `ProjectGuid` (`{dcce72dd-3d48-4f95-9746-89b4ec20677e}`); MSBuild resolves by
+  path, but Visual Studio matches references by GUID. Keep it in step when you
+  copy this project as a template.
+- `Fluent.slnx` lists it under the `/extensions/` folder.
+- `FluentUIDemo.vcxproj` and `tests/FluentUITests.vcxproj` each carry a
+  `ProjectReference` to it.
 
-```xml
-<!-- extensions/CustomControls/CustomControls.vcxproj -->
-<Project DefaultTargets="Build" xmlns="...">
-  <PropertyGroup>
-    <ConfigurationType>StaticLibrary</ConfigurationType>
-    <PlatformToolset>v145</PlatformToolset>
-    <CharacterSet>Unicode</CharacterSet>
-  </PropertyGroup>
-  
-  <ItemDefinitionGroup>
-    <ClCompile>
-      <!-- Include FluentUI headers -->
-      <AdditionalIncludeDirectories>$(SolutionDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <LanguageStandard>stdcpp20</LanguageStandard>
-      <PrecompiledHeader>NotUsing</PrecompiledHeader>
-    </ClCompile>
-  </ItemDefinitionGroup>
-  
-  <ItemGroup>
-    <ClInclude Include="CustomControls.h" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClCompile Include="LunarCalendar.cpp" />
-    <ClCompile Include="BigButton.cpp" />
-    <ClCompile Include="LogSlider.cpp" />
-  </ItemGroup>
-  
-  <!-- Reference FluentUI project -->
-  <ItemGroup>
-    <ProjectReference Include="..\..\FluentUI\FluentUI.vcxproj" />
-  </ItemGroup>
-</Project>
-```
+Using the controls from an app:
 
-### Step 2: Add to Fluent.slnx
-
-```json
-{
-  "solution": {
-    "projects": [
-      {
-        "path": "extensions/CustomControls/CustomControls.vcxproj",
-        "type": "{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}"
-      }
-    ]
-  }
-}
-```
-
-### Step 3: Update FluentUIDemo.vcxproj
-
-**Add reference**:
-```xml
-<ItemGroup>
-  <ProjectReference Include="..\extensions\CustomControls\CustomControls.vcxproj" />
-</ItemGroup>
-```
-
-**Include header**:
 ```cpp
-// FluentUIDemo/Demo.cpp
-#include "../extensions/CustomControls/CustomControls.h"
+#include "../../extensions/CustomControls/CustomControls.h"
 
 using namespace fluent::custom;
 
-// In BuildUI():
-auto lunarCal = std::make_shared<LunarCalendar>();
+// Panels own their children: Add takes std::unique_ptr and returns the raw pointer.
+auto* lunarCal = panel->Add(std::make_unique<LunarCalendar>());
 lunarCal->SetSelectedDate(2026, 9, 27);
-panel->Add(lunarCal);
 
-auto bigBtn = std::make_shared<BigButton>();
+auto* bigBtn = panel->Add(std::make_unique<BigButton>());
 bigBtn->SetText(L"Download");
 bigBtn->SetSubtitle(L"1.2 GB available");
-bigBtn->SetIcon(L"⬇️");
-panel->Add(bigBtn);
+bigBtn->SetIcon(L"⬇");
+bigBtn->SetWidth(200.0f);
 
-auto logSlider = std::make_shared<LogSlider>();
+auto* logSlider = panel->Emplace<LogSlider>();   // Emplace = Add(make_unique<T>())
 logSlider->SetValue(100.0f);
-panel->Add(logSlider);
 ```
 
 ---
 
-## CMake Integration (TODO)
+## CMake
 
-```cmake
-# extensions/CustomControls/CMakeLists.txt
-add_library(CustomControls STATIC
-    CustomControls.h
-    LunarCalendar.cpp
-    BigButton.cpp
-    LogSlider.cpp
-)
-
-target_include_directories(CustomControls PUBLIC
-    ${CMAKE_SOURCE_DIR}
-)
-
-target_link_libraries(CustomControls PUBLIC
-    FluentUI
-)
-
-target_compile_features(CustomControls PUBLIC cxx_std_20)
-```
-
-Update root `CMakeLists.txt`:
-```cmake
-if(FLUENTUI_BUILD_EXAMPLES)
-    add_subdirectory(extensions/CustomControls)
-endif()
-```
-
-Update `FluentUIDemo/CMakeLists.txt`:
-```cmake
-target_link_libraries(FluentUIDemo PRIVATE
-    FluentUI
-    CustomControls  # NEW
-    # ...
-)
-```
+There is no CMake build for this library. The root `CMakeLists.txt` builds only
+`FluentUI` and `FluentSettings` (plus `examples/Minimal`); the demo and the tests
+are MSBuild-only, so nothing in CMake consumes CustomControls. A downstream CMake
+project builds its own copy with `add_library(... STATIC ...)` over these `.cpp`
+files and `target_link_libraries(... PUBLIC FluentUI::FluentUI)` (or the in-tree
+`FluentUI` target).
 
 ---
 
 ## Testing
 
-The examples are already compile-tested via `tests/unit/InheritanceExamplesTest.cpp`, which includes `tests/unit/InheritanceExamples.h` (header-only versions of the same controls).
-
-Once `CustomControls.lib` is built, the same tests should pass with the real `.cpp` implementations.
-
----
-
-## Status Summary
-
-| Task | Status |
-|------|--------|
-| Write `.h` + `.cpp` implementations | ✅ Done |
-| Write README.md | ✅ Done |
-| Create .vcxproj | 🚧 TODO |
-| Add to Fluent.slnx | 🚧 TODO |
-| Update FluentUIDemo to link CustomControls | 🚧 TODO |
-| Add demo pages in FluentUIDemo | 🚧 TODO |
-| Create CMakeLists.txt | 🚧 TODO |
-
----
-
-## Next Steps
-
-1. **Create `CustomControls.vcxproj`** (copy from `FluentUI.vcxproj`, adjust paths)
-2. **Add to solution** (`Fluent.slnx`)
-3. **Build**: verify it compiles and links against FluentUI.lib
-4. **Update FluentUIDemo**: add reference, include header, instantiate controls
-5. **Verify**: run Demo, check that LunarCalendar/BigButton/LogSlider render correctly
-6. **Document**: update this file with "✅ Done"
-
----
-
-**Who should do this?**
-
-User (you) — this is intentionally left as a TODO to demonstrate that CustomControls is **user territory**, not core FluentUI. The template is here, the pattern is documented, and integrating it is a straightforward build-system task.
+- `tests/unit/CustomControlsTests.cpp` links this library and covers what runs
+  headless: LogSlider's keyboard stepping and BigButton's row layout.
+- `tests/unit/InheritanceExamplesTest.cpp` compile-checks the protected extension
+  points through `tests/unit/InheritanceExamples.h`, a separate header-only
+  variant of similar controls.
+- What the controls look like (glyphs, colours, the lunar text) needs the demo on
+  a real display: open the **Custom Controls** page.

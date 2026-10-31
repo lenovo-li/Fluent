@@ -131,6 +131,19 @@ public:
     // Register an element for hit-testing / event routing (not owned).
     void AddElement(UIElement* e);
 
+    // Undo AddElement for an element the caller is about to destroy or re-home.
+    // elements_ holds raw pointers, so an element that is freed while still listed
+    // is a use-after-free on the next frame, hit test or WM_DESTROY walk. This drops
+    // the pointer, clears every host-side reference that could point into the
+    // subtree (input hot/capture/focus via OnElementDetached, the armed tooltip
+    // target, the drag-over target), detaches the subtree from the service context
+    // while the context is still valid, and removes the root invalidate callback that
+    // AddElement installed so a stray Invalidate on a re-homed element no longer
+    // schedules frames on this window. No-op for an element that was never added.
+    // Schedules a layout frame when the window is live, since what was painted for
+    // the element is now stale. Returns whether the element was registered.
+    bool RemoveElement(UIElement* e);
+
     // The window's service context, valid once graphics are up.
     // Tree-registered elements are attached automatically by AddElement; this
     // accessor is for non-tree helpers a host builds by hand (e.g. a standalone
@@ -305,9 +318,9 @@ public:
     void RequestFrame(FrameReason reason);
 
     // The DXGI frame-latency waitable for pacing, or nullptr if
-    // unavailable. Always nullptr since the content became a DComp surface (Route 2):
-    // there is no swap chain to pace against. Kept for source compatibility; use
-    // FrameWaitTimeoutMs() for pacing instead.
+    // unavailable. Always nullptr since the content became a DComp surface instead of
+    // a swap chain: there is no swap chain to pace against. Kept for source
+    // compatibility; pace on FrameWaitRemaining() through FrameWaiter instead.
     HANDLE FrameLatencyWaitable() const { return graphics_.Comp().FrameLatencyWaitable(); }
 
     // Milliseconds until this window's next frame is due, as a real number so the
@@ -318,9 +331,12 @@ public:
     // timer period and caps a 120Hz panel at ~68fps. See FrameWaiter.h.
     double FrameWaitRemaining() const;
 
-    // How many milliseconds the message loop may wait before the next frame is due.
-    // Pass this as the wait timeout when NeedsFrame() is true (INFINITE otherwise, so
-    // an idle app still blocks on input and keeps its zero-CPU idle).
+    // FrameWaitRemaining() rounded up to whole milliseconds, for a wait API that
+    // only takes integers. NOT what a message loop should pace on: the rounding plus
+    // the system timer period capped a 120Hz panel at ~68fps (FrameWaiter.h).
+    // Application::PumpOneTurn paces on FrameWaitRemaining() through FrameWaiter; the
+    // one remaining caller is the legacy self-frame WM_TIMER of a window without an
+    // Application, whose own ~10ms minimum period dominates anyway.
     //
     // This replaces the pacing the swap chain used to provide for free: Commit() does
     // not block on vsync the way Present1 did, so without a timeout the loop renders
@@ -339,17 +355,20 @@ public:
 
     // Advance active animations by the real elapsed time (QPC) and, if anything is
     // still animating, request the next frame so the message loop keeps cycling.
-    // This is THE animation clock now: the loop calls it every turn, so animation
-    // ticks at the display refresh rate (paced by the DXGI waitable) instead of
-    // being throttled to — and starved by — the low-priority WM_TIMER. The old
+    // This is THE animation clock now: the loop calls it once per painted frame, so animation
+    // ticks at the display refresh rate (paced by FrameWaitRemaining through
+    // FrameWaiter) instead of being throttled to — and starved by — the
+    // low-priority WM_TIMER. Application::PumpOneTurn calls it only on a turn whose
+    // frame is due, right before RunDueFrame (AnimationTickIsDue). The old
     // WM_TIMER path survives only as a fallback while a system modal loop
     // (drag-resize) blocks our loop. Returns true if animation is still running.
     // Cheap + idempotent when idle: ComputeDt is QPC-based so calling it twice in
     // quick succession just splits one dt into two tiny ones (no double-advance).
     bool PumpAnimations();
 
-    // True while at least one animation is active (the loop uses this to keep
-    // waiting on the frame-latency waitable instead of blocking on input alone).
+    // True while at least one animation is active (the loop uses this to keep a
+    // frame pending, so it waits for the next frame instead of blocking on input
+    // alone).
     bool IsAnimating() const { return frame_.Scheduler().Running(); }
 
     // Metrics recorded for the most recently painted frame: phase
@@ -393,7 +412,9 @@ public:
 
     // --- Hang watchdog (window/HangDetector.h) ----------------------------
     // Start a background thread that reports when this window's UI thread stops
-    // painting for longer than thresholdMs. Independent of the rings above and of
+    // responding for longer than thresholdMs: no frame, no dispatched message and no
+    // pump wake, while NOT parked in an idle wait (an idle window paints nothing and
+    // is not hung; see HangDetector.h). Independent of the rings above and of
     // the session log: those are written ON the UI thread, so a stall produces no
     // samples rather than a visible one, and nothing can report a hang WHILE it is
     // happening. The callback runs on the detector thread — it must not touch UI
@@ -606,6 +627,11 @@ public:
 
 private:
     friend class Application;
+    // DialogWindow's legacy (no-Application) modal GetMessageW loop is the other
+    // pump that knows when it is about to block; it calls NoteLoopIdle /
+    // NoteLoopAwake on itself and its owner. Friend rather than protected so the
+    // hooks do not become part of the subclassing API.
+    friend class DialogWindow;
     static LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
     LRESULT HandleMessage(UINT msg, WPARAM wp, LPARAM lp);
 
@@ -643,9 +669,9 @@ private:
     // Paint one content frame synchronously (BeginContentFrame -> draw -> Present
     // -> Commit). This is the real render; Render()/RequestFrame only *schedule*
     // it. Used directly only where a frame must be produced immediately and the
-    // message loop is not running: the startup first frame (CLAUDE.md #6), and
-    // WM_SIZE / WM_DPICHANGED which run inside the system's modal resize/DPI loop
-    // (CLAUDE.md #7/#10), plus the animation timer tick.
+    // message loop is not running: the startup first frame (drawn before ShowWindow), and
+    // WM_SIZE / WM_DPICHANGED which run inside the system's modal resize/DPI loop,
+    // plus the animation timer tick.
     // `reason` is recorded into lastFrameStats_ for diagnostics; defaults to Paint
     // for the direct (synchronous) callers (startup / resize / DPI).
     void RenderNow(FrameReason reason = FrameReason::Paint);
@@ -653,14 +679,14 @@ private:
     void ApplyDarkTitleBar();
     void RecreateControlBrushes();
     void OnSize(UINT pixelW, UINT pixelH);
-    // Phase 1A (resize coalescing): WM_SIZE only records the latest pixel size and
+    // Resize coalescing: WM_SIZE only records the latest pixel size and
     // requests a Resize frame; the actual ResizeBuffers + OnLayout happen once per
     // frame here, at the start of the paint (RunDueFrame / the modal-loop timer /
     // WM_EXITSIZEMOVE / OnDpiChanged). A drag that fires N WM_SIZE messages thus
     // does at most one ResizeBuffers+layout per painted frame instead of N. No-op
     // when nothing is pending, so it is safe to call unconditionally before a paint.
     void ApplyPendingResize();
-    // Phase 1A: service one synchronous frame while a SYSTEM modal loop (drag
+    // Service one synchronous frame while a SYSTEM modal loop (drag
     // resize/move) owns the message pump — our main loop is not spinning, so
     // nothing else advances animation or paints. Advances animation (real QPC dt),
     // folds in any pending resize, and paints once, only if there is something to
@@ -702,6 +728,32 @@ private:
     // right-click on empty space closes an already-open menu before opening a new
     // one (they previously diverged — only left-click dismissed).
     void LightDismissAt(int px, int py);
+    // Invoke the active popup's dismiss hook safely (copy out, generation-checked
+    // clear). Every host call site goes through it; see the definition.
+    bool DispatchPopupDismiss(PopupDismissReason reason, HWND other, int x, int y);
+
+public:
+    // The slot logic behind DispatchPopupDismiss, as a pure function so it is testable
+    // without a window: run `slot` from a local copy; afterwards, if `gen` is unchanged
+    // (nobody registered or unregistered during the call), clear the slot when the
+    // hook handled the event (bumping gen so a stale Subscription cannot clear a later
+    // hook) or put it back when it declined. If gen changed, leave the slot alone —
+    // it holds whatever the hook's side effects registered (e.g. a reopened popup).
+    template <class Fn, class... Args>
+    static bool InvokeOwnedHook(Fn& slot, unsigned& gen, Args&&... args) {
+        if (!slot) return false;
+        const unsigned before = gen;
+        Fn hook = std::move(slot);
+        slot = nullptr;
+        const bool handled = hook(std::forward<Args>(args)...);
+        if (gen == before) {
+            if (handled) ++gen;
+            else slot = std::move(hook);
+        }
+        return handled;
+    }
+
+private:
 
     // Re-ask the element tree which cursor to show, and apply it now.
     //
@@ -766,7 +818,7 @@ private:
     UINT dpi_ = 96;
     UINT wheelScrollLines_ = 3;  // SPI_GETWHEELSCROLLLINES, updated on WM_SETTINGCHANGE
     UINT pixelW_ = 0, pixelH_ = 0;
-    // Phase 1A (resize coalescing): the latest size seen in WM_SIZE, applied to the
+    // Resize coalescing: the latest size seen in WM_SIZE, applied to the
     // content surface + layout once per frame by ApplyPendingResize(). resizePending_ is
     // the "dirty" flag; pixelW_/pixelH_ stay at the committed (applied) size until
     // then, so ClientWidthDip()/rendering use a consistent size mid-drag.
@@ -778,7 +830,6 @@ private:
     HBRUSH controlBgBrush_ = nullptr;
 
     // Graphics device stack (D2D, DWrite, DComp, composition backend, resource cache).
-    // Extracted to GraphicsHost in Phase 1 of the window refactoring.
     GraphicsHost graphics_;
     // GPU device-loss state machine. Fed each frame's present/draw
     // HRESULT; when it flips to Lost the frame loop runs RecoverDevice().
@@ -836,6 +887,21 @@ private:
     // FrameWaiter — is not running, so frames are driven by modalHeartbeat_ plus
     // whatever WM_SIZE / WM_MOVING the drag generates. Cleared on exit.
     bool inModalLoop_ = false;
+
+    // Nesting count of system modal loops the hang watchdog must treat as idle
+    // between messages: move/resize (WM_ENTERSIZEMOVE) and menu tracking
+    // (WM_ENTERMENULOOP). Kept apart from inModalLoop_, which drives the frame
+    // heartbeat and is about move/resize only. See WndProc.
+    int foreignModalLoops_ = 0;
+
+    // The message loop tells each window's hang watchdog when the UI thread is
+    // about to block while THIS window has nothing scheduled (idle is not a hang,
+    // even if another window is busy) and when it woke. Private: only the pump
+    // knows which wait is the idle one (Application and DialogWindow's legacy
+    // modal loop are friends). The beat after waking also covers wakes that
+    // dispatch nothing to this window (a thread message, Application::Post work).
+    void NoteLoopIdle() { diagnostics_.Hang().EnterIdle(); }
+    void NoteLoopAwake() { diagnostics_.Hang().Beat(); }
 
     // Precise frame tick for the modal loop above. Replaces the old kAnimTimerId
     // WM_TIMER heartbeat, which capped a held-but-motionless resize border at
@@ -1001,6 +1067,8 @@ private:
     std::function<bool(UINT)> popupKey_;  // active popup consumes keys first
     std::function<bool(int, int, int)> popupWheel_;  // forward wheel to active popup (screen x/y, delta)
     std::vector<UIElement*> auxAnimRoots_;  // auxiliary animation roots (e.g. PopupHost content)
+    // RenderNow's per-frame dirty-rect list, kept so its capacity survives frames.
+    std::vector<RectDip> dirtyBoundsScratch_;
     // Generation counters for the three slots above. Register* bumps the counter
     // and captures the new value; the returned Subscription only clears the slot
     // if the counter still matches — so a stale subscription's destructor never

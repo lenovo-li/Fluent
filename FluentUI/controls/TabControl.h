@@ -110,7 +110,7 @@ public:
                stripPlacement_ == TabStripPlacement::Right;
     }
 
-    // P1-11: Close button per tab. When enabled, each header draws a small '×'
+    // Close button per tab. When enabled, each header draws a small '×'
     // button on the right. Clicking it raises TabCloseRequested with the tab index;
     // the owner decides whether to remove the tab (via RemoveTab). Default: hidden.
     void SetCloseButtonVisible(bool visible) {
@@ -250,9 +250,6 @@ private:
     float stripHeight_ = 36.0f;
     float stripWidth_ = 120.0f;
     TabStripPlacement stripPlacement_ = TabStripPlacement::Top;
-    // The selected header's indicator slides between tabs instead of jumping.
-    AnimatedValue indicatorX_{0.0f};
-    AnimatedValue indicatorW_{0.0f};
     // Content cross-fade: 0 right after a switch, eased to 1.
     AnimatedValue contentFade_{1.0f};
     bool contentFadeEnabled_ = true;

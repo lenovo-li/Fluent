@@ -17,9 +17,14 @@ Nothing paints synchronously from the input path. The flow is:
    invalidate callback → `RequestFrame(reason)`.
 2. `FrameScheduler` (`window/FrameScheduler.h`) coalesces: all requests between
    two frames OR into one pending frame with a merged `FrameReason` bitmask.
-3. The app's message loop (see `FluentUIDemo/main.cpp`) does:
-   `PumpAnimations()` → wait (`MsgWaitForMultipleObjectsEx`) → drain *all* queued
-   messages → `RunDueFrame()` at most once.
+3. The message loop is `Application::PumpOneTurn` (`Application.cpp`; the demo
+   just calls `app.Run()`). Per turn: keep a frame pending for any running
+   animation clock → wait on `FrameWaiter` with the soonest
+   `FrameWaitRemaining()` (`MsgWaitForMultipleObjectsEx` plus a high-resolution
+   waitable timer) → drain *all* queued messages → for each window whose frame is
+   due (`FrameIsDue`), `PumpAnimations()` then `RunDueFrame()`, at most once. The
+   tick sits next to the paint, not at the top of the turn: a turn ends on any
+   input, so a 1000 Hz mouse would otherwise tick ~8x per painted frame at 120 Hz.
 4. `RenderNow` applies any pending resize, runs layout if Measure/Arrange is
    dirty anywhere, plans the redraw region, paints, and commits.
 
@@ -30,7 +35,9 @@ repaint.
 
 Idle means no pending frame and no active animation, and it must cost zero CPU:
 the loop blocks on input with `INFINITE`. When a frame *is* pending it waits only
-until the frame is due (`FrameWaitTimeoutMs()` / `window/FramePacing.h`). This
+until the frame is due (`FrameWaitRemaining()` / `window/FramePacing.h` /
+`window/FrameWaiter.h`; the whole-millisecond `FrameWaitTimeoutMs()` is only for
+the legacy self-frame timer, since integer waits capped 120 Hz at ~68 fps). This
 throttle is load-bearing — `Commit()` doesn't block on vsync the way the old swap
 chain's `Present1` did, so without it the loop free-runs (measured ~1927 fps on a
 120 Hz panel, invisible on screen but burning a core and corrupting every

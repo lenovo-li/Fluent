@@ -19,10 +19,13 @@
 //   * HudPingTracker          — "is the UI thread answering right now", by ping.
 //   * FormatHudStatusLine     — the liveness line under the frame numbers.
 //
-// WHY A PING AND NOT HangDetector's FRAME BEAT. HangDetector watches the gap since
-// the last painted frame. That is the right signal for a watchdog with a 5-second
-// threshold, but not for a HUD: an idle window paints nothing, by design, so "no
-// frame for 2s" means "idle" as often as it means "stuck". A ping asks the question
+// WHY A PING AND NOT HangDetector's BEAT. HangDetector watches the gap since the
+// UI thread last did work (a frame, a dispatched message, a wake from the pump)
+// and relies on the UI thread announcing its idle waits. That is enough for a
+// watchdog with a 5-second threshold, but a HUD wants a live number while it is
+// happening, at a 250 ms resolution, and "time since the last beat" cannot tell a
+// thread busy with a long frame from one waiting in a loop that never said it was
+// idle. A ping asks the question
 // directly — the HUD thread posts a message, the UI thread acknowledges it when its
 // loop gets to it — so the answer is the UI thread's actual responsiveness whether
 // or not anything is being painted. Posted messages are also dispatched by the

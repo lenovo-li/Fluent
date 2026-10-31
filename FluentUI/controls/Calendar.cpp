@@ -68,7 +68,8 @@ Calendar::Calendar() {
 }
 
 void Calendar::SetSelectedDate(int year, int month, int day) {
-    // Reject a date the constraints forbid, programmatic caller or not (P1-12/13).
+    // Reject a date the constraints forbid (min/max range, blackout dates),
+    // programmatic caller or not.
     // The alternative — accept it and let Render fade it — would leave the control
     // reporting a selection the user can never reach by clicking, and would let a
     // stale SetSelectedDate silently defeat a min/max set afterwards.
@@ -126,7 +127,7 @@ void Calendar::NextMonth() {
     NotifyViewChanged(oy, om);
 }
 
-// --- Date constraints (P1-12, P1-13) -----------------------------------------
+// --- Date constraints: min/max range and blackout dates ----------------------
 
 void Calendar::SetMinDate(int year, int month, int day) {
     hasMinDate_ = true;
@@ -282,7 +283,8 @@ void Calendar::Arrange(const RectDip& finalRect) {
     FrameworkElement::Arrange(finalRect);  // CRITICAL: sets animPrimed_ on first layout
     // Derive the cell size from the arranged box so paint (CellRect) and hit-test
     // (HitTestCell) always cover exactly the bounds. Floor at the natural size so a
-    // too-small slot clips rather than crushing the digits.
+    // too-small slot clips rather than crushing the digits — Render clips to bounds_
+    // to make that true; the floor alone let the grid paint past the edge.
     cellW_ = std::max(kNaturalCellW, finalRect.w / kCols);
     cellH_ = std::max(kNaturalCellH, (finalRect.h - navH_ - hdrH_) / kRows);
 }
@@ -293,6 +295,14 @@ void Calendar::Render(const DrawingContext& dc) {
     // without re-implementing the rest. Keep this body free of drawing detail.
     const ColorTokens& colors = Theme().colors;
     const float corner = EffectiveCornerRadius();
+
+    // Clip to bounds_. Arrange floors the cells at their natural size, so in a slot
+    // narrower or shorter than that the grid extends past bounds_ — over the
+    // neighbor, and outside the dirty rect (bounds_, no VisualOverflowDip), so a
+    // hover or selection drawn there was never cleared and stayed as a ghost. The
+    // subclass hooks below draw inside this clip too.
+    ClipGuard clip = dc.PushClip(
+        D2D1::RectF(bounds_.x, bounds_.y, bounds_.right(), bounds_.bottom()));
 
     // Background.
     D2D1_ROUNDED_RECT bg = D2D1::RoundedRect(
@@ -538,9 +548,15 @@ void Calendar::RenderCell(const DrawingContext& dc, const CellInfo& cell) {
         dc.FillRoundedRect(cellRR, hoverColor);
     }
     
-    // Ring for today (when not selected)
+    // Ring for today (when not selected). Inset by half the stroke so the whole
+    // stroke lies inside the cell: the edge cells are flush with bounds_, and Render
+    // clips there, so a stroke centered on the cell edge lost its outer half on the
+    // last column and the bottom row.
     if (cell.isToday && !cell.isSelected && cell.isEnabled) {
-        dc.DrawRoundedRect(cellRR, EffectiveAccentColor(colors.accent), 1.0f);
+        D2D1_ROUNDED_RECT ring = cellRR;
+        ring.rect.left += 0.5f;  ring.rect.top += 0.5f;
+        ring.rect.right -= 0.5f; ring.rect.bottom -= 0.5f;
+        dc.DrawRoundedRect(ring, EffectiveAccentColor(colors.accent), 1.0f);
     }
     
     // Day number text

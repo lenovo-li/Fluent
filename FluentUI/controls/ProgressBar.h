@@ -37,7 +37,7 @@ public:
         if (indeterminate_ == on) return;
         indeterminate_ = on;
         sweep_.SetImmediate(0.0f);
-        UpdateSweepMode();  // start/stop the compositor sweep (Plan B)
+        UpdateSweepMode();  // start/stop the compositor-thread sweep
         Invalidate();
     }
     bool IsIndeterminate() const { return indeterminate_; }
@@ -52,7 +52,7 @@ public:
     void Measure(float availW, float availH) override;
 
 protected:
-    // Plan B lifecycle: the indeterminate sweep runs on the DirectComposition
+    // Compositor sweep lifecycle: the indeterminate sweep runs on the DirectComposition
     // compositor thread (ProgressSweepVisual). These hooks keep that visual
     // created, positioned, themed, and torn down in step with the tree/device.
     void OnAttachedToTree() override;

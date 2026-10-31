@@ -1,7 +1,7 @@
 // WindowServices.h — narrow interface the controls depend on instead of the
 // concrete NativeWindowHost.
 //
-// Phase 3 of the refactor decouples controls from the full window class. A
+// This interface decouples controls from the full window class. A
 // control that needs a floating layer (ComboBox dropdown, MenuBar / MenuFlyout)
 // or the shared device stack asks for these capabilities through this interface,
 // not by including NativeWindowHost.h. NativeWindowHost implements it; a test double
@@ -43,9 +43,9 @@ public:
     virtual D2DContext& D2D() = 0;
     virtual DWriteContext& DWrite() = 0;
 
-    // Composition layer (Plan B): a control that runs an animation on the
+    // Composition layer: a control that runs an animation on the
     // DirectComposition compositor thread (e.g. an indeterminate ProgressBar's
-    // sweeping segment, a scroll container's overscan translation) reaches the
+    // sweeping segment, the one user today) reaches the
     // compositor through this backend — create visuals, parent them above the
     // window content, request a commit — without naming any DComp type itself.
     // Returns null on a host without composition or mid device-loss; a control

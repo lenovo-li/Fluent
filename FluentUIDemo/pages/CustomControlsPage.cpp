@@ -69,12 +69,14 @@ void OnAnimationTick(float dtSec) override {
     title3->SetMargin(Thickness{0, 24.0f, 0, 8.0f});
 
     auto desc3 = content->Add(std::make_unique<TextBlock>());
-    desc3->SetText(L"64dp tall, reads CurrentKind() to sync state, reuses RenderBackground().");
+    desc3->SetText(L"64dp tall: icon, title and subtitle rows; reads CurrentKind() to sync text colour.");
     desc3->SetMargin(Thickness{0, 0, 0, 12.0f});
 
     auto* card3 = CreateExampleCard(content, L"Big Button");
     auto bigBtn = card3->Add(std::make_unique<BigButton>());
     bigBtn->SetText(L"Download");
+    bigBtn->SetSubtitle(L"1.2 GB available");
+    bigBtn->SetIcon(L"⬇");  // downwards arrow
     bigBtn->SetWidth(200.0f);
 
     // LogSlider
@@ -84,7 +86,7 @@ void OnAnimationTick(float dtSec) override {
     title4->SetMargin(Thickness{0, 24.0f, 0, 8.0f});
 
     auto desc4 = content->Add(std::make_unique<TextBlock>());
-    desc4->SetText(L"Logarithmic snapping (1, 10, 100, 1000). Overrides CoerceValue().");
+    desc4->SetText(L"Snaps to 1, 10, 100, 1000, 10000 (CoerceValue); arrow keys step one decade.");
     desc4->SetMargin(Thickness{0, 0, 0, 12.0f});
 
     auto* card4 = CreateExampleCard(content, L"Logarithmic Slider");

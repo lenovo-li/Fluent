@@ -16,11 +16,8 @@ void Border::Measure(float availW, float availH) {
         float availChildW = std::max(0.0f, availW - inset.horizontal());
         float availChildH = std::max(0.0f, availH - inset.vertical());
         content_->MeasureCached(availChildW, availChildH);
-        // Phase 3b: read the field the child just wrote. On the async path the child
-        // filled asyncDesired_ and left desired_ holding whatever the UI thread last
-        // arranged, so reading Desired() here would compose this border's size from a
-        // stale child measurement — a wrong-but-plausible size, which is the failure
-        // mode this whole design is built to avoid.
+        // Read the size the child just wrote: MeasureCached either re-ran the child's
+        // Measure or kept its still-valid desired_, and both leave Desired() current.
         const SizeDip& childSize =
             content_->Desired();
         childW = childSize.w;
@@ -149,9 +146,5 @@ void Border::ClearDirtySubtree() {
     ClearDirty();
     if (content_) content_->ClearDirtySubtree();
 }
-
-// Phase 3b async recursion. Border owns a child but is NOT a Panel, so it does not
-// inherit Panel's overrides — it has to forward these two itself, exactly as it
-// already forwards AttachChildren / ClearDirtySubtree / AnyDirtyInSubtree.
 
 } // namespace fluent

@@ -1,9 +1,9 @@
 // MenuFlyout.h — Fluent popup menu (context menu / dropdown / submenu host).
 //
 // A MenuFlyout shows a list of MenuItems in a floating card (PopupHost). It is
-// the single class behind context menus, command-button dropdowns, and (from
-// stage 3) cascading submenus — mirroring WinUI's MenuFlyout, where a
-// "context menu" is just one way to open it.
+// the single class behind context menus, command-button dropdowns, and
+// cascading submenus — mirroring WinUI's MenuFlyout, where a "context menu" is
+// just one way to open it.
 //
 // Two entry points:
 //   * ShowAt(screenX, screenY)      — context menu anchored at the cursor.
@@ -11,8 +11,8 @@
 //                                     (used by MenuBar and command buttons).
 //
 // The flyout owns a stack of levels (each level = one PopupHost + one list
-// view). Stage 2 opens only the root level; stage 3 pushes submenu levels on
-// hover / Right-arrow. The whole chain is dismissed as a unit: clicking outside
+// view). Opening shows the root level; submenu levels are pushed on hover /
+// Right-arrow. The whole chain is dismissed as a unit: clicking outside
 // every popup, losing activation to another app, moving the parent window, or
 // pressing Esc. The parent window keeps focus, so keys are routed in via
 // WindowServices::RegisterActivePopupKeyHandler.
@@ -237,13 +237,13 @@ private:
     void OpenRoot(const RECT& anchor);
 
     // Open the submenu of item `itemIndex` in level `levelIndex` as a new,
-    // deeper level (stage 3). No-op in stage 2 wiring paths.
+    // deeper level. No-op when that item has no submenu.
     void OpenSubmenu(int levelIndex, int itemIndex);
 
-    // Hover moved to `itemIndex` in `levelIndex` (stage 3 opens/closes submenus).
+    // Hover moved to `itemIndex` in `levelIndex` (opens/closes submenus).
     void OnItemHovered(int levelIndex, int itemIndex);
 
-    // Right/Left arrow at `levelIndex` (stage 3 enters/leaves a submenu level).
+    // Right/Left arrow at `levelIndex` (enters/leaves a submenu level).
     void OnLeftRight(int levelIndex, bool right);
 
     // Close every level at or deeper than `fromLevel` (keeps shallower ones).
@@ -287,9 +287,15 @@ private:
     // actual destruction happens later at a safe point (the next OpenRoot, or the
     // destructor), never on the popup's own call stack. Mirrors ComboBox keeping
     // its hidden popup alive.
+    //
+    // OpenSubmenu does not add windows to this pile: it takes a closed PopupHost
+    // back out of it (TakeRetiredPopup) before creating one, so hovering between
+    // submenu items re-uses windows instead of creating one per hover.
     std::vector<Level> retired_;
     void ReapRetired();  // defined in .cpp (Level owns a unique_ptr<PopupHost>,
                          // incomplete here — its dtor must run where it is complete)
+    // A Closed PopupHost moved out of retired_, or null when none is available.
+    std::unique_ptr<PopupHost> TakeRetiredPopup();
     // Own the window's key + dismiss registrations while the menu chain is open.
     // Reset on close (and by ~MenuFlyout), so the window never holds a dangling
     // [this] callback after this flyout is destroyed.

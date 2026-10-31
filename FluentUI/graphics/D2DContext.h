@@ -3,8 +3,10 @@
 // One D2D device context is shared by the whole UI. Each window's DirectComposition
 // device is created from THIS D2D device (see DCompHost) — that is required, not
 // stylistic: a DComp device built from the DXGI device hands back an IDXGISurface from
-// surface BeginDraw instead of an ID2D1DeviceContext (E_NOINTERFACE). SetDpi() must be
-// called whenever the target DPI changes so D2D scales DIPs to pixels.
+// surface BeginDraw instead of an ID2D1DeviceContext (E_NOINTERFACE). DPI is not set
+// on the context: each frame's owner folds its DPI scale into the transform it sets
+// after BeginDraw (Scale(dpi) * Translation(atlas offset); see DCompHost), so one
+// shared context serves windows on monitors with different DPIs.
 #pragma once
 
 #include "../fl_common.h"

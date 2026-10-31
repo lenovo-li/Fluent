@@ -31,6 +31,26 @@ TextRun DefaultStyle() {
     r.underline = false;
     return r;
 }
+
+// CRLF and lone CR -> '\n'. The same rule TextArea::SanitizeInput applies to its
+// buffer; kept local rather than shared because the two controls have no common
+// base and this is the whole of it.
+std::wstring NormalizeNewlines(const std::wstring& s) {
+    // No '\r' (the typing path): nothing to rewrite. This still returns a copy of
+    // `s`; InsertText avoids calling it at all in that case.
+    if (s.find(L'\r') == std::wstring::npos) return s;
+    std::wstring out;
+    out.reserve(s.size());
+    for (size_t i = 0; i < s.size(); ++i) {
+        if (s[i] == L'\r') {
+            out.push_back(L'\n');
+            if (i + 1 < s.size() && s[i + 1] == L'\n') ++i;   // the LF of a CRLF
+        } else {
+            out.push_back(s[i]);
+        }
+    }
+    return out;
+}
 } // namespace
 
 RichTextBox::RichTextBox()
@@ -382,8 +402,17 @@ void RichTextBox::RebuildLayout(float outerWidth) {
         }
         const UINT32 paraEndOffset = paraStartOffset + static_cast<UINT32>(paraText.size());
 
-        UINT32 compositionOffsetInPara = 0;  // where composition sits within this para's layout
+        // Where the composition sits within this paragraph's layout, and WHETHER it is
+        // in this paragraph at all. Two variables on purpose: an offset of 0 is a real
+        // position (the caret at the start of a paragraph, which is every new
+        // paragraph), so "offset > 0" cannot stand in for "composing here". Using it
+        // did exactly that — the composed text was spliced in but never underlined,
+        // and every run's formatting was applied at unshifted offsets, landing on the
+        // composed characters instead of the text they belong to.
+        UINT32 compositionOffsetInPara = 0;
+        bool compositionInPara = false;
         if (!composition_.empty() && caret_ >= paraStartOffset && caret_ <= paraEndOffset) {
+            compositionInPara = true;
             compositionOffsetInPara = caret_ - paraStartOffset;
             paraText.insert(compositionOffsetInPara, composition_);
         }
@@ -505,7 +534,7 @@ void RichTextBox::RebuildLayout(float outerWidth) {
 
             // If the composition is in this paragraph and splits this run, style
             // the part before the composition and the part after separately.
-            if (!composition_.empty() && compositionOffsetInPara > 0 &&
+            if (compositionInPara &&
                 runEnd > compositionOffsetInPara && runStart < compositionOffsetInPara) {
                 const UINT32 head = compositionOffsetInPara - runStart;
                 styleRange(runStart, head);  // before composition
@@ -514,7 +543,7 @@ void RichTextBox::RebuildLayout(float outerWidth) {
             } else {
                 // Adjust offset if this run is after the composition.
                 UINT32 layoutStart = runStart;
-                if (!composition_.empty() && compositionOffsetInPara > 0 && runStart >= compositionOffsetInPara) {
+                if (compositionInPara && runStart >= compositionOffsetInPara) {
                     layoutStart += static_cast<UINT32>(composition_.size());
                 }
                 styleRange(layoutStart, length);
@@ -523,7 +552,7 @@ void RichTextBox::RebuildLayout(float outerWidth) {
 
         // Mark the composition itself: underlined, so the user can see which
         // characters are still provisional and which are committed text.
-        if (!composition_.empty() && compositionOffsetInPara > 0) {
+        if (compositionInPara) {
             layout->SetUnderline(TRUE, DWRITE_TEXT_RANGE{
                 compositionOffsetInPara,
                 static_cast<UINT32>(composition_.size())
@@ -688,6 +717,12 @@ void RichTextBox::Render(const DrawingContext& dc) {
     float currentY = kPadding - scrollY;
     const auto& paragraphs = doc_.Paragraphs();
 
+    // The device the per-run brushes are cached against (ParagraphLayoutInfo::
+    // brushDevice): asked once per paint, not once per paragraph.
+    ID2D1DeviceContext* d2d = dc.Dc();
+    ComPtr<ID2D1Device> frameDevice;
+    if (d2d) d2d->GetDevice(&frameDevice);
+
     for (size_t paraIdx = 0; paraIdx < paragraphLayouts_.size(); ++paraIdx) {
         auto& paraInfo = paragraphLayouts_[paraIdx];
 
@@ -710,10 +745,14 @@ void RichTextBox::Render(const DrawingContext& dc) {
         //
         // SetDrawingEffect attaches the brush to a text range; D2D's default text
         // renderer honors an ID2D1Brush effect as the fill color for that range. The
-        // brushes are kept alive in runBrushes until the next frame — the layout only
-        // holds weak references to the effects.
-        if (ID2D1DeviceContext* d2d = dc.Dc()) {
+        // brushes are kept alive in runBrushes — the layout only holds weak references
+        // to the effects — and reused on later frames until the layout is rebuilt, the
+        // D2D device changes, or the faded opacity changes (see brushDevice).
+        if (d2d && (paraInfo.brushDevice.Get() != frameDevice.Get() ||
+                    paraInfo.brushOpacity != dc.Opacity())) {
             paraInfo.runBrushes.clear();
+            paraInfo.brushDevice = frameDevice;
+            paraInfo.brushOpacity = dc.Opacity();
 
             // Calculate paragraph start offset in document-global space for composition handling.
             UINT32 paraStartOffset = 0;
@@ -732,7 +771,10 @@ void RichTextBox::Render(const DrawingContext& dc) {
                 if (length == 0) continue;
 
                 ComPtr<ID2D1SolidColorBrush> brush;
-                if (FAILED(d2d->CreateSolidColorBrush(run.color, &brush))) continue;
+                // Faded: this brush bypasses DrawingContext's typed methods, which is
+                // where element opacity is normally applied, so apply it here or the
+                // coloured runs stay opaque inside a faded RichTextBox.
+                if (FAILED(d2d->CreateSolidColorBrush(dc.Faded(run.color), &brush))) continue;
 
                 const UINT32 runStart = runOffset;
                 const UINT32 runEnd = runOffset + length;
@@ -756,10 +798,14 @@ void RichTextBox::Render(const DrawingContext& dc) {
                     const UINT32 tailStart = runStart + head + static_cast<UINT32>(composition_.size());
                     paintRange(tailStart, length - head);
                 } else {
-                    // Adjust offset if this run is after the composition.
+                    // Adjust offset if this run is at or after the composition. "At"
+                    // counts: a run that starts exactly at the caret (the first run of
+                    // a paragraph with the caret at its start, or the run after a
+                    // style boundary) is pushed right by the composed text, matching
+                    // RebuildLayout's `runStart >= compositionOffsetInPara`.
                     UINT32 layoutStart = runStart;
                     if (!composition_.empty() && caret_ >= paraStartOffset &&
-                        caret_ < paraStartOffset + runStart) {
+                        caret_ <= docRunStart) {
                         layoutStart += static_cast<UINT32>(composition_.size());
                     }
                     paintRange(layoutStart, length);
@@ -981,8 +1027,23 @@ bool RichTextBox::CaretRectDip(RectDip& out) const {
 
 // --- Editing ---------------------------------------------------------------
 
-void RichTextBox::InsertText(const std::wstring& s) {
+void RichTextBox::InsertText(const std::wstring& raw) {
     if (readOnly_) return;
+    // One newline form in the document: '\n', which is the only character
+    // RichTextDocument splits paragraphs on. Clipboard text from almost any Windows
+    // source is CRLF, and a '\r' left inside a run is not inert — DWrite treats CR as
+    // a hard line break, so every pasted paragraph grew an extra visual line, the
+    // caret needed an extra keypress to step over the invisible character, and a
+    // copy back out produced CRLF plus the paragraph separator. Normalized here
+    // rather than in Paste so the IME result string and any future caller get it too.
+    //
+    // The common case (typing, most IME commits) has no '\r' at all; then `raw` is
+    // used as is, through a reference, instead of paying a wstring copy per keystroke
+    // for a normalization that changes nothing.
+    std::wstring normalized;
+    const bool hasCr = raw.find(L'\r') != std::wstring::npos;
+    if (hasCr) normalized = NormalizeNewlines(raw);
+    const std::wstring& s = hasCr ? normalized : raw;
     if (s.empty()) return;
     PushUndo();
     DeleteSelection();
@@ -1215,6 +1276,11 @@ void RichTextBox::Cut() {
     // silent no-op the user reads as "the clipboard is broken".
     Copy();
     if (readOnly_) return;
+    // Nothing selected means nothing to delete, and PushUndo is not free to call
+    // speculatively: it pushes a snapshot identical to the current state (a Ctrl+Z
+    // that visibly does nothing) and clears the redo stack, so a stray Ctrl+X after
+    // a few undos would throw away the user's whole redo history.
+    if (!HasSelection()) return;
     PushUndo();
     DeleteSelection();
     Changed();

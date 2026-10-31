@@ -32,6 +32,7 @@ void Panel::RemoveAt(size_t index) {
     if (child->IsAttached())
         child->DetachFromContext();
     child->SetParent(nullptr);
+    OnChildRemoved(child.get());
     children_.erase(children_.begin() + index);
 
     // The panel's own desired size is a function of its children, so a removal can

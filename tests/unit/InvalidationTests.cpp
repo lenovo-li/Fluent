@@ -1,6 +1,6 @@
 // InvalidationTests.cpp — verifies Invalidate() propagates up the parent chain.
 //
-// Phase 1 of the tree refactor: an element without its own invalidate callback
+// Invalidation through the tree: an element without its own invalidate callback
 // delegates Invalidate() to Parent(), so setting the callback on the tree root
 // is enough for a deeply nested control to trigger a repaint. Panel::Add wires
 // the parent link; Panel::Clear severs it. Pure logic — no HWND / D3D.

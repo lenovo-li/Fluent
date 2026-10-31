@@ -74,7 +74,8 @@ protected:
     // The selection moved but the text did not, so a Render-only Invalidate() is enough.
     //
     // Text is unchanged, so the line index and every cached line layout stay valid; this
-    // costs one surface redraw of the visible band, not a relayout.
+    // costs one surface redraw of the visible band, not a relayout. Forwards to the
+    // base so SelectionChanged() still fires.
     void OnSelectionChanged() override;
     void EnsureCaretVisible() override;
     bool OnNavigationKey(UINT vk, bool shift) override;
@@ -362,6 +363,13 @@ public:
     // into a 28 MB document stalled for seconds while every test stayed green.
     unsigned LineIndexRebuildCount() const { return lineIndexRebuilds_; }
     unsigned LineCacheClearCount() const { return lineCacheClears_; }
+    // Height and baseline of the first line box in the layout the control would draw
+    // for logical line / paragraph `i` (the caret's one is the uncached composition
+    // layout while composing). False before DWrite or a width. Diagnostic: the caret
+    // rectangle does not reflect a layout's line spacing, so without this nothing
+    // shows whether the composition layout got the same uniform line box as the
+    // cached ones — the difference is a sub-DIP shift on screen.
+    bool LineBoxForTest(size_t i, float& height, float& baseline) const;
     // The characters the index says line `i` holds. Diagnostic: it makes "the index
     // describes text_" directly checkable, which matters because the index is built
     // over text_ while an IME composition may make the DISPLAYED string longer. Build
@@ -422,6 +430,11 @@ private:
     // before DWrite or a real width. Positions inside it are paragraph-local: add
     // WrapParagraphTopDip(p) for content space.
     IDWriteTextLayout* WrapParagraphLayout(size_t p) const;
+    // Force LineHeight() as a uniform line box on `layout` (null-safe). Every layout this
+    // control draws goes through it — cached lines, cached paragraphs, and the uncached
+    // composition line — so the caret's line keeps its height and baseline when an IME
+    // composition moves it from the cached path to the uncached one.
+    void ApplyUniformLineSpacing(IDWriteTextLayout* layout) const;
 
     // Caret geometry (DIP, relative to the text origin, pre-scroll).
     void CaretMetrics(UINT32 index, float& x, float& y, float& height) const;

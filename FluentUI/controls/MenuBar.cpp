@@ -68,7 +68,12 @@ void MenuBar::AddMenu(std::wstring title, std::vector<MenuItem> items) {
     it.items = std::move(items);
     it.width = MeasureText(it.title) + kItemPadX * 2.0f;
     items_.push_back(std::move(it));
-    Invalidate();
+    // Measure, not Render: the desired width is the sum of the title widths, so a
+    // menu added after the bar is laid out (an auto-width slot, a runtime "Help"
+    // menu) must grow the bar. A Render-only invalidation left bounds_ at the old
+    // width, and the new title fell outside it — clamped away by VisibleTitleRect,
+    // neither drawn nor clickable until something else re-measured.
+    InvalidateMeasure();
 }
 
 float MenuBar::MeasureText(const std::wstring& s) const {

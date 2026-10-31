@@ -59,6 +59,7 @@ public:
             if (!c) continue;
             if (c->IsAttached()) c->DetachFromContext();
             c->SetParent(nullptr);
+            OnChildRemoved(c.get());
         }
         children_.clear();
         // The panel's desired size may shrink to zero after clearing children.
@@ -182,6 +183,14 @@ protected:
     // Place a child within `slot` honoring its margin + alignment. Helper for
     // ArrangeOverride implementations.
     static void ArrangeChild(FrameworkElement* child, const RectDip& slot);
+
+    // Called by RemoveAt and Clear for every child about to be destroyed, after it
+    // was detached and unparented and while the pointer is still valid. A subclass
+    // that keeps per-child state keyed by the child's ADDRESS (Grid's cell map) must
+    // drop it here: the allocator will hand that address to the next child, which
+    // would then silently inherit the dead child's entry instead of the default.
+    // Default does nothing.
+    virtual void OnChildRemoved(FrameworkElement* child) { UNREFERENCED_PARAMETER(child); }
 
 private:
     // Shared body of OnVisibilityChanged/OnAncestorVisibilityChanged: neither

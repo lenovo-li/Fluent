@@ -242,15 +242,44 @@ TEST(SessionLog, ZeroedIntervalWouldInflateAverageFps) {
     // avg interval = (8.3 + 3000) / 2 = 1504.15ms -> 0.66 fps, printed "%-5.0f" -> "1".
     EXPECT_TRUE(good.Serialize().find("avgFps=1  ") != std::string::npos);
 
-    // What the old threshold produced: the 3s frame contributes 0, so the average
-    // collapses to ~4.15ms and the report claims 241 fps during a visible stall.
+    // What the old threshold produced: the 3s frame was passed as 0 ("no sample"),
+    // so it drops out of the jank list and the average entirely and the report
+    // claims full refresh rate during a visible stall. (Before RecordFrame learned
+    // that 0 means "no sample" it was worse still: the 0 was averaged in and the
+    // report read 241 fps.) The fix is on the host side: pass the real interval.
     SessionLog bad;
     bad.Start(100, 800, 600, 800, 600, 120);
     bad.RecordFrame(MakeFrame(2, 0.5, 1, 0.4), 8.3f, SessionPhase::Resizing, 1.0);
     bad.RecordFrame(MakeFrame(2980, 2900, 70, 3), 0.0f, SessionPhase::Resizing, 4.0);
     const std::string br = bad.Serialize();
     EXPECT_TRUE(br.find("jankFrames=0") != std::string::npos);
-    EXPECT_TRUE(br.find("avgFps=241") != std::string::npos);
+    EXPECT_TRUE(br.find("avgFps=120") != std::string::npos);
+}
+
+// A frame without a cadence sample (first frame, or resumed from idle) is passed as
+// 0 and must not enter the average. Before the fix it was averaged as a 0 ms interval:
+// one idle resume plus three 10 ms frames averaged 7.5 ms and read 133 fps instead of
+// 100. The frame still counts as painted.
+TEST(SessionLog, FrameWithoutCadenceSampleDoesNotDiluteAverage) {
+    SessionLog log;
+    log.Start(100, 800, 600, 800, 600, 60);
+    log.RecordFrame(MakeFrame(1, 0.2, 0.5, 0.2), 0.0f, SessionPhase::Animating, 1.0);
+    for (int i = 0; i < 3; ++i)
+        log.RecordFrame(MakeFrame(1, 0.2, 0.5, 0.2), 10.0f, SessionPhase::Animating,
+                        1.01 + 0.01 * i);
+    const std::string r = log.Serialize();
+    EXPECT_TRUE(r.find("frames=4 ") != std::string::npos);
+    EXPECT_TRUE(r.find("avgFps=100") != std::string::npos);
+    EXPECT_TRUE(r.find("avgFps=133") == std::string::npos);
+}
+
+// A phase whose only frames carry no sample prints 0 fps rather than dividing by zero.
+TEST(SessionLog, PhaseWithNoCadenceSampleReportsZeroFps) {
+    SessionLog log;
+    log.Start(100, 800, 600, 800, 600, 60);
+    log.RecordFrame(MakeFrame(1, 0.2, 0.5, 0.2), 0.0f, SessionPhase::Other, 1.0);
+    const std::string r = log.Serialize();
+    EXPECT_TRUE(r.find("avgFps=0 ") != std::string::npos);
 }
 
 // An idle resume still contributes 0 — that part of the old behaviour was correct and

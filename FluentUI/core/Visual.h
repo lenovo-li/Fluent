@@ -164,10 +164,12 @@ public:
     // Device-loss notifications. The host calls OnDeviceLost when
     // the GPU device drops (so an element can release any device-bound resource it
     // holds) and OnDeviceRestored after the device stack is rebuilt (to reacquire
-    // / re-dirty). Default no-ops: no control holds a device resource of its own
-    // today (all cached resources live in the host-owned ResourceCache, which the
-    // host clears directly), so these exist for panels to propagate and for future
-    // controls that cache a device resource. Panels override to recurse.
+    // / re-dirty). Default no-ops: most controls hold no device resource of their
+    // own (cached resources live in the host-owned ResourceCache, which the host
+    // clears directly). ProgressBar is the exception: it overrides OnDeviceLost to
+    // destroy its compositor sweep visual and OnDeviceRestored to rebuild it. Any
+    // control that caches a device resource must do the same. Panels override to
+    // recurse.
     virtual void OnDeviceLost() {}
     virtual void OnDeviceRestored() {}
 

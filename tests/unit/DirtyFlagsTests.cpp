@@ -1,6 +1,6 @@
 // DirtyFlagsTests.cpp — verifies the DirtyFlags closure and Element accumulation.
 //
-// Phase 2a introduces layout/render dirty flags. These tests lock the flag
+// Layout/render dirty flags. These tests lock the flag
 // algebra (Measure implies Arrange+Render; Arrange implies Render) and that an
 // element accumulates the closure of what it invalidated while still routing a
 // frame request to the root callback. Pure logic — no HWND / D3D.

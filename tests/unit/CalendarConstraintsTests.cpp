@@ -1,4 +1,4 @@
-// CalendarConstraintsTests.cpp — P1-12/13: date constraints (min/max + blackout).
+// CalendarConstraintsTests.cpp — date constraints (min/max range + blackout dates).
 
 #include "../framework/Test.h"
 #include "../../FluentUI/controls/Calendar.h"
@@ -7,7 +7,7 @@
 
 using namespace fluent;
 
-// --- P1-12: Min/Max date bounds -----------------------------------------------
+// --- Min/max date range ---------------------------------------------------------
 
 TEST(CalendarConstraints, SetMinDate_BlocksEarlierDates) {
     Calendar cal;
@@ -85,7 +85,7 @@ TEST(CalendarConstraints, GetMaxDate_ReturnsSetValue) {
     EXPECT_EQ(8, d);
 }
 
-// --- P1-13: Blackout dates ----------------------------------------------------
+// --- Blackout dates ---------------------------------------------------------
 
 TEST(CalendarConstraints, SetBlackoutDates_BlocksSpecificDates) {
     Calendar cal;

@@ -98,6 +98,15 @@ void Clear();
 
 这是 Wrap 本身的形状,不是 MaxLines 引入的。**日志模式请用 NoWrap。**
 
+#### ⚠️ 裁剪会清空撤销历史
+
+`SetMaxLines` 的裁剪（降低上限时立即发生，或 `AppendText` 超出上限时发生）删掉的是缓冲区**开头**，
+撤销栈里每一条记录的绝对偏移因此都指向了别的文字，所以裁剪会清空撤销和重做历史，与 `SetText` 同一条规则。
+不超出上限的普通追加不影响历史（在末尾追加不移动任何已记录的偏移）。
+
+Wrap 模式下的裁剪还会让行索引和每段的实测高度失效，滚动范围、绘制和命中测试按裁剪后的文本重算
+（`TextAreaLogAppend.LoweringTheCapUnderWrapShrinksTheScrollRange`）。
+
 ---
 
 ## 代码示例
@@ -137,6 +146,8 @@ log->AppendText(L"[12:00:01] 连接建立\n");   // 只扫描新增字符
   的 1 DIP 下限上 —— 那是**每个字符一个视觉行**,存在的最贵的换行方式,而且下一帧拿到真实
   宽度后立刻被丢弃。所以有一个「宽度是否就绪」的门控。
 - **Render 只画可见行**。
+- **输入法组合期间不重建任何东西**：两种模式下 `text_` 在组合期间都不变，组合串只拼进插入符所在的那一行 /
+  那一段的布局里，所以在 28 MB 的文档里组合和在空文档里成本相同。
 
 ### 使用注意事项
 
@@ -144,6 +155,23 @@ log->AppendText(L"[12:00:01] 连接建立\n");   // 只扫描新增字符
 - **日志用 NoWrap**,理由见上。
 - 本文件 2110 行,是仓库里最大的控件实现 —— 大文件不等于坏文件,这里的复杂度来自
   IME、行索引、滚动补偿三者的真实交互。
+
+### 修过的 bug
+
+| 问题 | 修复 | 证明 |
+| --- | --- | --- |
+| 裁剪后撤销栈仍是裁剪前的偏移：在末尾输入 `xyz` 后裁掉 6 个字符，Ctrl+Z 什么都删不掉；裁得少时会删掉别的文字 | `TrimToMaxLines` 清空撤销 / 重做历史 | `TextAreaLogAppend.SetMaxLinesTrimClearsTheUndoHistory`、`TextAreaLogAppend.AppendTrimClearsTheUndoHistory` |
+| Wrap 模式下每个拼音字母都走完整的文本失效：重建段落索引、把所有实测段高重置成估计值，O(文档) 每键，插入符上方的文字还会上下移动 | Wrap 和 NoWrap 一样，组合更新不做文本失效，只重建插入符段落的那一个布局 | `TextAreaWrapVirtual.CompositionDoesNotRebuildIndexOrFlushLayouts`、`TextAreaWrapVirtual.CompositionKeepsMeasurementsAboveTheCaret`、`TextAreaWrapVirtual.CompositionStillReachesTheCaretParagraphsLayout` |
+| 组合期间插入符所在行的行高和基线与缓存行不同（拉丁行里组合中文会引入行高不同的回退字体），组合开始和结束时那一行跳动不到 1 DIP | 组合布局与缓存布局走同一个统一行高设置 | `TextAreaNoWrap.CompositionLineKeepsTheUniformLineBox`、`TextAreaComposition.WrapParagraphKeepsTheUniformLineBox` |
+| `SelectionChanged` 在 TextArea 上从不触发（TextArea 的 `OnSelectionChanged` 重写只重绘，没调基类，而事件在基类里触发） | 重写改为转发给基类 | `TextEditSelection.SelectionChangedFiresOnTextArea` |
+| 右键菜单的「剪切」不进撤销栈（用的是不记录的删除），之后 Ctrl+Z 按错位的偏移重放上一条记录，删错文字，被剪切的文字也找不回来 | 菜单剪切和 Ctrl+X 走同一个记录删除（`TextEditBase`，TextBox 同样受益） | `TextEditUndo.ContextMenuCutIsUndoable` |
+
+新增的诊断接口：`bool LineBoxForTest(size_t i, float& height, float& baseline) const` 返回第 `i` 行 / 段
+实际绘制所用布局的第一行行高和基线（组合期间是插入符那一行的非缓存布局）。插入符矩形反映不出行间距，
+没有它就看不出组合布局有没有拿到统一行高。
+
+未验证：组合时行的亚像素跳动是像素层面的，需真机。用中文输入法在一行英文末尾输入拼音，看这一行和下面的行
+在组合开始和上屏时是否保持不动。
 
 ### 键盘导航
 

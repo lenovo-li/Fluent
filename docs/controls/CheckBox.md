@@ -138,6 +138,9 @@ for (auto* cb : {perms.read, perms.write, perms.exec}) {
 - **Render**:一个圆角方框 + 勾的两段线 + 一次 DrawText。勾用几何绘制,不依赖图标字体
   (离屏像素测试也依赖这一点)。
 - **入场动画是 Render 级 O(1)**(`AnimatedValue` + `motion.fadeTau`),不触发重新布局。
+- **Measure 与 Render 用同一个字号**:Measure 走 `EffectiveFontSize(...)`,和 Render 一致。
+  此前 Measure 读主题的 `bodySize`,`SetFontSize(24)` 后按 14 DIP 预留空间、按 24 DIP 绘制,
+  标签被 CLIP 截掉右侧和下部。由 `LabelMeasureCache.CheckBoxMeasureHonoursFontSize` 锁定。
 - **首帧不动画**:`SnapAnimationsToSettledState()` 在第一次 Arrange 时把勾直接放到终态。
   此前 `SetChecked(true)` 建出来的勾选框第一次显示时会「自己勾上」。
 

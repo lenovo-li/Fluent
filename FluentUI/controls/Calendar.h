@@ -95,7 +95,7 @@ public:
     // The cell at point (dipX, dipY) relative to the control, or -1.
     int HitTestCell(float dipX, float dipY) const;
 
-    // Date range constraints (P1-12). Dates outside [min, max] are disabled.
+    // Date range constraints. Dates outside [min, max] are disabled.
     // Default: no constraint (year 1000-9999 effectively unbounded).
     void SetMinDate(int year, int month, int day);
     void SetMaxDate(int year, int month, int day);
@@ -106,7 +106,7 @@ public:
     void GetMinDate(int& year, int& month, int& day) const;
     void GetMaxDate(int& year, int& month, int& day) const;
 
-    // Blackout dates (P1-13) — specific dates that cannot be selected.
+    // Blackout dates — specific dates that cannot be selected.
     // Stored as a sorted vector of (year, month, day) triples for O(log n) lookup.
     void SetBlackoutDates(const std::vector<std::tuple<int,int,int>>& dates);
     void ClearBlackoutDates();
@@ -195,7 +195,7 @@ private:
     int selYear_  = 2000, selMonth_  = 1, selDay_  = 1;
     int viewYear_ = 2000, viewMonth_ = 1, viewDay_ = 1;
 
-    // Date constraints (P1-12, P1-13).
+    // Date constraints: min/max range and blackout dates.
     bool hasMinDate_ = false;
     bool hasMaxDate_ = false;
     int minYear_ = 1000, minMonth_ = 1, minDay_ = 1;

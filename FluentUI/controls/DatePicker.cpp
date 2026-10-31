@@ -58,9 +58,11 @@ void DatePicker::OpenCalendar() {
         // Create the calendar content.
         calendar_ = std::make_shared<Calendar>();
         popup_->SetContent(calendar_.get());
-        popup_->SetOnClose([this]() {
-            popupOpen_ = false;
-        });
+        // Every close path funnels through OnPopupClosed, including the popup
+        // closing ITSELF when a click lands on its card padding (PopupHost light
+        // dismiss). That path used to clear only the flag, so CalendarClosed did not
+        // fire and the window's dismiss hook stayed registered until detach.
+        popup_->SetOnClose([this]() { OnPopupClosed(); });
 
         // Wire SelectionChanged: calendar picks a date → close, update, fire event.
         calendarSelectionSub_ = (
@@ -109,8 +111,10 @@ void DatePicker::OpenCalendar() {
     if (SUCCEEDED(popup_->Open(anchor, popupW, popupH))) {
         popupOpen_ = true;
 
-        // Register light-dismiss callback (click outside closes popup).
-        AddContextSubscription(
+        // Register light-dismiss callback (click outside closes popup). Held for the
+        // open period only (released by OnPopupClosed), not as a context
+        // subscription: those accumulate one per open until detach.
+        dismissSub_ = (
             window_->RegisterActivePopupDismiss(
                 [this](PopupDismissReason reason, HWND otherHwnd, int screenX, int screenY) {
                     UNREFERENCED_PARAMETER(otherHwnd);
@@ -139,8 +143,23 @@ void DatePicker::OpenCalendar() {
 
 void DatePicker::CloseCalendar() {
     if (!popup_ || !popupOpen_) return;
-    popup_->Close();
+    // Same shape as ComboBox::ClosePopup. PopupHost::Close runs the SetOnClose
+    // callback (OnPopupClosed, which raises CalendarClosed) last, with the popup
+    // already Closed, so a handler can reopen the calendar; nothing here may run
+    // after it. (A handler must still not destroy this DatePicker synchronously —
+    // the event's own Raise is on the stack; see PopupState.h.) The direct call is the fallback
+    // for a Close() that would be a no-op (popup not in the steady Open state).
+    if (popup_->IsOpen()) {
+        popup_->Close();
+        return;
+    }
+    OnPopupClosed();
+}
+
+void DatePicker::OnPopupClosed() {
+    if (!popupOpen_) return;  // already done (CloseCalendar's fallback call)
     popupOpen_ = false;
+    dismissSub_.reset();
 
     RoutedEventArgs args;
     args.source = this;

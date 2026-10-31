@@ -300,10 +300,24 @@ void ScrollPanel::OnPointerMoved(PointerEventArgs& e)
         return;
     }
 
-    // Wake the scrollbars on any movement near them.
-    scroll_.Wake();
+    // Hover first, unconditionally. HitBarRegion / HitHBarRegion answer false
+    // without overflow, so on content that fits these only ever CLEAR a hover: one
+    // set while the content overflowed and the pointer sat on the rail, which would
+    // otherwise survive until the pointer left the panel and hold the idle countdown
+    // (the bar would reappear expanded and refuse to auto-hide on the next overflow).
+    // SetBarHover is a no-op when the value is unchanged, so this costs nothing in
+    // the steady state.
     scroll_.SetBarHover(scroll_.HitBarRegion(dipX, dipY));
     scroll_.SetHBarHover(scroll_.HitHBarRegion(dipX, dipY));
+
+    // Wake the scrollbars on any movement over the panel (the WinUI overlay
+    // behaviour: the bars show while the pointer is active) — but only when there
+    // IS a bar. Content that fits draws no rail (ScrollViewer::Render returns
+    // early), yet an unconditional Wake still ran the whole ~1.5 s fade-in /
+    // idle-countdown / fade-out tick cycle for it, invalidating the panel every
+    // frame for nothing on screen.
+    if (!AnyAxisScrollable()) return;
+    scroll_.Wake();
 }
 
 void ScrollPanel::OnPointerPressed(PointerEventArgs& e)

@@ -16,7 +16,9 @@
 // PAGE VISIBILITY. All pages stay attached to the live tree; non-current pages are
 // SetVisible(false). Deliberately simpler than TabControl's detach dance: Panel's
 // hit-test, focus collection, animation collection and dirty-rect walk all skip
-// collapsed children, so a hidden page costs no layout, paint or input, but it KEEPS
+// collapsed children, so a hidden page costs no paint or input and no layout on a
+// resize (it is measured only on a frame where its own content changed, so that
+// change is not lost to the frame-end dirty clear; see MeasureOverride), but it KEEPS
 // whatever it acquired in OnAttachedToTree. Installer pages are few and hold state
 // that must survive Back/Next (a chosen path, a checkbox), so staying attached is
 // the right trade. A wizard with dozens of heavy pages would want TabControl's way.

@@ -104,6 +104,11 @@ IDWriteTextLayout* TextArea::LineLayout(size_t lineNumber, size_t minCover) cons
                 LineLayoutCache::kUnboundedHeightDip,
                 compositionLayout_.GetAddressOf())))
             return nullptr;
+        // Same uniform line box as the cached lines below. Composing CJK into a Latin
+        // line pulls in a fallback font with a taller natural line height, so without
+        // this the caret's line would shift by under a DIP when composition starts and
+        // shift back on commit — the jump the cached path's spacing exists to prevent.
+        ApplyUniformLineSpacing(compositionLayout_.Get());
         NoteLineWidth(compositionLayout_.Get());
         return compositionLayout_.Get();
     }
@@ -115,11 +120,7 @@ IDWriteTextLayout* TextArea::LineLayout(size_t lineNumber, size_t minCover) cons
     NoteLineWidth(layout);
     
     // 强制统一行高：NoWrap 模式也需要，防止同样的 font fallback 问题
-    if (layout) {
-        const float uniformHeight = LineHeight();
-        const float baseline = uniformHeight * 0.8f;
-        layout->SetLineSpacing(DWRITE_LINE_SPACING_METHOD_UNIFORM, uniformHeight, baseline);
-    }
+    ApplyUniformLineSpacing(layout);
     
     return layout;
 }
@@ -316,6 +317,9 @@ IDWriteTextLayout* TextArea::WrapParagraphLayout(size_t p) const {
                 fmt, wrapWidth, LineLayoutCache::kUnboundedHeightDip,
                 compositionLayout_.GetAddressOf())))
             return nullptr;
+        // Uniform line box, as for the cached paragraphs (see the NoWrap composition
+        // path for why the composed line would otherwise shift).
+        ApplyUniformLineSpacing(compositionLayout_.Get());
 
         // Cache the inputs so a re-entrant call (MeasureWrapParagraph from WrapCaretMetrics)
         // returns the SAME pointer instead of freeing it.
@@ -338,13 +342,36 @@ IDWriteTextLayout* TextArea::WrapParagraphLayout(size_t p) const {
     
     // 强制统一行高：防止 font fallback 导致纯中文行(YaHei 15.24)和混合行(Segoe 16.00)
     // 行高不一致，造成输入首个拉丁字符时该行向下跳变 ~0.76 DIP。
-    if (layout) {
-        const float uniformHeight = LineHeight();
-        const float baseline = uniformHeight * 0.8f;  // DWrite 默认 baseline 比例
-        layout->SetLineSpacing(DWRITE_LINE_SPACING_METHOD_UNIFORM, uniformHeight, baseline);
-    }
+    ApplyUniformLineSpacing(layout);
     
     return layout;
+}
+
+bool TextArea::LineBoxForTest(size_t i, float& height, float& baseline) const {
+    IDWriteTextLayout* layout =
+        wrapMode_ == TextWrapMode::NoWrap ? LineLayout(i) : WrapParagraphLayout(i);
+    if (!layout) return false;
+    DWRITE_LINE_METRICS lm{};
+    UINT32 count = 0;
+    // One slot: E_NOT_SUFFICIENT_BUFFER for a multi-line paragraph still fills it.
+    layout->GetLineMetrics(&lm, 1, &count);
+    if (count == 0) return false;
+    height = lm.height;
+    baseline = lm.baseline;
+    return true;
+}
+
+// One line box for every line, whatever fonts it falls back to. Shared by the cached
+// line/paragraph layouts and the uncached composition layout so the two cannot differ:
+// a pure-CJK line (YaHei, ~15.2 DIP natural height) and a mixed line (Segoe, 16 DIP)
+// would otherwise sit at different heights, and the caret's line would jump when a
+// composition switched it from one path to the other. 0.8 is DWrite's usual baseline
+// ratio for these fonts.
+void TextArea::ApplyUniformLineSpacing(IDWriteTextLayout* layout) const {
+    if (!layout) return;
+    const float uniformHeight = LineHeight();
+    layout->SetLineSpacing(DWRITE_LINE_SPACING_METHOD_UNIFORM, uniformHeight,
+                           uniformHeight * 0.8f);
 }
 
 uint32_t TextArea::MeasureWrapParagraph(size_t p) const {
@@ -913,6 +940,18 @@ size_t TextArea::TrimToMaxLines() {
         OnTextLayoutDirty();
     }
 
+    // The undo history goes with the trimmed text. Every entry records an absolute
+    // offset into the buffer as it was when the edit happened, and the front of that
+    // buffer just vanished: Insert(8, "xyz") recorded before a 6-character trim now
+    // points past "xyz" (ApplyUndoResult clamps it to the end and removes nothing),
+    // and with a smaller trim it removes OTHER text. Shifting the entries back by
+    // `bytes` is not enough either — an entry whose range fell inside the discarded
+    // lines has no text left to act on. So the history is cleared, the same rule
+    // SetText follows (a document whose start is gone is not the one those edits were
+    // made to). A plain append without a trim leaves the history alone: appending at
+    // the end moves no recorded offset.
+    undo_.Clear();
+
     // Caret and selection are absolute offsets into the buffer; everything before `bytes`
     // is gone. Shift them back, clamping the part that fell inside the discarded range to
     // the new start rather than letting it underflow to a huge UINT32.
@@ -1374,13 +1413,28 @@ void TextArea::OnTextLayoutDirty() {
 // re-rasterizing, which is what makes composing in a 28 MB document cost the same as
 // composing in an empty one.
 //
-// Wrap has no per-line model to preserve, so it takes the full path unchanged.
-void TextArea::OnCompositionDirty() {
-    if (wrapMode_ != TextWrapMode::NoWrap) { OnTextLayoutDirty(); return; }
-}
+// Wrap is the same. Its paragraph index is the same lines_ (EnsureLineIndex builds it
+// in both modes, over text_), every cached paragraph layout other than the caret's is
+// still exact, and the caret's paragraph is built separately into compositionLayout_,
+// which WrapParagraphLayout guards by (paragraph, wrap width, composed text) — so a
+// new composition string rebuilds that one layout by itself. The paragraph's visual
+// line count is corrected the same way any estimate is: MeasureWrapParagraph records
+// it when the band is measured, from the composed layout while composing and from the
+// still-cached plain layout once the composition ends.
+//
+// Taking the full OnTextLayoutDirty here (as Wrap once did) rebuilt the line index and
+// reset every paragraph's measured height on each composition keystroke: O(document)
+// per pinyin letter, and the reset sent measured paragraphs above the caret back to
+// estimates, so the text could shift vertically while composing.
+//
+// Nothing to do in either mode; the caller's Invalidate() re-rasterizes.
+void TextArea::OnCompositionDirty() {}
 
+// Delegate to the base rather than repeating its Invalidate(): the base hook is also
+// what raises SelectionChanged(), and an override that only repainted silently
+// turned that public event off for TextArea while TextBox kept firing it.
 void TextArea::OnSelectionChanged() {
-    Invalidate();
+    TextEditBase::OnSelectionChanged();
 }
 
 

@@ -54,7 +54,7 @@ TEST(Button, LeaveReturnsTintToZero) {
     EXPECT_FALSE(b.WantsAnimationTick());
 }
 
-// --- P1-16: Flyout integration --------------------------------------------
+// --- Flyout integration -------------------------------------------------
 //
 // The Show path needs a window (ShowBelow calls BeginShowAt, which queries the
 // HWND + DPI), so headless tests cover only the property and the OnActivate

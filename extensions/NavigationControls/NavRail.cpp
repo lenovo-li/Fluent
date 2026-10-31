@@ -76,6 +76,7 @@ FrameworkElement* NavRail::SetHeader(std::unique_ptr<FrameworkElement> header) {
 void NavRail::SetItems(std::vector<NavRailItem> items) {
     items_ = std::move(items);
     labelTrimmed_.assign(TotalCount(), false);
+    labelLayouts_.assign(TotalCount(), PaneLabelLayout{});
     if (selectedIndex_ >= TotalCount()) selectedIndex_ = -1;
     hoverIndex_ = -1;
     keyIndex_ = std::max(0, selectedIndex_);
@@ -85,6 +86,7 @@ void NavRail::SetItems(std::vector<NavRailItem> items) {
 void NavRail::SetFooterItems(std::vector<NavRailItem> items) {
     footer_ = std::move(items);
     labelTrimmed_.assign(TotalCount(), false);
+    labelLayouts_.assign(TotalCount(), PaneLabelLayout{});
     if (selectedIndex_ >= TotalCount()) selectedIndex_ = -1;
     hoverIndex_ = -1;
     InvalidateDirty(DirtyFlags::Measure);
@@ -411,7 +413,9 @@ void NavRail::DrawItem(const DrawingContext& dc, int index) {
         dc.FillRoundedRect(D2D1::RoundedRect(
             D2D1::RectF(r.x, r.y, r.x + kAccentBarWidth, r.bottom()),
             kAccentBarWidth * 0.5f, kAccentBarWidth * 0.5f), c.accent);
-    } else if (index == hoverIndex_) {
+    } else if (item.enabled && index == hoverIndex_) {
+        // A disabled item keeps its tooltip but gets no hover wash: a fill would
+        // promise a click that UserSelect then refuses (pane mode does the same).
         dc.FillRoundedRect(D2D1::RoundedRect(rf, kItemCorner, kItemCorner),
                            c.controlFillHover);
     }
@@ -494,7 +498,7 @@ void NavRail::DrawPaneItem(const DrawingContext& dc, int index) {
                     DWRITE_FONT_WEIGHT_SEMI_BOLD, DWRITE_TEXT_ALIGNMENT_LEADING,
                     DWRITE_PARAGRAPH_ALIGNMENT_CENTER, DWRITE_WORD_WRAPPING_NO_WRAP)) {
                 const D2D1_RECT_F tr = D2D1::RectF(r.x + 12.0f, r.y, r.right() - 8.0f, r.bottom());
-                trimmed = DrawPaneLabel(dc, item.label, fmt, tr, WithAlphaScale(c.textPrimary, t));
+                trimmed = DrawPaneLabel(dc, index, item.label, fmt, tr, WithAlphaScale(c.textPrimary, t));
             }
         }
         if (index < static_cast<int>(labelTrimmed_.size())) labelTrimmed_[index] = trimmed;
@@ -541,43 +545,68 @@ void NavRail::DrawPaneItem(const DrawingContext& dc, int index) {
                 DWRITE_PARAGRAPH_ALIGNMENT_CENTER, DWRITE_WORD_WRAPPING_NO_WRAP)) {
             const D2D1_RECT_F tr = D2D1::RectF(r.x + kPaneLabelOffset, r.y, r.right() - 8.0f,
                                                r.bottom());
-            if (tr.right > tr.left) trimmed = DrawPaneLabel(dc, item.label, fmt, tr, ink);
+            if (tr.right > tr.left) trimmed = DrawPaneLabel(dc, index, item.label, fmt, tr, ink);
         }
     }
     if (index < static_cast<int>(labelTrimmed_.size())) labelTrimmed_[index] = trimmed;
 }
 
-bool NavRail::DrawPaneLabel(const DrawingContext& dc, const std::wstring& text,
+bool NavRail::DrawPaneLabel(const DrawingContext& dc, int index, const std::wstring& text,
                             IDWriteTextFormat* fmt, const D2D1_RECT_F& rect,
                             const D2D1_COLOR_F& color) {
     const float w = rect.right - rect.left;
     const float h = rect.bottom - rect.top;
     DWriteContext* dw = Dwrite();
-    ComPtr<IDWriteTextLayout> layout;
-    HRESULT hr = dw && dw->Factory()
-        ? dw->Factory()->CreateTextLayout(text.c_str(), static_cast<UINT32>(text.size()), fmt,
-                                          w, h, &layout)
-        : E_POINTER;
-    if (FAILED(hr) || !layout) {
-        // Old behaviour: hard clip at the edge.
-        auto clip = dc.PushClip(rect);
-        dc.DrawText(text.c_str(), static_cast<UINT32>(text.size()), fmt, rect, color);
-        return false;
+    IDWriteFactory* factory = dw ? dw->Factory() : nullptr;
+
+    // Reuse the item's cached layout (see labelLayouts_ in the header). An index
+    // outside the table (never expected: SetItems/SetFooterItems size it) falls
+    // back to a throwaway entry, i.e. the old build-every-paint behaviour.
+    PaneLabelLayout scratch;
+    PaneLabelLayout& e = (index >= 0 && index < static_cast<int>(labelLayouts_.size()))
+                             ? labelLayouts_[index] : scratch;
+    if (!e.layout || e.fmt != fmt || e.text != text) {
+        e = PaneLabelLayout{};
+        if (factory) {
+            factory->CreateTextLayout(text.c_str(), static_cast<UINT32>(text.size()), fmt,
+                                      w, h, &e.layout);
+        }
+        if (!e.layout) {
+            // Old behaviour: hard clip at the edge.
+            auto clip = dc.PushClip(rect);
+            dc.DrawText(text.c_str(), static_cast<UINT32>(text.size()), fmt, rect, color);
+            return false;
+        }
+        e.fmt = fmt;
+        e.text = text;
+        e.w = w;
+        e.h = h;
+        // Measure the NATURAL width now, before any trimming is attached: once a
+        // trimming sign is set, GetMetrics reports the trimmed width, which would
+        // make a later, wider box look like it still fits exactly. A no-wrap line's
+        // natural width does not depend on the box, so one measurement serves
+        // every size the ease passes through.
+        DWRITE_TEXT_METRICS m{};
+        e.naturalW = SUCCEEDED(e.layout->GetMetrics(&m)) ? m.width : 0.0f;
+    } else if (e.w != w || e.h != h) {
+        e.layout->SetMaxWidth(w);
+        e.layout->SetMaxHeight(h);
+        e.w = w;
+        e.h = h;
     }
-    // Measure before trimming: an untrimmed no-wrap line reports its full width,
-    // which may exceed the layout box.
-    DWRITE_TEXT_METRICS m{};
-    const bool trimmed = SUCCEEDED(layout->GetMetrics(&m)) && m.width > w + 0.5f;
-    if (trimmed) {
-        // The cached format is shared and must not be mutated; trimming goes on the layout.
+
+    e.trimmed = e.naturalW > w + 0.5f;
+    if (e.trimmed && !e.ellipsis && factory) {
+        // The cached format is shared and must not be mutated; trimming goes on the
+        // layout. Attached once and left on: DirectWrite only shows the sign when
+        // the line actually overflows, so a box that grows back needs no reset.
         DWRITE_TRIMMING trim{DWRITE_TRIMMING_GRANULARITY_CHARACTER, 0, 0};
-        ComPtr<IDWriteInlineObject> ellipsis;
-        if (SUCCEEDED(dw->Factory()->CreateEllipsisTrimmingSign(layout.Get(), &ellipsis)))
-            layout->SetTrimming(&trim, ellipsis.Get());
+        if (SUCCEEDED(factory->CreateEllipsisTrimmingSign(e.layout.Get(), &e.ellipsis)))
+            e.layout->SetTrimming(&trim, e.ellipsis.Get());
     }
     auto clip = dc.PushClip(rect);
-    dc.DrawTextLayout(D2D1::Point2F(rect.left, rect.top), layout.Get(), color);
-    return trimmed;
+    dc.DrawTextLayout(D2D1::Point2F(rect.left, rect.top), e.layout.Get(), color);
+    return e.trimmed;
 }
 
 // --- Input -----------------------------------------------------------------
@@ -645,9 +674,18 @@ void NavRail::OnKeyDownRouted(KeyEventArgs& e) {
     }
     const int n = static_cast<int>(items_.size());
     if (n == 0) return;
+    // Up/Down move to the next SELECTABLE item in that direction, skipping
+    // disabled ones, and stay put when there is none. Stepping by one used to park
+    // the cursor (and the focus ring) on a disabled item where Enter did nothing.
+    // Pane mode gets the same behaviour from PaneKeyStops.
+    auto nextSelectable = [&](int from, int dir) {
+        for (int i = from + dir; i >= 0 && i < n; i += dir)
+            if (Selectable(i)) return i;
+        return from;
+    };
     switch (e.vk) {
-        case VK_UP:   keyIndex_ = std::max(0, keyIndex_ - 1); Invalidate(); break;
-        case VK_DOWN: keyIndex_ = std::min(n - 1, keyIndex_ + 1); Invalidate(); break;
+        case VK_UP:   keyIndex_ = nextSelectable(keyIndex_, -1); Invalidate(); break;
+        case VK_DOWN: keyIndex_ = nextSelectable(keyIndex_, +1); Invalidate(); break;
         case VK_RETURN:
         case VK_SPACE: UserSelect(keyIndex_); break;
         default: return;

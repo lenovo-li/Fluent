@@ -112,6 +112,9 @@ sub_ = dark->Selected().Subscribe(this,
 
 - **Render**:一个圆环 + 一个中心圆点 + 一次 DrawText。全部几何绘制,不依赖图标字体。
 - **圆点入场动画是 Render 级 O(1)**,不触发重新布局。
+- **Measure 与 Render 用同一个字号**:Measure 走 `EffectiveFontSize(...)`,和 Render 一致。
+  此前 Measure 读主题的 `bodySize`,`SetFontSize(24)` 后按 14 DIP 预留空间、按 24 DIP 绘制,
+  标签被 CLIP 截掉。由 `LabelMeasureCache.RadioButtonMeasureHonoursFontSize` 锁定。
 - **首帧不动画**:第一次 Arrange 时圆点直接落到终态。此前「建出来就选中」的按钮第一次
   显示时圆点会自己长出来。
 

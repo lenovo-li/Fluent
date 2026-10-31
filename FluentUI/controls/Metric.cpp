@@ -4,6 +4,8 @@
 #include "../graphics/DrawingContext.h"
 #include "../graphics/DWriteContext.h"
 #include "../styling/ThemeTokens.h"
+#include "../graphics/ResourceCache.h"
+#include "../core/UIContext.h"
 
 #include <algorithm>
 
@@ -16,6 +18,46 @@ constexpr float kDeltaGap = 2.0f;   // value -> delta
 // Read from typography tokens at draw time; this is only the fallback ratio used when
 // DWrite is unavailable and heights must still be estimated.
 constexpr float kLineRatio = 1.35f;
+
+// Every Metric line is one NO_WRAP line, whose metrics do not depend on the box
+// width; Measure and Render therefore share this one width so they share one cache
+// entry (Render used its bounds width and would have keyed a second layout).
+constexpr float kLineBoxW = 100000.0f;
+
+// Metrics of `text` laid out LEADING / NEAR at `maxW` x unbounded height. Measure and
+// Render both call this with the same key, so through the shared, epoch-versioned
+// ResourceCache the layout is built once and every later Measure (each frame of a
+// resize drag) and every Render (each repaint, including hover repaints) is a hash
+// lookup. Render used to build a fresh IDWriteTextLayout per text block per paint
+// only to read its height and advance y. Without a cache (headless tests that wire
+// only DWrite) it falls back to a one-off layout. Zeroed metrics on any failure.
+DWRITE_TEXT_METRICS LayoutMetrics(ResourceCache* cache, DWriteContext* dw,
+                                  const std::wstring& text, float size,
+                                  DWRITE_FONT_WEIGHT weight, DWRITE_WORD_WRAPPING wrap,
+                                  float maxW) {
+    DWRITE_TEXT_METRICS m{};
+    if (text.empty() || !dw || !dw->Valid()) return m;
+    ComPtr<IDWriteTextLayout> layout;
+    if (cache) {
+        TextLayoutKey key;
+        key.text = text;
+        key.fontSize = size;
+        key.weight = weight;
+        key.textAlign = DWRITE_TEXT_ALIGNMENT_LEADING;
+        key.paraAlign = DWRITE_PARAGRAPH_ALIGNMENT_NEAR;
+        key.wrapping = wrap;
+        key.maxWidth = maxW;
+        key.maxHeight = 100000.0f;
+        layout = cache->GetTextLayout(std::move(key));
+    } else if (IDWriteTextFormat* fmt = dw->Format(size, weight,
+                                                   DWRITE_TEXT_ALIGNMENT_LEADING,
+                                                   DWRITE_PARAGRAPH_ALIGNMENT_NEAR, wrap)) {
+        dw->Factory()->CreateTextLayout(text.c_str(), static_cast<UINT32>(text.size()),
+                                        fmt, maxW, 100000.0f, layout.GetAddressOf());
+    }
+    if (!layout || FAILED(layout->GetMetrics(&m))) m = DWRITE_TEXT_METRICS{};
+    return m;
+}
 }  // namespace
 
 Metric::Metric() {
@@ -102,17 +144,9 @@ void Metric::Measure(float availW, float availH) {
             h += size * kLineRatio;
             return;
         }
-        IDWriteTextFormat* fmt = dw->Format(size, weight, DWRITE_TEXT_ALIGNMENT_LEADING,
-                                            DWRITE_PARAGRAPH_ALIGNMENT_NEAR,
-                                            DWRITE_WORD_WRAPPING_NO_WRAP);
-        if (!fmt) return;
-        ComPtr<IDWriteTextLayout> layout;
-        if (FAILED(dw->Factory()->CreateTextLayout(
-                s.c_str(), static_cast<UINT32>(s.size()), fmt,
-                100000.0f, 100000.0f, layout.GetAddressOf())))
-            return;
-        DWRITE_TEXT_METRICS m{};
-        if (FAILED(layout->GetMetrics(&m))) return;
+        const DWRITE_TEXT_METRICS m = LayoutMetrics(Context().resourceCache, dw, s, size,
+                                                    weight, DWRITE_WORD_WRAPPING_NO_WRAP,
+                                                    kLineBoxW);
         w = std::max(w, m.widthIncludingTrailingWhitespace);
         h += m.height;
     };
@@ -162,13 +196,8 @@ void Metric::Render(const DrawingContext& dc) {
         dc.DrawText(s.c_str(), static_cast<UINT32>(s.size()), fmt,
                     D2D1::RectF(bounds_.x, y, bounds_.right(), bounds_.bottom()),
                     color, D2D1_DRAW_TEXT_OPTIONS_CLIP);
-        ComPtr<IDWriteTextLayout> layout;
-        if (SUCCEEDED(dw->Factory()->CreateTextLayout(
-                s.c_str(), static_cast<UINT32>(s.size()), fmt,
-                std::max(1.0f, bounds_.w), 100000.0f, layout.GetAddressOf()))) {
-            DWRITE_TEXT_METRICS m{};
-            if (SUCCEEDED(layout->GetMetrics(&m))) y += m.height;
-        }
+        y += LayoutMetrics(Context().resourceCache, dw, s, size, weight,
+                           DWRITE_WORD_WRAPPING_NO_WRAP, kLineBoxW).height;
     };
 
     draw(label_, t.captionSize, DWRITE_FONT_WEIGHT_NORMAL, c.textSecondary);

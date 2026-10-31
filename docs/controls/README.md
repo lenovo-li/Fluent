@@ -2,7 +2,7 @@
 
 本目录包含 FluentUI 所有控件的详细 API 文档。
 
-> **文档覆盖状态（诚实说明）**：本目录目前有 **26 份控件文档**（另有 `TEMPLATE.md` 作模板）。
+> **文档覆盖状态（诚实说明）**：本目录目前有 **34 份控件文档**（另有 `TEMPLATE.md` 作模板）。
 > 下面清单里标注「文档待写」的条目**没有对应文件** —— 它们此前是失效链接，点了会 404，
 > 现在改成纯文本以免误导。控件本身的权威说明始终在各自的头文件注释里。
 >
@@ -29,8 +29,8 @@
 
 - [ComboBox](ComboBox.md) — 组合框（下拉选择）
 - [ListBox](ListBox.md) — 列表框（虚拟化支持）
-- TreeView（文档待写） — 树形视图（虚拟化 + 合成器滚动）
-- MenuBar（文档待写） — 菜单栏
+- [TreeView](TreeView.md) — 树形视图（虚拟化 + 平滑滚动）
+- [MenuBar](MenuBar.md) — 菜单栏
 
 ### 文本控件
 
@@ -53,7 +53,7 @@
 - DockPanel（文档待写） — 停靠布局
 - WrapPanel（文档待写） — 自动换行布局
 - [Border](Border.md) — 边框容器
-- ScrollPanel（文档待写） — 通用滚动容器
+- [ScrollPanel](ScrollPanel.md) — 通用滚动容器（双轴，不虚拟化）
 - Separator（文档待写） — 分隔线
 - Viewbox（文档待写） — 缩放容器（Uniform/Fill/None）
 - GroupBox（文档待写） — 分组框
@@ -72,14 +72,14 @@
 
 ### 导航与工具栏
 
-- TabControl（文档待写） — 选项卡控件
+- [TabControl](TabControl.md) — 选项卡控件
 - ToolBar（文档待写） — 工具栏（CommandBar 风格，溢出进 flyout）
 - StatusBar（文档待写） — 状态栏
 
 ### 日期与时间
 
-- DatePicker（文档待写） — 日期选择器
-- Calendar（文档待写） — 日历
+- [DatePicker](DatePicker.md) — 日期选择器
+- [Calendar](Calendar.md) — 日历
 
 ### 其他
 
@@ -92,11 +92,11 @@
 
 ### 布局容器（补充）
 
-- [ScrollViewer](ScrollViewer.md) — 通用滚动容器
+- [ScrollViewer](ScrollViewer.md) — 滚动条模型（偏移、淡出、拖动），被各滚动控件内嵌
 
 ### 专用工具（补充）
 
-- LogViewer（文档待写） — 高吞吐日志查看器（虚拟化 + 自动尾随）
+- [LogViewer](LogViewer.md) — 高吞吐日志查看器（虚拟化 + 自动尾随）
 
 ---
 

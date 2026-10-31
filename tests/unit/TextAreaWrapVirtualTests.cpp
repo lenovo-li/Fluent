@@ -1,6 +1,6 @@
 // TextAreaWrapVirtualTests.cpp — wrapped virtualization on TextArea.
 //
-// Phase 3 replaced Wrap's single whole-document IDWriteTextLayout with per-paragraph
+// Wrap virtualization replaced Wrap's single whole-document IDWriteTextLayout with per-paragraph
 // layouts plus an estimated extent that corrects itself as paragraphs are drawn. What
 // makes this file necessary — rather than trusting the pre-existing Wrap tests — is that
 // the old and new implementations agree on almost everything observable. Both wrap text
@@ -683,4 +683,74 @@ TEST(TextAreaWrapVirtual, ExtentAppearsOnceBoundsArrive) {
     EXPECT_TRUE(area.LayoutWidthKnown());
     EXPECT_TRUE(area.MeasuredContentHeightDip() > 120.0f);
     area.DetachFromContext();
+}
+
+// ---------------------------------------------------------------------------
+// IME composition under Wrap
+// ---------------------------------------------------------------------------
+//
+// The NoWrap suite pins the same contract for its mode. Wrap used to route every
+// composition update through the full text invalidation, which rebuilt the paragraph
+// index and reset every measured paragraph height per pinyin letter. text_ does not
+// change during a composition, so none of that is needed: the caret's paragraph is
+// laid out separately with the composition spliced in.
+
+TEST(TextAreaWrapVirtual, CompositionDoesNotRebuildIndexOrFlushLayouts) {
+    Fixture f;
+    if (!f.Ready()) return;
+    f.Open(Paragraphs(2000, 120));
+    f.area.MeasureParagraphsInBand(0.0f, 400.0f);
+    const unsigned idxBefore = f.area.LineIndexRebuildCount();
+    const unsigned clrBefore = f.area.LineCacheClearCount();
+
+    f.area.TestSetComposition(L"\u4e2d");
+    f.area.MeasureParagraphsInBand(0.0f, 400.0f);
+    f.area.TestSetComposition(L"\u4e2d\u6587");
+    f.area.MeasureParagraphsInBand(0.0f, 400.0f);
+    f.area.TestSetComposition(L"");                 // committed / cancelled
+    f.area.MeasureParagraphsInBand(0.0f, 400.0f);
+
+    EXPECT_EQ(f.area.LineIndexRebuildCount(), idxBefore);
+    EXPECT_EQ(f.area.LineCacheClearCount(), clrBefore);
+}
+
+TEST(TextAreaWrapVirtual, CompositionKeepsMeasurementsAboveTheCaret) {
+    // The visible symptom of the old full invalidation: measured paragraphs above the
+    // caret went back to estimates, so their tops (and the text drawn at them) moved
+    // while the user was composing.
+    Fixture f;
+    if (!f.Ready()) return;
+    f.Open(Paragraphs(30, 300));
+    f.area.MeasureParagraphsInBand(0.0f, 2000.0f);
+    EXPECT_TRUE(f.area.WrapParagraphIsMeasured(0));
+    EXPECT_TRUE(f.area.WrapParagraphIsMeasured(1));
+    const float top2 = f.area.WrapParagraphTopDip(2);
+
+    f.area.TestSetComposition(L"\u4e2d\u6587");
+    // WrapParagraphTopDip first: it applies any pending extent-map reset, which the
+    // IsMeasured reads below do not do on their own.
+    EXPECT_NEAR(f.area.WrapParagraphTopDip(2), top2, 0.01f);
+    EXPECT_TRUE(f.area.WrapParagraphIsMeasured(0));
+    EXPECT_TRUE(f.area.WrapParagraphIsMeasured(1));
+}
+
+TEST(TextAreaWrapVirtual, CompositionStillReachesTheCaretParagraphsLayout) {
+    // The other half: skipping the invalidation must not freeze the caret paragraph's
+    // geometry. A composition long enough to wrap adds visual lines to that paragraph,
+    // and ending the composition takes them away again — both through the ordinary
+    // band measurement, with no text change in between.
+    Fixture f;
+    if (!f.Ready()) return;
+    f.Open(L"short\nshort\nshort");
+    f.area.TestSetCaret(0);                         // caret paragraph = 0
+    f.area.MeasureParagraphsInBand(0.0f, 400.0f);
+    EXPECT_EQ(f.area.WrapParagraphVisualLines(0), uint32_t{1});
+
+    f.area.TestSetComposition(Paragraphs(1, 300));
+    f.area.MeasureParagraphsInBand(0.0f, 400.0f);
+    EXPECT_TRUE(f.area.WrapParagraphVisualLines(0) > uint32_t{1});
+
+    f.area.TestSetComposition(L"");
+    f.area.MeasureParagraphsInBand(0.0f, 400.0f);
+    EXPECT_EQ(f.area.WrapParagraphVisualLines(0), uint32_t{1});
 }
