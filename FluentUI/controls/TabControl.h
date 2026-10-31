@@ -188,7 +188,6 @@ public:
     // pixels showed through on top of another tab and its stale bounds kept
     // swallowing clicks meant for the headers.
     UIElement* HitTestDeep(float dipX, float dipY) override;
-    void CollectDirtyBounds(std::vector<RectDip>& out) override;
     void OnPointerPressed(PointerEventArgs& e) override;
     void OnPointerMoved(PointerEventArgs& e) override;
     void OnPointerLeft() override;
@@ -197,6 +196,10 @@ public:
     void OnAnimationTick(float dtSec) override;
 
 protected:
+    // Reports only the SELECTED content (see the note on HitTestDeep above);
+    // test and clear are inherited from Panel and still cover every page.
+    void CollectDirtyBoundsOverride(std::vector<RectDip>& out) override;
+
     SizeDip MeasureOverride(float availW, float availH) override;
     void ArrangeOverride(const RectDip& content) override;
     void OnAttachedToTree() override;

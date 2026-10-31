@@ -404,7 +404,7 @@ void Expander::CollectFocusables(std::vector<UIElement*>& out) {
     if (content_ && content_->IsAttached()) content_->CollectFocusables(out);
 }
 
-void Expander::CollectDirtyBounds(std::vector<RectDip>& out) {
+void Expander::CollectDirtyBoundsOverride(std::vector<RectDip>& out) {
     if (IsVisible() && Any(Dirty())) out.push_back(VisualBounds());
     if (content_ && content_->IsAttached()) content_->CollectDirtyBounds(out);
 }
@@ -442,13 +442,13 @@ void Expander::OnDeviceRestored() {
     if (content_) content_->OnDeviceRestored();
 }
 
-bool Expander::AnyDirtyInSubtree(DirtyFlags flags) const {
+bool Expander::AnyDirtyInSubtreeOverride(DirtyFlags flags) const {
     if (Has(Dirty(), flags)) return true;
     if (content_ && content_->IsAttached() && content_->AnyDirtyInSubtree(flags)) return true;
     return false;
 }
 
-void Expander::ClearDirtySubtree() {
+void Expander::ClearDirtySubtreeOverride() {
     ClearDirty();
     if (content_) content_->ClearDirtySubtree();
 }

@@ -533,11 +533,21 @@ void NativeWindowHost::UpdateAnimationTimer() {
     // when it wants a tick; panels recurse). It runs on input events AND at the end
     // of every painted frame (see RenderNow), so it is a whole-tree walk per frame,
     // not O(animating): the per-frame TICK is what stays O(animating), because
-    // between Collects the clock ticks only the collected set. A painted frame
-    // already walks the tree for its dirty queries, so this adds one more walk of
-    // the same order, and an idle window paints nothing and walks nothing. Making it
-    // event-driven (elements registering on their WantsAnimationTick rising edge)
-    // would remove the walk, but needs every animating control to report that edge.
+    // between Collects the clock ticks only the collected set. An idle window paints
+    // nothing and walks nothing. Since the dirty queries are pruned to the dirty
+    // path, this is now the one O(tree) walk left in a painted frame.
+    //
+    // It is deliberately NOT event-driven (elements registering on their
+    // WantsAnimationTick rising edge) and NOT pruned by the subtree dirty mark.
+    // WantsAnimationTick is a pure query over private state with ~26 overrides,
+    // and several have no single setter to hook: SpinnerControl starts true from
+    // its constructor (the edge is the attach, not a setter), the scroll-backed
+    // controls (ListBox, DataGrid, ComboBox's list, ScrollPanel) answer
+    // ScrollViewer::NeedsTick from an embedded model, and an app subclass may flip
+    // its own member with no notification at all. Missing one edge means a control
+    // that silently never animates. The dirty mark cannot stand in for the edge
+    // either: Collect rebuilds the set from scratch, so skipping a clean subtree
+    // would drop an element that is mid-animation but did not invalidate.
     // Arm the clock iff something wants a tick; the scheduler owns the edge logic.
     //
     // Auxiliary roots (open PopupHost content) have no FrameHost of their own and
@@ -650,10 +660,17 @@ void NativeWindowHost::RenderNow(FrameReason reason) {
     const int64_t frameStartQpc = QpcNow();
 
     // --- Dirty analysis -----------------------------------------------------
-    // Walk the tree once: does anything need a re-measure, and what are the
-    // bounds of every element whose own dirty flags are set? The dirty-bounds
-    // union drives the partial-redraw decision; its size is the accurate
-    // dirtyElements count (every re-rendered element, not just measure roots).
+    // Does anything need a re-measure, and what are the bounds of every element
+    // whose own dirty flags are set? The dirty-bounds union drives the
+    // partial-redraw decision; its size is the accurate dirtyElements count
+    // (every re-rendered element, not just measure roots).
+    //
+    // These three calls, and the ClearDirtySubtree after the paint, are pruned by
+    // the subtree dirty mark (Visual::SubtreeDirty): each skips every subtree no
+    // invalidation touched since the last clear. A caret blink or a hover
+    // therefore costs the dirty path, not the whole tree; the two layout queries
+    // are a single flag test at the root when no Measure/Arrange is pending.
+    // FluentUIBench's DirtyWalk scene measures exactly this sequence.
     bool measureDirty = false;
     bool arrangeDirty = false;
     // Member scratch, cleared not reallocated: once it has grown to a typical

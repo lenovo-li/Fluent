@@ -21,6 +21,7 @@
 #include "../FluentUI/window/FrameScheduler.h"
 #include "../FluentUI/diagnostics/PerformanceCounters.h"
 #include "../FluentUI/controls/Expander.h"
+#include "../FluentUI/controls/ListBox.h"
 
 #include <cstdio>
 #include <memory>
@@ -402,6 +403,177 @@ Result FrameCoalescing() {
     return r;
 }
 
+// ---- 12. Dirty walk -------------------------------------------------------
+
+// A leaf whose Render-only invalidation the scene can trigger from outside, the
+// way a caret blink or a hover state change does from inside a real control.
+class BenchPokeLeaf : public FrameworkElement {
+public:
+    BenchPokeLeaf() { SetWidth(40.0f); SetHeight(12.0f); }
+    void Render(const DrawingContext&) override {}
+    void Poke() { Invalidate(); }
+};
+
+Result DirtyWalk() {
+    // The per-frame dirty analysis RenderNow runs on every painted frame, against a
+    // tree where exactly ONE leaf changed: the two layout queries
+    // (AnyDirtyInSubtree Measure / Arrange), the dirty-rect collection and the
+    // end-of-frame clear. Same four calls in the same order as the host, minus the
+    // paint (which is GPU work and scales with the dirty rect, not the tree).
+    //
+    // Shape: root -> 20 sections -> 10 groups -> 10 leaves = 2,221 nodes, 2,000 of
+    // them leaves. Three levels of nesting is what a settings page or a gallery
+    // looks like, and it is enough for "cost per node" and "cost per dirty path" to
+    // diverge by orders of magnitude: a walk that visits every node pays for 2,221
+    // virtual calls x 3 passes, a walk that follows the dirty path pays for ~4 nodes
+    // plus a flag test per sibling it passes on the way.
+    constexpr int kSections = 20, kGroups = 10, kLeaves = 10;
+    constexpr int kFrames = 20000;
+
+    StackPanel root;
+    std::vector<BenchPokeLeaf*> leaves;
+    leaves.reserve(kSections * kGroups * kLeaves);
+    for (int s = 0; s < kSections; ++s) {
+        auto* section = root.Emplace<StackPanel>();
+        for (int g = 0; g < kGroups; ++g) {
+            auto* group = section->Emplace<StackPanel>();
+            group->SetOrientation(StackPanel::Orientation::Horizontal);
+            for (int l = 0; l < kLeaves; ++l) leaves.push_back(group->Emplace<BenchPokeLeaf>());
+        }
+    }
+    root.UpdateLayout({0, 0, 800, 100000});
+    root.ClearDirtySubtree();
+
+    std::vector<RectDip> dirty;
+    dirty.reserve(16);
+    size_t collected = 0;   // sanity: must be exactly one rect per frame
+    int layoutFrames = 0;   // sanity: a Render-only poke must never trigger layout
+    double ms = 0.0;
+    {
+        ScopedTimer t(ms);
+        for (int f = 0; f < kFrames; ++f) {
+            // Stride through the leaves so consecutive frames hit different
+            // sections and no branch stays hot in the cache by accident.
+            leaves[(static_cast<size_t>(f) * 997u) % leaves.size()]->Poke();
+            const bool m = root.AnyDirtyInSubtree(DirtyFlags::Measure);
+            const bool a = root.AnyDirtyInSubtree(DirtyFlags::Arrange);
+            if (m || a) ++layoutFrames;
+            dirty.clear();
+            root.CollectDirtyBounds(dirty);
+            collected += dirty.size();
+            root.ClearDirtySubtree();
+        }
+    }
+
+    const size_t nodes = 1 + kSections + kSections * kGroups + leaves.size();
+    const double usPerFrame = ms * 1000.0 / kFrames;
+    Result r;
+    r.primaryMs = ms;
+    r.perFrameMs = ms / kFrames;
+    std::snprintf(msgbuf, sizeof(msgbuf),
+                  "%zu nodes, 1 leaf dirty per frame x %d frames; %.3f us/frame; "
+                  "rects/frame=%.2f (must be 1.00), layout frames=%d (must be 0)",
+                  nodes, kFrames, usPerFrame,
+                  static_cast<double>(collected) / kFrames, layoutFrames);
+    r.metric = msgbuf;
+    r.note = "Headless proxy for RenderNow's dirty analysis + clear on a caret-blink "
+             "frame. Paint cost is excluded (GPU); verify the live number with the "
+             "F12 HUD's cpu line while a TextBox caret blinks in a large page.";
+    return r;
+}
+
+// ---- 13. ListBox Shift+End over 1M items ------------------------------------
+
+// Event handler for the subscribed variant below. Event handlers are plain function
+// pointers; the sink travels through the void* owner. Reading size() is enough to
+// keep the payload observable without adding per-element work of its own.
+void BenchCountSelectionSet(void* owner, ListBox&, std::vector<int>& sel) {
+    *static_cast<size_t*>(owner) += sel.size();
+}
+
+Result ListBoxShiftEnd() {
+    // The input-path cost of ONE Shift+End key press on a virtualized ListBox whose
+    // SetItemCount is 1,000,000 — the gesture that turns "anchor at the top" into
+    // "every item selected". It goes through the real key handler
+    // (ListBox::OnKeyDownRouted -> Selector::RangeSelectTo -> the set hook), so it
+    // measures what a user's key press pays, not a synthetic call on the set.
+    //
+    // Each Shift+End is preceded by a Shift+Home from the same anchor, which
+    // collapses the range back to {0} so every Shift+End is a full 0 -> 999,999
+    // range build rather than a no-op re-select; the pair is timed together (see
+    // the batching note below). Two variants:
+    //   * no SelectionSetChanged subscriber: the selection model's own cost;
+    //   * one subscriber: plus building the vector<int> payload the event hands
+    //     out, which is O(selected) by its signature no matter how the set is
+    //     stored — the honest price of subscribing to the vector-valued event.
+    constexpr int kItems = 1000000;
+    // Upper bounds on the batch size, so a fast implementation does not spin for
+    // millions of iterations and a slow one stops after a few.
+    constexpr int kMaxPairsBare = 1 << 20;
+    constexpr int kMaxPairsSubscribed = 1 << 10;
+
+    auto run = [](int maxPairs, bool subscribe, size_t& selectedAfter,
+                  size_t& sink, int& pairs) -> double {
+        ListBox lb;
+        lb.SetItemCount(static_cast<size_t>(kItems));
+        lb.SetBounds({0, 0, 300, 600});
+        lb.SetSelectionMode(SelectionMode::Multiple);
+        lb.SetSelectedIndex(0);  // anchor + active at the top
+        Subscription sub;
+        if (subscribe) sub = lb.SelectionSetChanged().Subscribe(&sink, BenchCountSelectionSet);
+
+        auto press = [&lb](int vk) {
+            KeyEventArgs e;
+            e.vk = vk;
+            e.modifiers = ModifierKeys::Shift;
+            lb.OnKeyDownRouted(e);
+        };
+        // Timed in BATCHES of Shift+Home / Shift+End pairs, doubling the batch until
+        // one batch runs >= 100 ms (or `maxPairs` is reached), and reporting that
+        // batch. A per-press timer cannot resolve the range-based set: one press is
+        // far below a QPC tick, so timing each press alone reads as 0 or one tick.
+        // Both keys of a pair go through RangeSelectTo from the same anchor, so a
+        // pair is one full-range build plus one collapse back to {0} — the same
+        // work under any storage, which keeps the number comparable across
+        // implementations.
+        double ms = 0.0;
+        for (int batch = 1; ; batch *= 2) {
+            ms = 0.0;
+            {
+                ScopedTimer t(ms);
+                for (int i = 0; i < batch; ++i) { press(VK_HOME); press(VK_END); }
+            }
+            pairs = batch;
+            if (ms >= 100.0 || batch >= maxPairs) break;
+        }
+        // Sanity outside the timed region: every item must be selected.
+        selectedAfter = lb.SelectedIndices().size();
+        return ms;
+    };
+
+    size_t bareCount = 0, subCount = 0, sink = 0;
+    int barePairs = 0, subPairs = 0;
+    const double bareMs = run(kMaxPairsBare, false, bareCount, sink, barePairs);
+    const double subMs = run(kMaxPairsSubscribed, true, subCount, sink, subPairs);
+
+    Result r;
+    r.primaryMs = bareMs;
+    r.perFrameMs = bareMs / barePairs;
+    std::snprintf(msgbuf, sizeof(msgbuf),
+                  // Microseconds, not ms: with range storage a bare pair is well
+                  // under a microsecond, which a %.3f ms format rounds to 0.000.
+                  "%d items; Shift+Home+Shift+End pair: %.3f us (no subscriber, %d pairs), "
+                  "%.1f us (SelectionSetChanged subscribed, %d pairs); "
+                  "selected=%zu/%zu (must be %d)",
+                  kItems, bareMs * 1000.0 / barePairs, barePairs,
+                  subMs * 1000.0 / subPairs, subPairs,
+                  bareCount, subCount, kItems);
+    r.metric = msgbuf;
+    r.note = "One key press is one input-path event; the per-press number is what "
+             "the frame that handles it pays before it can paint.";
+    return r;
+}
+
 } // namespace
 
 // Registration (order = the numbered scene sections above).
@@ -417,3 +589,5 @@ REGISTER_SCENE("ThemeLab", "Light/Dark/Mica/Acrylic/high-contrast", ThemeLab);
 REGISTER_SCENE("InputLatency", "Pointer-down to Present", InputLatency);
 REGISTER_SCENE("IdleTest", "Idle 30s: no periodic Present", IdleTest);
 REGISTER_SCENE("FrameCoalescing", "N invalidations merge into one frame", FrameCoalescing);
+REGISTER_SCENE("DirtyWalk", "Per-frame dirty analysis, 1 dirty leaf in 2k", DirtyWalk);
+REGISTER_SCENE("ListBoxShiftEnd", "Shift+End range select over 1M ListBox items", ListBoxShiftEnd);

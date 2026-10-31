@@ -92,10 +92,11 @@ them.
 |---|---|
 | `graphics/DrawingContext.h` | The only supported way to paint. Required by any `Render()` override. |
 | `core/Invalidation.h` | `DirtyFlags` — needed to pick the right flag in `SetProperty`. |
+| `core/Visual.h` / `core/UIElement.h` dirty walks | A custom **container** overrides the protected hooks `CollectDirtyBoundsOverride`, `AnyDirtyInSubtreeOverride` and `ClearDirtySubtreeOverride`. The public `CollectDirtyBounds` / `AnyDirtyInSubtree` / `ClearDirtySubtree` are non-virtual and prune any subtree whose `SubtreeDirty()` mark is clear, so a frame costs the dirty path rather than the whole tree. Contract and migration: `docs/controls/inheritance-guide.md`, Panel section. |
 | `controls/primitives/ButtonBase.h` | Base for click-like controls. |
 | `controls/primitives/ToggleButton.h` | Base for two/three-state controls. |
 | `controls/primitives/RangeBase.h` | Base for numeric-range controls. |
-| `controls/primitives/ItemsControl.h` `Selector.h` | Bases for collection controls. |
+| `controls/primitives/ItemsControl.h` `Selector.h` | Bases for collection controls. The multi-select set is the protected `IndexRangeSet selectedSet_` (sorted, disjoint, non-touching inclusive ranges), which replaced `std::unordered_set<int> selectedIndices_`; the rename makes old subclass code fail to compile rather than misbehave. Public `SelectedRanges()` / `SelectedCount()` are O(ranges); `SelectedIndices()` keeps its `vector<int>` signature and is O(selected). Contract and migration: `docs/controls/inheritance-guide.md`, Selector section. |
 | `controls/TextEditBase.h` | Shared text-editing behavior (TextBox / TextArea). |
 | `animation/AnimatedValue.h` `Animation.h` | Per-frame animated properties. |
 | `composition/ICompositionBackend.h` | The compositor seam. **Always null-check** — see CLAUDE.md. |

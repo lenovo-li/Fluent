@@ -133,6 +133,12 @@ SetRoot(std::move(scroll));     // 在 Window 子类的 OnInitialize 里
   按它裁剪（D2D 裁剪够不着合成视觉对象）。
 - **滚轮在不能滚时冒泡**：竖向不溢出时普通滚轮不处理，横向不溢出时 Shift+滚轮不处理。
 - **idle 零成本**：滚动与淡出结束后 `WantsAnimationTick()` 为 false。
+- **只重绘滚动条的帧在剪枝后照样能被收集**：`InvalidateRails` 不设置 `dirty_`，只设
+  `railsDirty_` 并调用 `InvalidateDirty(DirtyFlags::None)`。脏区遍历现在会跳过子树脏标记为空的
+  子树，所以 None 失效也会在自己和所有祖先的标记里记一个 `Render`，否则嵌在干净父容器里的
+  ScrollPanel 淡出时根本不会被访问，滚动条条带也就不会重绘。由
+  `SubtreeDirtyPruning.ScrollPanelRailRepaintUnderCleanParentIsCollected` 锁定（把 None 失效
+  改成不记 Render，这个测试就失败）。
 
 ### 使用注意事项
 

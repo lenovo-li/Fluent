@@ -99,7 +99,7 @@ void Border::CollectFocusables(std::vector<UIElement*>& out) {
     if (content_ && content_->IsVisible()) content_->CollectFocusables(out);
 }
 
-void Border::CollectDirtyBounds(std::vector<RectDip>& out) {
+void Border::CollectDirtyBoundsOverride(std::vector<RectDip>& out) {
     if (IsVisible() && Any(Dirty())) out.push_back(VisualBounds());
     if (content_ && content_->IsVisible()) content_->CollectDirtyBounds(out);
 }
@@ -137,12 +137,12 @@ void Border::OnDeviceRestored() {
     if (content_) content_->OnDeviceRestored();
 }
 
-bool Border::AnyDirtyInSubtree(DirtyFlags flags) const {
+bool Border::AnyDirtyInSubtreeOverride(DirtyFlags flags) const {
     if (Has(Dirty(), flags)) return true;
     return content_ && content_->AnyDirtyInSubtree(flags);
 }
 
-void Border::ClearDirtySubtree() {
+void Border::ClearDirtySubtreeOverride() {
     ClearDirty();
     if (content_) content_->ClearDirtySubtree();
 }

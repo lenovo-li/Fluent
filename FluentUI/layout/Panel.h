@@ -128,7 +128,6 @@ public:
     UIElement* HitTestDeep(float dipX, float dipY) override;
     UIElement* HitTestDropTarget(float dipX, float dipY) override;
     void CollectFocusables(std::vector<UIElement*>& out) override;
-    void CollectDirtyBounds(std::vector<RectDip>& out) override;
     // Both visibility hooks recurse into children. This is what carries a
     // SetVisible(false) on a container down to a composited descendant (TextArea /
     // TreeView), whose DComp visual is parented on the COMPOSITOR ROOT rather than
@@ -141,8 +140,6 @@ public:
     void OnDeviceLost() override;
     void OnDeviceRestored() override;
     void CollectAnimations(std::vector<UIElement*>& out) override;
-    bool AnyDirtyInSubtree(DirtyFlags flags) const override;
-    void ClearDirtySubtree() override;
     // A panel must re-measure when its own Measure bit is set OR any descendant
     // needs it: a child's changed desired size feeds the panel's MeasureOverride.
     // Without this, MeasureCached would reuse the panel's stale size after a
@@ -153,6 +150,14 @@ public:
     void Arrange(const RectDip& finalRect) override;
 
 protected:
+    // Dirty walks: report / test / clear self, then recurse into every child
+    // through the child's PUBLIC entry point, which skips a child whose subtree
+    // mark is clear. That per-child test is the whole pruning: a panel with one
+    // dirty grandchild visits that one branch and only flag-tests the rest.
+    void CollectDirtyBoundsOverride(std::vector<RectDip>& out) override;
+    bool AnyDirtyInSubtreeOverride(DirtyFlags flags) const override;
+    void ClearDirtySubtreeOverride() override;
+
     // Propagate the tree context into / out of the owned children.
     // The base UIElement lifecycle calls these: on attach after this panel's own
     // OnAttachedToTree (self first, then subtree), on detach before it (subtree

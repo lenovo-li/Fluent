@@ -302,8 +302,9 @@ void TreeView::OnSelectionChanged(int /*oldIndex*/, int newIndex)
 // is the tree-specific consequence of a set change: invalidation and typed event.
 void TreeView::OnSelectionSetChanged()
 {
-    // Nobody listening: skip materializing (and sorting) the whole set, which for a
-    // large Shift range is the dominant cost of the gesture.
+    // Nobody listening: skip expanding the ranges into one int per selected row.
+    // The set itself is range-based, so this vector<int> payload is the only
+    // O(selected) step left; a cost-sensitive subscriber can read SelectedRanges().
     if (!selectionSetChanged_.HasSubscribers()) return;
     // Event::Raise takes Args& (non-const), so the vector must be an lvalue.
     std::vector<int> sel = SelectedIndices();
@@ -319,8 +320,19 @@ void TreeView::AddRangeToSelectionSet(int lo, int hi)
     // the slice, which is the honest answer — it is no longer on screen.
     auto first = std::lower_bound(visibleRows_.begin(), visibleRows_.end(), lo);
     auto last = std::upper_bound(first, visibleRows_.end(), hi);
-    selectedIndices_.reserve(static_cast<size_t>(last - first));
-    for (auto it = first; it != last; ++it) selectedIndices_.insert(*it);
+    // Coalesce the slice into runs of consecutive row indices: a fully expanded
+    // stretch is ONE range however long it is, and each collapsed node in the range
+    // only costs a break between two runs. The runs arrive in ascending order, so
+    // every AddRange is an append and the set never shifts. The scan is still
+    // O(visible rows in the range) — the visible list is materialized anyway — but it
+    // is integer compares in a contiguous array, not one hash-node allocation per row.
+    auto it = first;
+    while (it != last) {
+        const int runLo = *it;
+        int runHi = runLo;
+        for (++it; it != last && *it == runHi + 1; ++it) runHi = *it;
+        selectedSet_.AddRange(runLo, runHi);
+    }
 }
 
 void TreeView::OnBoundsChanged()

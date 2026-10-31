@@ -136,7 +136,6 @@ public:
     UIElement* HitTestDeep(float dipX, float dipY) override;
     UIElement* HitTestDropTarget(float dipX, float dipY) override;
     void CollectFocusables(std::vector<UIElement*>& out) override;
-    void CollectDirtyBounds(std::vector<RectDip>& out) override;
     void CollectAnimations(std::vector<UIElement*>& out) override;
     void OnVisibilityChanged(bool visible) override;
     void OnAncestorVisibilityChanged() override;
@@ -144,8 +143,6 @@ public:
     void OnDpiChanged(float dpiScale) override;
     void OnDeviceLost() override;
     void OnDeviceRestored() override;
-    bool AnyDirtyInSubtree(DirtyFlags flags) const override;
-    void ClearDirtySubtree() override;
     bool NeedsRemeasure() const override { return AnyDirtyInSubtree(DirtyFlags::Measure); }
 
     void OnPointerPressed(PointerEventArgs& e) override;
@@ -182,6 +179,13 @@ public:
     }
 
 protected:
+    // Dirty-walk hooks: self, then the single content child through its PUBLIC
+    // entry point (CollectDirtyBounds / AnyDirtyInSubtree / ClearDirtySubtree),
+    // which is where the subtree-mark pruning happens.
+    void CollectDirtyBoundsOverride(std::vector<RectDip>& out) override;
+    bool AnyDirtyInSubtreeOverride(DirtyFlags flags) const override;
+    void ClearDirtySubtreeOverride() override;
+
     // Propagate the tree context to the content — but only while expanded. A
     // collapsed Expander's content must stay detached even when the Expander itself
     // attaches, which is why this filters rather than forwarding unconditionally

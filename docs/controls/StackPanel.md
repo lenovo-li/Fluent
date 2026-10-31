@@ -117,6 +117,18 @@ link->SetVAlign(VAlign::Center);
 - **不可见子元素被跳过**:`IsVisible() == false` 的元素既不测量也不排布,也不占用
   Spacing 的间隙 —— 所以隐藏一项不会留下一个空洞。demo 的页面切换就依赖这一点
   (31 个页面常驻在树上,只有当前页可见)。
+- **脏区遍历只走脏路径**:宿主每个绘制帧都要跑 `AnyDirtyInSubtree(Measure)`、
+  `AnyDirtyInSubtree(Arrange)`、`CollectDirtyBounds`、`ClearDirtySubtree`。以前这四个调用
+  都会访问整棵树,所以光标闪烁或一次悬停的成本是 O(全部节点)。现在每个 `Visual` 带一个子树
+  脏标记(`SubtreeDirty()`):`InvalidateDirty` 沿 `Parent()` 往上走找根回调时顺手把标记
+  OR 进每个祖先,`ClearDirtySubtree` 清掉它;标记为空的子树直接跳过。所有 Panel 子类都继承
+  这一点,自定义容器的写法见 `inheritance-guide.md` 的 Panel 一节。
+  - 证据:`FluentUIBench DirtyWalk`(2,221 个节点,每帧 1 个叶子 Render 脏,Release),
+    改前 11.4–13.7 µs/帧,改后 0.12–0.14 µs/帧;两边都是每帧恰好 1 个脏矩形、0 次布局。
+  - 测试:`tests/unit/SubtreeDirtyTests.cpp` 的 `SubtreeDirtyPruning.*`。变异验证:去掉
+    `InvalidateDirty` 的祖先标记、去掉 `CollectDirtyBounds` 的剪枝、让 `SetParent` 不传递
+    标记、让 None 失效不记 Render、在 override 之后才清标记、`Panel` 清理时跳过隐藏子元素,
+    每一种都至少让一个测试失败。
 
 ### 使用注意事项
 

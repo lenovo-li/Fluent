@@ -430,7 +430,7 @@ UIElement* TabControl::HitTestDeep(float dipX, float dipY) {
     return this;
 }
 
-void TabControl::CollectDirtyBounds(std::vector<RectDip>& out) {
+void TabControl::CollectDirtyBoundsOverride(std::vector<RectDip>& out) {
     if (IsVisible() && Any(Dirty())) out.push_back(VisualBounds());
     // Detached (unselected) contents are never repainted, so their dirty flags
     // must not inflate the redraw region either.

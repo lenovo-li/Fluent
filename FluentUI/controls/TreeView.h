@@ -235,7 +235,7 @@ private:
     int lastClickRow_ = -1;
     bool doubleClickTogglesExpansion_ = true;
     
-    // Multi-select state (selectionMode_ / selectedIndices_ / selectionAnchor_)
+    // Multi-select state (selectionMode_ / selectedSet_ / selectionAnchor_)
     // lives in the Selector base — see primitives/Selector.h for the invariants.
     
     // Hover tracking: which row the pointer is currently over, or -1.

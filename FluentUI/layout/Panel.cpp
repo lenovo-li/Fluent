@@ -162,7 +162,7 @@ void Panel::CollectFocusables(std::vector<UIElement*>& out) {
     }
 }
 
-void Panel::CollectDirtyBounds(std::vector<RectDip>& out) {
+void Panel::CollectDirtyBoundsOverride(std::vector<RectDip>& out) {
     // The panel itself contributes its bounds when its own flags are set (e.g. a
     // background/theme change on the panel). Each child is asked independently so
     // a dirty leaf deep in the tree adds only its own (small) rect, not the whole
@@ -181,14 +181,14 @@ void Panel::OnThemeChanged() {
         if (c) c->OnThemeChanged();
 }
 
-bool Panel::AnyDirtyInSubtree(DirtyFlags flags) const {
+bool Panel::AnyDirtyInSubtreeOverride(DirtyFlags flags) const {
     if (Has(Dirty(), flags)) return true;
     for (auto& c : children_)
         if (c && c->AnyDirtyInSubtree(flags)) return true;
     return false;
 }
 
-void Panel::ClearDirtySubtree() {
+void Panel::ClearDirtySubtreeOverride() {
     ClearDirty();
     for (auto& c : children_)
         if (c) c->ClearDirtySubtree();

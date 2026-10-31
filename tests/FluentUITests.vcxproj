@@ -162,6 +162,7 @@
     <ClCompile Include="unit\ListBoxTests.cpp" />
     <ClCompile Include="unit\ListBoxItemHeightGuardTests.cpp" />
     <ClCompile Include="unit\ListBoxMultiSelectTests.cpp" />
+    <ClCompile Include="unit\IndexRangeSetTests.cpp" />
     <ClCompile Include="unit\LogViewerTests.cpp" />
     <ClCompile Include="unit\RichTextDocumentTests.cpp" />
     <ClCompile Include="unit\RichTextBoxTests.cpp" />

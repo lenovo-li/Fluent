@@ -26,11 +26,16 @@ void ListBox::SetItemCount(size_t count) {
     virtualItemCount_ = count;
     // Clear the items vector when switching to virtualized mode.
     items_.clear();
-    // Clamp selection to the new count.
-    if (selectedIndex_ >= static_cast<int>(count))
-        selectedIndex_ = static_cast<int>(count) - 1;
+    // Clamp the whole selection to the new count, not just the active index: on a
+    // virtualized list items 0..n-1 keep their identity across a count change, so
+    // the surviving part of the set is still right and only the tail past the end
+    // must go. Clamping only selectedIndex_ (as this did before) left IsSelected()
+    // true for rows that no longer exist, and a later grow resurrected them as
+    // selected. O(log ranges) — it trims the range list, it does not walk indices.
+    const bool setChanged = ClampSelectionToCount(static_cast<int>(count));
     UpdateScrollExtent();
     Invalidate();
+    if (setChanged) RaiseSelectionSetChanged();
 }
 
 void ListBox::OnItemsChanged()
@@ -38,10 +43,25 @@ void ListBox::OnItemsChanged()
     // Direct mode: items_ was set via SetItems(). Clear virtualItemCount_ to
     // signal direct mode, clamp selection, update scroll extent.
     virtualItemCount_ = 0;
-    if (selectedIndex_ >= ItemCount())
-        selectedIndex_ = ItemCount() - 1;
+    // NOT the SetItemCount clamp: there the surviving indices still name the same
+    // items, here the whole list was replaced and index 3 is now a different item.
+    // Keeping the old set showed rows the user never picked as selected. Clamp the
+    // active index into range, then re-seed the set from it (TreeView does the same).
+    bool setChanged = ClampSelectionToCount(ItemCount());
+    setChanged = ReseedSelectionSet() || setChanged;
     UpdateScrollExtent();
     Invalidate();
+    if (setChanged) RaiseSelectionSetChanged();
+}
+
+void ListBox::RaiseSelectionSetChanged()
+{
+    // The set event alone, without OnSelectionSetChanged's scroll-into-view: a data
+    // change (shrink, replace) must tell subscribers their payload is stale, but must
+    // not yank the viewport the way a Ctrl/Shift gesture legitimately does.
+    if (!selectionSetChanged_.HasSubscribers()) return;
+    std::vector<int> sel = SelectedIndices();
+    selectionSetChanged_.Raise(*this, sel);
 }
 
 void ListBox::OnSelectionChanged(int /*oldIndex*/, int newIndex)
@@ -57,11 +77,11 @@ void ListBox::OnSelectionSetChanged()
     // gesture is keyboard-reachable, so the target can be off-screen) and raise
     // the set event. Event::Raise takes Args& so the vector must be an lvalue.
     EnsureSelectedVisible();
-    // Nobody listening: skip materializing (and sorting) the whole set, which for a
-    // Shift+End over a large list is most of the gesture's cost.
-    if (!selectionSetChanged_.HasSubscribers()) return;
-    std::vector<int> sel = SelectedIndices();
-    selectionSetChanged_.Raise(*this, sel);
+    // Nobody listening: RaiseSelectionSetChanged skips expanding the ranges into one
+    // int per selected item. The set itself is range-based (a Shift+End is one range),
+    // so this vector<int> payload is the only O(selected) step left in the gesture; a
+    // subscriber that cares about cost can ignore it and read SelectedRanges() instead.
+    RaiseSelectionSetChanged();
 }
 
 void ListBox::OnBoundsChanged()

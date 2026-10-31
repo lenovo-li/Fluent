@@ -132,6 +132,7 @@
     <ClCompile Include="unit\ListBoxTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ListBoxItemHeightGuardTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ListBoxMultiSelectTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\IndexRangeSetTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\LogViewerTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\RichTextDocumentTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\RichTextBoxTests.cpp"><Filter>unit</Filter></ClCompile>

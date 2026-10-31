@@ -94,7 +94,18 @@ public:
     // added, cleared on removal). Used to propagate invalidation toward the root
     // so a nested element repaints without wiring its own callback. The parent
     // owns the child (unique_ptr), so this pointer is valid for the child's life.
-    void SetParent(Visual* parent) { parent_ = parent; }
+    //
+    // Joining a parent carries this node's pending dirty state up the new ancestor
+    // chain (see MarkAncestorsSubtreeDirty). Without that, an element dirtied while
+    // detached and then added would sit under ancestors whose subtree mark is
+    // clear, and the pruned frame walks would never reach it: its pixels would not
+    // be reported and its flags never cleared. No frame is requested here; the
+    // container that adopts the child (Panel::Add, Border::SetChild, ...) already
+    // invalidates itself, which is what schedules the frame.
+    void SetParent(Visual* parent) {
+        parent_ = parent;
+        if (parent_ && Any(subtreeDirty_)) MarkAncestorsSubtreeDirty(subtreeDirty_);
+    }
     Visual* Parent() const { return parent_; }
 
     // --- Render -----------------------------------------------------------
@@ -194,20 +205,79 @@ public:
     // cleared by the host during a frame). Public so the window host can
     // query/clear them; elements use the Invalidate* helpers below.
     DirtyFlags Dirty() const { return dirty_; }
+    // Clears THIS node's own flags only. The subtree mark below is deliberately
+    // left alone: a container that clears itself has not cleared its children, so
+    // the mark must keep saying "something below may still be dirty". Leaving it
+    // set is always safe (it only costs a visit); clearing it early is not.
     void ClearDirty() { dirty_ = DirtyFlags::None; }
 
-    // True if this visual (or, for panels, any descendant) has `flags` set. The
-    // host calls this before a frame: if any Measure bit is set anywhere in the
-    // tree it re-runs layout before painting. Leaves test only themselves; Panel
-    // overrides to recurse into children.
-    virtual bool AnyDirtyInSubtree(DirtyFlags flags) const {
-        return Has(dirty_, flags);
+    // --- Subtree dirty mark (frame-walk pruning) --------------------------
+    // The union of every dirty flag recorded on this node or any descendant since
+    // the last ClearDirtySubtree() that reached this node — a conservative
+    // SUPERSET: it may say a flag is present when it is not any more, never the
+    // reverse. Maintained by InvalidateDirty, which ORs the expanded flags into
+    // every node on the Parent() chain up to the root (it walks that chain for the
+    // frame request anyway), and by SetParent for a node that arrives already
+    // dirty.
+    //
+    // Why it exists: the host runs four tree walks on every painted frame
+    // (AnyDirtyInSubtree Measure, AnyDirtyInSubtree Arrange, CollectDirtyBounds,
+    // ClearDirtySubtree). Unpruned, each visited every node, so a caret blink or a
+    // hover in a 2,000-element page cost O(tree). With this mark the public
+    // entry points below skip any subtree whose mark is clear, and the cost
+    // becomes O(dirty path) plus one flag test per sibling passed on the way.
+    //
+    // An invalidation that names no flag (InvalidateDirty(None) — a frame request
+    // forwarded from a child, or ScrollPanel's rail-only repaint) still records
+    // Render here, on the node that asked and on its ancestors. Render is the
+    // weakest bit and drives no layout; it only means "visit this path", which is
+    // what such a node needs: ScrollPanel reports its rail strips from
+    // CollectDirtyBoundsOverride while its own dirty_ stays None, and a pruned walk
+    // that never reached it would leave those pixels unpainted.
+    DirtyFlags SubtreeDirty() const { return subtreeDirty_; }
+
+    // True if this visual or any descendant has `flags` set. The host calls this
+    // before a frame: if any Measure bit is set anywhere in the tree it re-runs
+    // layout before painting. Non-virtual on purpose: the pruning test lives here,
+    // once, so no override can forget it. Containers customize the recursion in
+    // AnyDirtyInSubtreeOverride.
+    bool AnyDirtyInSubtree(DirtyFlags flags) const {
+        if (!Has(subtreeDirty_, flags)) return false;
+        return AnyDirtyInSubtreeOverride(flags);
     }
-    // Clear the accumulated dirty flags on this visual and (for panels) all
-    // descendants. Called by the host after it has serviced a frame.
-    virtual void ClearDirtySubtree() { ClearDirty(); }
+    // Clear the accumulated dirty flags on this visual and all descendants, then
+    // the subtree mark. Called by the host after it has serviced a frame. A
+    // subtree whose mark is clear holds no dirty flag (invariant above), so it is
+    // skipped without being walked.
+    //
+    // The mark is cleared BEFORE the override runs, not after: if anything inside
+    // the walk re-dirties this subtree (no in-tree control does, but a subclass
+    // override could), the fresh InvalidateDirty sets the mark again and it
+    // survives — clearing afterwards would erase a mark that now describes real
+    // pending work.
+    void ClearDirtySubtree() {
+        if (!Any(subtreeDirty_) && !Any(dirty_)) return;
+        subtreeDirty_ = DirtyFlags::None;
+        ClearDirtySubtreeOverride();
+    }
 
 protected:
+    // Overridable bodies of the two public walks above. They are called only when
+    // the subtree mark says this subtree may be dirty, so an override never needs
+    // its own early-out. A container recurses by calling the PUBLIC entry point on
+    // each child (child->AnyDirtyInSubtree / child->ClearDirtySubtree), which is
+    // what applies the pruning at every level.
+    //
+    // CONTRACT for a container override of ClearDirtySubtreeOverride: it must
+    // reach every child that can carry dirty flags, i.e. at least every child that
+    // the matching AnyDirtyInSubtreeOverride / CollectDirtyBoundsOverride visits.
+    // A child left out keeps its own mark set, which is safe (it is visited again
+    // next time) but defeats the pruning for that branch.
+    virtual bool AnyDirtyInSubtreeOverride(DirtyFlags flags) const {
+        return Has(dirty_, flags);
+    }
+    virtual void ClearDirtySubtreeOverride() { ClearDirty(); }
+
     // Mark this visual dirty and request a frame. The flags are expanded to their
     // closure (Measure -> Arrange -> Render) and accumulated here; the request
     // then propagates toward the root. Invalidate() defaults to Render-only.
@@ -238,10 +308,24 @@ protected:
     virtual void OnMeasureInvalidated() {}
 
 private:
+    // OR `flags` into the subtree mark of every ancestor (not this node). Walks to
+    // the root unconditionally rather than stopping at the first ancestor whose
+    // mark already covers `flags`: a container whose ClearDirtySubtreeOverride
+    // skips some child clears its own mark while that child's stays set, and an
+    // early stop there would leave the container unmarked forever. The full walk
+    // is the same length InvalidateDirty already pays to find the root callback.
+    void MarkAncestorsSubtreeDirty(DirtyFlags flags) {
+        for (Visual* p = parent_; p; p = p->parent_) p->subtreeDirty_ |= flags;
+    }
+
     bool visible_ = true;
     float opacity_ = 1.0f;      // [0..1]; 1 = opaque (multiplier skipped entirely)
     Visual* parent_ = nullptr;  // non-owning; set by Panel::Add
     DirtyFlags dirty_ = DirtyFlags::None;  // accumulated between frames
+    // Superset of dirty_ over this whole subtree; see SubtreeDirty(). Starts
+    // clear, matching dirty_: a freshly constructed element is clean until its
+    // first setter invalidates it.
+    DirtyFlags subtreeDirty_ = DirtyFlags::None;
     void (*invalidateCb_)(void*) = nullptr;
     void* invalidateCtx_ = nullptr;
 };

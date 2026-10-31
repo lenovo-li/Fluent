@@ -200,11 +200,18 @@ public:
         return this;
     }
 
+protected:
+    // Dirty-walk hooks (see Panel). railsDirty_ is the one piece of dirty state
+    // here that is NOT in dirty_, so it must be reached through the subtree mark:
+    // InvalidateRails raises it together with InvalidateDirty(None), and that call
+    // records Render in this panel's mark and its ancestors'. A pruned walk
+    // therefore still arrives here on a rail-only frame.
+
     // Children's dirty rects need no offset fixup (their bounds are already the
     // on-screen position), but they DO need clipping: Render clips to bounds_, so a
     // child scrolled halfway out must not advertise the part nobody paints — the
     // host would clear those pixels and never restore them.
-    void CollectDirtyBounds(std::vector<RectDip>& out) override {
+    void CollectDirtyBoundsOverride(std::vector<RectDip>& out) override {
         if (IsVisible() && Any(Dirty())) out.push_back(VisualBounds());
         else if (IsVisible() && railsDirty_) AppendRailRects(out);
         std::vector<RectDip> childRects;
@@ -221,12 +228,11 @@ public:
     }
     // The rail-only flag is cleared with the rest of the dirty state once the
     // frame that reported it has painted.
-    void ClearDirtySubtree() override {
+    void ClearDirtySubtreeOverride() override {
         railsDirty_ = false;
-        Panel::ClearDirtySubtree();
+        Panel::ClearDirtySubtreeOverride();
     }
 
-protected:
     SizeDip MeasureOverride(float availW, float availH) override;
     void ArrangeOverride(const RectDip& content) override;
     void OnBoundsChanged() override;

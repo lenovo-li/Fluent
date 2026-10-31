@@ -181,7 +181,7 @@ void Viewbox::CollectFocusables(std::vector<UIElement*>& out) {
     if (content_ && content_->IsVisible()) content_->CollectFocusables(out);
 }
 
-void Viewbox::CollectDirtyBounds(std::vector<RectDip>& out) {
+void Viewbox::CollectDirtyBoundsOverride(std::vector<RectDip>& out) {
     if (IsVisible() && Any(Dirty())) out.push_back(VisualBounds());
     // The child reports its dirty rects in UNSCALED space, which is not where the
     // pixels are. Reporting them unmapped would clear the wrong region and leave
@@ -234,12 +234,12 @@ void Viewbox::OnDeviceRestored() {
     if (content_) content_->OnDeviceRestored();
 }
 
-bool Viewbox::AnyDirtyInSubtree(DirtyFlags flags) const {
+bool Viewbox::AnyDirtyInSubtreeOverride(DirtyFlags flags) const {
     if (Has(Dirty(), flags)) return true;
     return content_ && content_->AnyDirtyInSubtree(flags);
 }
 
-void Viewbox::ClearDirtySubtree() {
+void Viewbox::ClearDirtySubtreeOverride() {
     ClearDirty();
     if (content_) content_->ClearDirtySubtree();
 }

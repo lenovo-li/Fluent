@@ -146,6 +146,9 @@ closeSub_ = tabs->TabCloseRequested().Subscribe(this,
 
 - **只有选中页是活的**：命中测试、脏区收集、绘制都只走选中页（`HitTestDeep` 和
   `CollectDirtyBounds` 都重写过；否则基类 Panel 仍会绘制和命中未选中但 bounds 还有效的页）。
+  脏区收集重写的是 protected 钩子 `CollectDirtyBoundsOverride`：公开的 `CollectDirtyBounds`
+  不再是虚函数，它先检查子树脏标记，没有失效过的子树直接跳过。清理和查询沿用 Panel 的实现，
+  所以未选中页里的脏标记仍然会被清掉。
 - **头宽只在文字变化时重新测量**（`AddTab` / `RemoveTab`），缩放窗口时不重建文字布局。
 - **idle 零成本**：淡入收敛后 `WantsAnimationTick()` 为 false。
 - **没有指示条滑动动画**：指示条在切换的那一帧直接跳到新位置。

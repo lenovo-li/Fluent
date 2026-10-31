@@ -6,4 +6,5 @@
 - [Index-keyed cache tests count only](index-keyed-cache-tests-count-only.md) — renumbered line caches tested by build counts with identical lines; misattached rows pass
 - [Unrecorded text mutation vs undo](unrecorded-text-mutation-vs-undo.md) — text_ writes that skip Record*/Clear make Ctrl+Z delete wrong text (menu Cut, TextArea trim)
 - [Public event raised inside PopupHost::Close](public-event-inside-popup-close.md) — reopen via dismiss hook loses the new hook (host nulls slot); destroy-in-handler UAF via Event::Raise
+- [Propagation tests masked by container invalidate](propagation-tests-masked-by-container-invalidate.md) — attach via Panel::Add/SetChild marks the path itself; only bare SetParent tests the fix
 - [Pump fixes miss multi-window and legacy loop](pump-fixes-miss-multiwindow-and-legacy-loop.md) — PumpOneTurn hooks keyed on loop-global state; legacy GetMessage loops skipped

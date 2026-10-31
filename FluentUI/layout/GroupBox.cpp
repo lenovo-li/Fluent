@@ -191,7 +191,7 @@ void GroupBox::CollectFocusables(std::vector<UIElement*>& out) {
     if (content_ && content_->IsVisible()) content_->CollectFocusables(out);
 }
 
-void GroupBox::CollectDirtyBounds(std::vector<RectDip>& out) {
+void GroupBox::CollectDirtyBoundsOverride(std::vector<RectDip>& out) {
     if (IsVisible() && Any(Dirty())) out.push_back(VisualBounds());
     if (content_ && content_->IsVisible()) content_->CollectDirtyBounds(out);
 }
@@ -228,12 +228,12 @@ void GroupBox::OnDeviceRestored() {
     if (content_) content_->OnDeviceRestored();
 }
 
-bool GroupBox::AnyDirtyInSubtree(DirtyFlags flags) const {
+bool GroupBox::AnyDirtyInSubtreeOverride(DirtyFlags flags) const {
     if (Has(Dirty(), flags)) return true;
     return content_ && content_->AnyDirtyInSubtree(flags);
 }
 
-void GroupBox::ClearDirtySubtree() {
+void GroupBox::ClearDirtySubtreeOverride() {
     ClearDirty();
     if (content_) content_->ClearDirtySubtree();
 }

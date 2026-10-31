@@ -389,7 +389,46 @@ virtual void OnChildRemoved(FrameworkElement* child);
 // otherwise, or the children never receive a context.
 void AttachChildren(const UIContext& ctx) override;
 void DetachChildren() override;
+
+// Per-frame dirty walks. The PUBLIC entry points CollectDirtyBounds (UIElement),
+// AnyDirtyInSubtree and ClearDirtySubtree (Visual) are non-virtual: each first
+// tests the subtree dirty mark (Visual::SubtreeDirty) and returns at once for a
+// subtree no invalidation has touched. The overridable bodies are these protected
+// hooks, called only when the mark is set. Override them only if the container
+// paints a child set that differs from children_ (TabControl reports the selected
+// page only) or keeps dirty state outside dirty_ (ScrollPanel's rail strips).
+void CollectDirtyBoundsOverride(std::vector<RectDip>& out) override;
+bool AnyDirtyInSubtreeOverride(DirtyFlags flags) const override;
+void ClearDirtySubtreeOverride() override;
 ```
+
+**Dirty-walk contract** (applies to any container, Panel-derived or not, such as
+a single-child wrapper like `Border`):
+
+- Recurse by calling the child's **public** entry point
+  (`child->CollectDirtyBounds(out)`, `child->ClearDirtySubtree()`), never the
+  child's hook. The pruning test happens inside the public entry point, so this
+  is what makes the walk cost the dirty path and not the whole subtree.
+- `ClearDirtySubtreeOverride` must reach every child that `CollectDirtyBoundsOverride`
+  or `AnyDirtyInSubtreeOverride` can visit. A child left out keeps its mark set:
+  that is safe, but it is walked again every frame.
+- Dirty state kept in a member instead of `dirty_` (a flag your
+  `CollectDirtyBoundsOverride` reports from) must be raised together with
+  `InvalidateDirty(DirtyFlags::None)`. That call sets `Render` in the mark of this
+  element and every ancestor without dirtying anything, which is what brings the
+  pruned walk to the element. `ScrollPanel::InvalidateRails` does this.
+- A child that joins the tree already dirty is handled by `SetParent`, which
+  carries the child's mark up the new ancestor chain. A container that owns a
+  child outside `Panel`'s API must still call `SetParent(this)` on it.
+- **Migration from the previous API:** `CollectDirtyBounds`, `AnyDirtyInSubtree`
+  and `ClearDirtySubtree` used to be public virtuals. An existing
+  `... override` of one of them no longer compiles, which is intentional. Rename it
+  to the `...Override` hook and make it `protected`. Inside it, call the base hook
+  (for example `Panel::ClearDirtySubtreeOverride()`) where you used to call the
+  base public function. Every in-repo container was migrated this way: Panel,
+  ScrollPanel, TabControl, Border, GroupBox, Viewbox and Expander.
+  `SubtreeDirtyPruning.*` in `tests/unit/SubtreeDirtyTests.cpp` covers the
+  contract.
 
 **Design Constraints**:
 - ✅ Measure children with `MeasureCached()`, not `Measure()`: it short-circuits when the child is clean and the constraint is unchanged
@@ -401,17 +440,43 @@ void DetachChildren() override;
 
 ### Selector (collection controls)
 
-`Selector<T>` (`controls/primitives/Selector.h`) holds the selected index, the multi-select set and the anchor. Protected hooks a collection control relies on:
+`Selector<T>` (`controls/primitives/Selector.h`) holds the selected index, the multi-select set and the anchor. Protected hooks and state a collection control relies on:
 
 ```cpp
 virtual void OnSelectionChanged(int oldIndex, int newIndex);  // raise your typed event, sync views
 virtual void OnSelectionSetChanged();                         // multi-select set changed (Toggle / Range)
 virtual void AddRangeToSelectionSet(int lo, int hi);          // fill the set for RangeSelectTo
+bool ReseedSelectionSet();                                    // items replaced wholesale: set = {selectedIndex_}
+bool ClampSelectionToCount(int count);                        // count shrank, surviving indices keep identity
+// Both return whether the SET changed and do NOT raise SelectionSetChanged: the caller
+// raises it (a subscriber's last payload is stale), without the scroll-into-view a
+// Ctrl/Shift gesture's OnSelectionSetChanged does.
+
+int selectedIndex_;                // active index (both modes)
+SelectionMode selectionMode_;
+IndexRangeSet selectedSet_;        // authoritative selection in Multiple mode
+int selectionAnchor_;              // Shift-range origin
 ```
 
-`AddRangeToSelectionSet` receives the inclusive index range of a Shift gesture with the set already cleared. The default inserts every index, which is right for a flat list. Override it when some indices in the range are not on screen: `TreeView` does, because a collapsed node's rows sit numerically inside the range, and selecting them meant a delete over the selection removed nodes the user never saw. Cost is O(hi - lo) inserts on the input path.
+**The set is ranges, not indices.** `selectedSet_` is an `IndexRangeSet`: sorted, disjoint, non-touching inclusive `IndexRange{lo, hi}` runs, with one canonical form for any index set (touching runs are always merged). It replaced a protected `std::unordered_set<int> selectedIndices_`, which turned Shift+End over a virtualized 1,000,000-item ListBox into a million hash inserts on the key-press path (about 80 ms per press in Release). The member was renamed on purpose, so a subclass written against the old one fails to compile instead of calling a different API. Migration:
 
-In `OnSelectionSetChanged`, check `HasSubscribers()` on your event before materializing the set into a vector: on a large Shift range that copy is most of the gesture's cost (ListBox and TreeView both skip it).
+| Old (`selectedIndices_`) | New (`selectedSet_`) | Cost (r = range count) |
+|---|---|---|
+| `insert(i)` | `Add(i)`; for a run `AddRange(lo, hi)` | O(log r), O(1) when appending ascending |
+| `erase(i)` | `Remove(i)`; `RemoveRange(lo, hi)` | O(log r) + one insert when it splits a run |
+| `count(i)` | `Contains(i)` | O(log r) |
+| `size()` | `Count()` (items) / `RangeCount()` (runs) | O(r) / O(1) |
+| `clear()` | `Clear()`; `AssignRange(lo, hi)` to replace with one run | O(1) |
+| range-for over indices | `for (const IndexRange& r : selectedSet_.Ranges())` | O(r) |
+| — | `ClampTo(count)`, `InsertAt(index, n)`, `EraseAt(index, n)` | O(log r + runs shifted) |
+
+`InsertAt` / `EraseAt` keep a selection on the same *items* across an incremental insert or remove in the item source: indices above the edit shift, a run straddling an insert is split around the new (unselected) items, and two runs that touch after an erase are merged. Use them if your control mutates its items in place; replace-everything controls use `ReseedSelectionSet` instead (TreeView re-seeds because its mutators rebuild by id).
+
+`AddRangeToSelectionSet` receives the inclusive index range of a Shift gesture with the set already cleared. The default is one `selectedSet_.AddRange(lo, hi)`, O(1) whatever the length, which is right for a flat list. Override it when some indices in the range are not on screen: `TreeView` does, because a collapsed node's rows sit numerically inside the range, and selecting them meant a delete over the selection removed nodes the user never saw. Add the runs you want in ascending order (each add is then an append); `TreeView` coalesces consecutive visible rows into runs, so a fully expanded stretch is one range and each collapsed node only splits it.
+
+Public reads, same Single-mode rule for all of them (the single selection as one item, or empty): `IsSelected(i)` O(log r), `SelectedRanges()` and `SelectedCount()` O(r), `SelectedIndices()` O(selected) because its `vector<int>` signature expands every index. Draw and hit-test with `IsSelected`; count with `SelectedCount`, never `SelectedIndices().size()`.
+
+In `OnSelectionSetChanged`, check `HasSubscribers()` on your event before building a `vector<int>` payload: with range storage that expansion is the only O(selected) step left in a large Shift gesture (ListBox and TreeView both skip it when nobody listens).
 
 ---
 

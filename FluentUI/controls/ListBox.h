@@ -135,6 +135,9 @@ protected:
     void OnSelectionChanged(int oldIndex, int newIndex) override;
     // Selector hook: the multi-select set changed via a Ctrl/Shift gesture.
     void OnSelectionSetChanged() override;
+    // The SelectionSetChanged event without the gesture's scroll-into-view; used when
+    // a data change (SetItemCount shrink, SetItems replace) altered the set.
+    void RaiseSelectionSetChanged();
 
 private:
     // Hit-test: return the item index at the given Y coordinate, or -1.

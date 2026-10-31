@@ -159,7 +159,7 @@ public:
     // Append the bounds (window DIPs) of every element in this subtree whose own
     // dirty flags are set. The host unions these into the frame's
     // dirty region for a partial redraw. A leaf adds itself when dirty; a Panel
-    // overrides to recurse (a Panel is included when its own flags are set, e.g.
+    // overrides CollectDirtyBoundsOverride to recurse (a Panel is included when its own flags are set, e.g.
     // a background change, and its dirty descendants are added independently).
     // Only visible elements contribute.
     //
@@ -169,8 +169,16 @@ public:
     // VisualOverflowDip(); this then reports the inflated rect automatically.
     // Under-reporting shows up as a clipped edge, and as leftover pixels once the
     // overflow stops being drawn.
-    virtual void CollectDirtyBounds(std::vector<RectDip>& out) {
-        if (IsVisible() && Any(Dirty())) out.push_back(VisualBounds());
+    //
+    // PRUNING: non-virtual, and it returns at once when the subtree mark is clear
+    // (Visual::SubtreeDirty) — nothing at or below this node has been invalidated
+    // since the last ClearDirtySubtree, so there is nothing to report. That one
+    // test is what makes the host's per-frame collection O(dirty path) instead of
+    // O(tree). Containers customize the walk in CollectDirtyBoundsOverride and
+    // recurse by calling THIS on each child, so the test applies at every level.
+    void CollectDirtyBounds(std::vector<RectDip>& out) {
+        if (!Any(SubtreeDirty())) return;
+        CollectDirtyBoundsOverride(out);
     }
 
     // How far outside bounds_ this element paints, in DIPs, on every side. Default 0
@@ -641,6 +649,23 @@ protected:
     // children first on detach).
     virtual void AttachChildren(const UIContext& ctx) { UNREFERENCED_PARAMETER(ctx); }
     virtual void DetachChildren() {}
+
+    // Overridable body of CollectDirtyBounds, called only when the subtree mark
+    // says something at or below this node may be dirty. The default reports this
+    // element's own VisualBounds() when its own flags are set. A container calls
+    // the base (or reports itself the same way) and then calls the PUBLIC
+    // CollectDirtyBounds on each child it paints — never the child's override —
+    // so the pruning test runs at every level.
+    //
+    // Every pixel this element paints must still be reported (the CONTRACT on
+    // CollectDirtyBounds). Pruning changes nothing about that for state recorded
+    // through InvalidateDirty, because every such call marks the path. State that
+    // is reported from a member flag instead (ScrollPanel's railsDirty_) must be
+    // raised together with an InvalidateDirty(DirtyFlags::None) on this element,
+    // which marks the path without setting dirty_.
+    virtual void CollectDirtyBoundsOverride(std::vector<RectDip>& out) {
+        if (IsVisible() && Any(Dirty())) out.push_back(VisualBounds());
+    }
 
     // THE ONE CALL A Measure MAKES to publish its result. A single writer for
     // desired_ rather than 25 controls assigning the field directly: it keeps the

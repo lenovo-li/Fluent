@@ -134,9 +134,16 @@ sub_ = tree->SelectionChanged().Subscribe(this,
   重写 `Selector::AddRangeToSelectionSet`，只取区间内的**可见**行（在可见行列表上二分查找）。
   由 `TreeViewMultiSelect.ShiftClickRangeSkipsRowsInsideACollapsedNode` 和
   `TreeViewMultiSelect.ShiftArrowRangeSkipsRowsInsideACollapsedNode` 锁定。
-- **没有订阅者时不构造集合事件的载荷。** `SelectionSetChanged` 没人订阅时，不再把整个选中集合
-  复制并排序成向量。大范围 Shift 选择里这一步是主要成本。没有专门的测试：没有订阅者时本来就没有
-  可观测的输出。
+- **多选集合按区间存储。** 选中集合是 `Selector` 的 `IndexRangeSet selectedSet_`（升序、不相交、
+  不相邻的闭区间），以前是逐行的 `unordered_set<int>`。TreeView 的范围填充把可见行切片里连续的行号
+  合并成一段，再按升序 `AddRange`：全部展开的一段只占一个区间，每个折叠节点只把它断开一次。
+  `IsRowSelected` 是 O(log 区间数)，新增的 `SelectedRanges()` / `SelectedCount()` 是 O(区间数)；
+  `SelectedRowIndices()` 签名不变，仍是 O(选中行数)。由
+  `TreeViewMultiSelect.ShiftRangeCoalescesVisibleRowsIntoRuns` 锁定（变异：合并时不检查行号连续，
+  折叠节点的子行被并进区间，测试失败）。
+- **没有订阅者时不构造集合事件的载荷。** `SelectionSetChanged` 的参数是 `vector<int>`，构造它是
+  O(选中行数)，也是区间存储之后大范围 Shift 选择里唯一按行计费的一步。没人订阅时不构造。没有专门的
+  测试：没有订阅者时本来就没有可观测的输出。
 - **自定义图标跟随元素透明度。** `customIcon` 通过原始设备上下文绘制，以前不透明度写死 1.0，
   在 `SetOpacity` 淡化的 TreeView 里图标仍然完全不透明；现在用 `dc.Opacity()`。
   未验证：需真机。在一个淡入淡出的页面里放带 `customIcon` 的 TreeView，看图标是否和文字一起淡化。

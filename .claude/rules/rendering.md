@@ -56,6 +56,17 @@ contracts feed it, and violating either produces on-screen ghosting:
 - **Overflow must be declared unconditionally**, not only while focused — the
   frame where focus leaves still needs those pixels cleared.
 
+The dirty walks are **pruned by a subtree mark** (`Visual::SubtreeDirty`):
+`InvalidateDirty` ORs its flags plus `Render` into every ancestor, `SetParent`
+carries an already-dirty child's mark up, and the non-virtual public
+`CollectDirtyBounds` / `AnyDirtyInSubtree` / `ClearDirtySubtree` skip an unmarked
+subtree. A painted frame therefore costs O(dirty path). The consequence for the
+contract: a pixel change that does not go through `InvalidateDirty` is now
+invisible even if some override would have reported it. State kept outside
+`dirty_` must be raised together with `InvalidateDirty(DirtyFlags::None)`, as
+`ScrollPanel::InvalidateRails` does. Containers override the protected
+`...Override` hooks (see `docs/controls/inheritance-guide.md`, Panel).
+
 `VisualOverflowDip()` is deliberately one virtual feeding *both* the dirty-rect
 report and `Panel::Render`'s cull, so the "what gets cleared" and "what gets
 redrawn" judgments cannot drift apart. They did once, and that was a ghosting
