@@ -13,6 +13,9 @@
 // Needs a desktop session and a GPU (or WARP), so it is not in the default run.
 // Exit code = number of failed checks.
 #include "../../FluentUI/FluentUI.h"
+#include "../../FluentUI/controls/Expander.h"
+#include "../../FluentUI/controls/ListBox.h"
+#include "../../FluentUI/controls/Slider.h"
 
 #include <UIAutomation.h>
 
@@ -29,6 +32,7 @@ using fluent::ComPtr;
 std::atomic<int> g_clicks{0};
 std::atomic<int> g_textChanges{0};
 std::atomic<bool> g_doomedGone{false};
+std::atomic<int> g_listSelected{-1};
 int g_failures = 0;
 
 void Check(bool ok, const char* what) {
@@ -83,6 +87,22 @@ protected:
         lbl->SetText(L"Hello label");
         lbl->SetAutomationId(L"lbl");
 
+        // Phase 2: a RangeValue, an ExpandCollapse, a list with item peers.
+        auto* sld = root->Emplace<Slider>();
+        sld->SetAutomationId(L"sld");
+        sld->SetMinimum(0);
+        sld->SetMaximum(100);
+        sld->SetValue(10);
+        auto* ex = root->Emplace<Expander>();
+        ex->SetHeader(L"More");
+        ex->SetAutomationId(L"ex");
+        ex->SetContent(std::make_unique<TextBlock>())->SetText(L"Hidden text");
+        auto* lst = root->Emplace<ListBox>();
+        lst->SetAutomationId(L"lst");
+        lst->SetHeight(70);
+        lst->SetItems({L"Alpha", L"Beta", L"Gamma", L"Delta"});
+        list_ = lst;
+
         // Removes itself from its own Click handler: the posted-action and freeze
         // path under a real client.
         auto* doomed = root->Emplace<Button>();
@@ -108,6 +128,11 @@ protected:
 
 private:
     fluent::StackPanel* panel_ = nullptr;
+
+public:
+    fluent::ListBox* list_ = nullptr;
+
+private:
     std::vector<fluent::Subscription> subs_;
 };
 
@@ -313,8 +338,83 @@ void RunClient(HWND hwnd) {
               "removal -> StructureChanged event delivered");
         if (uia) uia->RemoveAllEventHandlers();
 
+        // --- Phase 2 controls through the real client ---------------------------
+        auto sld = FindById(uia.Get(), root.Get(), L"sld");
+        ComPtr<IUIAutomationRangeValuePattern> rv;
+        if (sld) sld->GetCurrentPatternAs(UIA_RangeValuePatternId, IID_PPV_ARGS(&rv));
+        Check(rv && Type(sld.Get()) == UIA_SliderControlTypeId, "Slider: RangeValue pattern");
+        Check(rv && SUCCEEDED(rv->SetValue(42)), "Slider: SetValue(42)");
+        Check(WaitFor([&] {
+                  double v = 0;
+                  return rv && SUCCEEDED(rv->get_CurrentValue(&v)) && v > 41.5 && v < 42.5;
+              }),
+              "Slider: value reads back 42");
+
+        auto ex = FindById(uia.Get(), root.Get(), L"ex");
+        ComPtr<IUIAutomationExpandCollapsePattern> ec;
+        if (ex) ex->GetCurrentPatternAs(UIA_ExpandCollapsePatternId, IID_PPV_ARGS(&ec));
+        Check(ec && SUCCEEDED(ec->Expand()), "Expander: Expand()");
+        Check(WaitFor([&] {
+                  ExpandCollapseState st = ExpandCollapseState_Collapsed;
+                  return ec && SUCCEEDED(ec->get_CurrentExpandCollapseState(&st)) &&
+                         st == ExpandCollapseState_Expanded;
+              }),
+              "Expander: state Expanded");
+        Check(WaitFor([&] {
+                  VARIANT nv;
+                  nv.vt = VT_BSTR;
+                  nv.bstrVal = SysAllocString(L"Hidden text");
+                  ComPtr<IUIAutomationCondition> c;
+                  uia->CreatePropertyCondition(UIA_NamePropertyId, nv, &c);
+                  VariantClear(&nv);
+                  ComPtr<IUIAutomationElement> found;
+                  if (c && ex) ex->FindFirst(TreeScope_Descendants, c.Get(), &found);
+                  return found != nullptr;
+              }),
+              "Expander: content appears in the tree after expanding");
+
+        auto lst = FindById(uia.Get(), root.Get(), L"lst");
+        Check(lst && Type(lst.Get()) == UIA_ListControlTypeId, "ListBox: List control type");
+        ComPtr<IUIAutomationCondition> isItem;
+        {
+            VARIANT tv;
+            tv.vt = VT_I4;
+            tv.lVal = UIA_ListItemControlTypeId;
+            uia->CreatePropertyCondition(UIA_ControlTypePropertyId, tv, &isItem);
+        }
+        ComPtr<IUIAutomationElementArray> items;
+        if (lst && isItem) lst->FindAll(TreeScope_Children, isItem.Get(), &items);
+        int itemCount = 0;
+        if (items) items->get_Length(&itemCount);
+        Check(itemCount == 4, "ListBox: 4 ListItem children (rows are not elements)");
+        ComPtr<IUIAutomationElement> gamma;
+        if (items && itemCount >= 3) items->GetElement(2, &gamma);
+        Check(gamma && Name(gamma.Get()) == L"Gamma", "ListBox: third item named Gamma");
+        ComPtr<IUIAutomationSelectionItemPattern> sip;
+        if (gamma) gamma->GetCurrentPatternAs(UIA_SelectionItemPatternId, IID_PPV_ARGS(&sip));
+        Check(sip && SUCCEEDED(sip->Select()), "ListBox: Select() on Gamma");
+        Check(WaitFor([&] { return g_listSelected.load() == 2; }), "ListBox: app sees index 2 selected");
+
+        // Caption buttons: Minimize/Maximize/Close are real buttons under the window.
+        ComPtr<IUIAutomationElement> closeBtn;
+        {
+            VARIANT idv;
+            idv.vt = VT_BSTR;
+            idv.bstrVal = SysAllocString(L"Close");
+            ComPtr<IUIAutomationCondition> c;
+            uia->CreatePropertyCondition(UIA_AutomationIdPropertyId, idv, &c);
+            VariantClear(&idv);
+            if (c) root->FindFirst(TreeScope_Children, c.Get(), &closeBtn);
+        }
+        Check(closeBtn && Type(closeBtn.Get()) == UIA_ButtonControlTypeId && !Name(closeBtn.Get()).empty(),
+              "caption: Close button exposed with a localized name");
+
         // Close check: after the window closes, cached elements are dead, not hung.
-        PostMessageW(hwnd, WM_CLOSE, 0, 0);
+        ComPtr<IUIAutomationInvokePattern> closeInv;
+        if (closeBtn) closeBtn->GetCurrentPatternAs(UIA_InvokePatternId, IID_PPV_ARGS(&closeInv));
+        const bool invoked = closeInv && SUCCEEDED(closeInv->Invoke());
+        Check(invoked, "caption: Invoke() on Close");
+        if (!invoked) PostMessageW(hwnd, WM_CLOSE, 0, 0);
         Check(WaitFor([&] { return !IsWindow(hwnd); }), "window closed");
         BSTR n = nullptr;
         const HRESULT hr = btn ? btn->get_CurrentName(&n) : E_FAIL;
@@ -340,6 +440,10 @@ int RunUiaSmoke() {
         std::printf("[ FAIL ] window.Show failed (no desktop session / GPU?)\n");
         return 1;
     }
+    fluent::Subscription listSub;
+    if (window.list_)
+        listSub = window.list_->SelectionChanged().Subscribe(
+            nullptr, [](void*, fluent::ListBox&, int& i) { g_listSelected = i; });
     std::thread client(RunClient, window.Hwnd());
     app.Run();
     client.join();

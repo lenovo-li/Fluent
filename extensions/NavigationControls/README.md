@@ -164,3 +164,7 @@ with the number of items.
 `Fluent.slnx` includes `extensions/NavigationControls/NavigationControls.vcxproj`
 (solution folder `/extensions/`). Output: `x64/<Config>/NavigationControls.lib`.
 Consuming it from another solution: see `INTEGRATION.md`.
+
+## UI Automation
+
+`NavRail` exposes itself as a UIA List (name: its AutomationName, default "Navigation") whose children are its navigation items as ListItems (Name = `label`, SelectionItem through `SetSelectedIndex`), plus ExpandCollapse for the pane (`SetExpanded`). It is written in `NavRailPeer.cpp`, outside the core library, as the worked example of adding UIA to an extension control: override `CreateAutomationPeer()` and build on `FluentUI/automation/SelectorPeers.h`.

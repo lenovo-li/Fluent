@@ -29,6 +29,8 @@ public:
     void SetRightContent(std::unique_ptr<FrameworkElement> content);
 
 protected:
+    // UI Automation peer (automation/RangeAndContainerPeers.h).
+    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
     SizeDip MeasureOverride(float availW, float availH) override;
     void ArrangeOverride(const RectDip& content) override;
     void OnRenderBackground(const DrawingContext& dc) override;

@@ -15,6 +15,7 @@
 #include "UiaInternal.h"
 
 #include "AutomationGeometry.h"
+#include "AutomationPeer.h"
 #include "AutomationTree.h"
 #include "../core/UIElement.h"
 
@@ -136,8 +137,18 @@ public:
         // A fragment root has no parent or siblings in its fragment; UIA asks the
         // HWND host for those. Children are the window's exposed root elements.
         if (!site_) return S_OK;
-        if (dir == NavigateDirection_FirstChild) return FragmentForElement(FirstExposedRoot(*site_), ret);
-        if (dir == NavigateDirection_LastChild) return FragmentForElement(LastExposedRoot(*site_), ret);
+        if (dir == NavigateDirection_FirstChild) {
+            // The caption buttons come first (top-right of the window), then the elements.
+            for (int s = 0; s < 3; ++s)
+                if (IUnknown* c = site_->CaptionProvider(s)) return c->QueryInterface(IID_PPV_ARGS(ret));
+            return FragmentForElement(FirstExposedRoot(*site_), ret);
+        }
+        if (dir == NavigateDirection_LastChild) {
+            if (UIElement* last = LastExposedRoot(*site_)) return FragmentForElement(last, ret);
+            for (int s = 2; s >= 0; --s)
+                if (IUnknown* c = site_->CaptionProvider(s)) return c->QueryInterface(IID_PPV_ARGS(ret));
+            return S_OK;
+        }
         return S_OK;
     }
     IFACEMETHODIMP GetRuntimeId(SAFEARRAY** ret) override {
@@ -182,7 +193,17 @@ public:
         if (!site_) return S_OK;
         const POINT o = site_->ClientOriginOnScreen();
         const DipPoint pt = HostDipFromScreen(x, y, o.x, o.y, site_->Dpi());
-        return FragmentForElement(ExposedElementAt(*site_, pt.x, pt.y), ret);
+        for (int s = 0; s < 3; ++s) {
+            const int hit = s == 0 ? HTMINBUTTON : s == 1 ? HTMAXBUTTON : HTCLOSE;
+            if (site_->CaptionRect(hit).contains(pt.x, pt.y))
+                if (IUnknown* c = site_->CaptionProvider(s)) return c->QueryInterface(IID_PPV_ARGS(ret));
+        }
+        UIElement* e = ExposedElementAt(*site_, pt.x, pt.y);
+        // A container that draws its own items answers which item is there.
+        if (AutomationPeer* p = e ? e->GetOrCreateAutomationPeer() : nullptr) {
+            if (AutomationPeer* item = p->ItemAtPoint(pt.x, pt.y)) return FragmentForPeer(item, ret);
+        }
+        return FragmentForElement(e, ret);
     }
     IFACEMETHODIMP GetFocus(IRawElementProviderFragment** ret) override {
         CheckThread("GetFocus");
@@ -191,7 +212,11 @@ public:
         if (!attached_) return UIA_E_ELEMENTNOTAVAILABLE;
         if (!site_) return S_OK;
         UIElement* f = site_->FocusedElement();
-        return f ? FragmentForElement(NearestListed(*site_, f), ret) : S_OK;
+        UIElement* listed = f ? NearestListed(*site_, f) : nullptr;
+        if (AutomationPeer* p = listed ? listed->GetOrCreateAutomationPeer() : nullptr) {
+            if (AutomationPeer* item = p->FocusedItem()) return FragmentForPeer(item, ret);
+        }
+        return FragmentForElement(listed, ret);
     }
 
 private:
@@ -238,8 +263,11 @@ void DetachProvider(IUnknown* provider) {
 }
 
 bool IsProviderAttached(IUnknown* provider) {
+    if (!provider) return false;
+    ComPtr<IRawElementProviderFragmentRoot> root;
+    if (FAILED(provider->QueryInterface(IID_PPV_ARGS(&root)))) return PeerFromProvider(provider) != nullptr;
     auto* p = FromUnknown(provider);
-    return p && p->Attached();
+    return p->Attached();
 }
 
 namespace {
@@ -274,6 +302,13 @@ public:
         o.vt = n.vt = VT_I4;
         o.lVal = oldV;
         n.lVal = newV;
+        return UiaRaiseAutomationPropertyChangedEvent(AsSimple(provider), id, o, n);
+    }
+    HRESULT RaiseDoubleChanged(IUnknown* provider, int id, double oldV, double newV) override {
+        VARIANT o, n;
+        o.vt = n.vt = VT_R8;
+        o.dblVal = oldV;
+        n.dblVal = newV;
         return UiaRaiseAutomationPropertyChangedEvent(AsSimple(provider), id, o, n);
     }
     HRESULT RaiseStringChanged(IUnknown* provider, int id, const wchar_t* oldV,

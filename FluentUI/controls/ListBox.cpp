@@ -188,6 +188,27 @@ int ListBox::PageStep() const
     return std::max(1, static_cast<int>(bounds_.h / itemHeight_) - 1);
 }
 
+RectDip ListBox::ItemRect(int i) const
+{
+    if (i < 0 || i >= ItemCount()) return {};
+    const float top = bounds_.y + i * itemHeight_ - scroll_.Offset();
+    const float y0 = std::max(top, bounds_.y);
+    const float y1 = std::min(top + itemHeight_, bounds_.bottom());
+    if (y1 <= y0) return {};
+    return {bounds_.x, y0, bounds_.w, y1 - y0};
+}
+
+void ListBox::ScrollItemIntoView(int i)
+{
+    if (i < 0 || i >= ItemCount()) return;
+    const float target = EnsureVisibleOffset(i * itemHeight_, itemHeight_,
+                                             scroll_.Offset(), bounds_.h);
+    if (target != scroll_.Offset()) {
+        scroll_.SetOffset(target);
+        Invalidate();
+    }
+}
+
 void ListBox::EnsureSelectedVisible()
 {
     if (selectedIndex_ < 0 || selectedIndex_ >= ItemCount()) return;

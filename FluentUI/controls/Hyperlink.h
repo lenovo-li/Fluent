@@ -73,6 +73,13 @@ public:
     // to assert that the Ctrl branch was taken.
     bool LastActivationOpenedUri() const { return lastOpenedUri_; }
 
+    // Programmatic activation with the effect of a plain click / Enter (no Ctrl):
+    // raises Click or opens the URI per the activation policy. Used by UI
+    // Automation's Invoke, run from a posted action. Ignored when disabled.
+    void PerformActivate() {
+        if (IsEnabled()) Activate(false);
+    }
+
     void Render(const DrawingContext& dc) override;
     void Measure(float availW, float availH) override;
     HCURSOR Cursor() const override;
@@ -109,6 +116,8 @@ public:
     void OnKeyDownRouted(KeyEventArgs& e) override;
 
 protected:
+    // UI Automation peer (automation/RangeAndContainerPeers.h).
+    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
     void OnStateChanged() override { Invalidate(); }
     void OnThemeChanged() override;
     void OnAttachedToTree() override;

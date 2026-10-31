@@ -50,7 +50,22 @@ IUnknown* AutomationPeer::Provider() {
     return provider_.Get();
 }
 
+RectDip AutomationPeer::BoundsInHostDip() const { return owner_.BoundsInHostDip(); }
+bool AutomationPeer::IsEnabled() const { return owner_.IsEnabled(); }
+bool AutomationPeer::IsKeyboardFocusable() const { return owner_.IsFocusable(); }
+bool AutomationPeer::HasFocusWithin() const { return owner_.IsFocused(); }
+bool AutomationPeer::IsOffscreen() const {
+    return !owner_.IsEffectivelyVisible() || owner_.WindowClippedBounds().isEmpty();
+}
+std::wstring AutomationPeer::GetHelpText() const { return owner_.Tooltip(); }
+std::wstring AutomationPeer::GetAutomationId() const { return owner_.AutomationId(); }
+
 void AutomationPeer::Release(IAutomationSite* site) {
+    // Owned item peers first: they are this peer's UIA children. The peer object is
+    // fully alive here even on the ~UIElement path (only the OWNER is half
+    // destroyed), so the virtual call dispatches correctly; overrides must touch
+    // only their own item cache, never the owner.
+    ReleaseOwned(site);
     if (!provider_) return;
     FreezeProvider(provider_.Get());  // from now on it never reaches this peer
     if (site) site->QueueDisconnect(provider_.Get());

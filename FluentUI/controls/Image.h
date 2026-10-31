@@ -121,6 +121,8 @@ public:
     void Render(const DrawingContext& dc) override;
 
 protected:
+    // UI Automation peer (automation/RangeAndContainerPeers.h).
+    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
     void OnAttachedToTree() override;
     void OnDetachedFromTree() override;
     // The device the bitmap lives on is gone; drop it and rebuild on restore.

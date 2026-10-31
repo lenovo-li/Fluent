@@ -164,6 +164,21 @@ ScrollPanel 自己不画背景；滚动条由内嵌的 `ScrollViewer` 绘制，t
 
 ---
 
+## UI Automation
+
+ScrollPanel 的 peer：
+
+| 项 | 值 |
+|---|---|
+| ControlType | Pane（以前作为可获得焦点的元素被报告成无名的 Custom） |
+| 模式 | Scroll：百分比 0..100，不可滚动的轴为 -1；`SetScrollPercent` 超出 0..100 返回 `E_INVALIDARG` |
+| AutomationId | `SetAutomationId` |
+| HelpText | `Tooltip()` |
+
+惰性创建：只有 UIA 客户端访问到这个控件时才创建 peer，没有客户端时零开销。模式操作经投递消息执行，执行前重新检查控件仍在树上且已启用。属性变化只在真正变化且有客户端监听时发送。自定义方式见 inheritance-guide.md 的“UI Automation”一节。
+
+验证：无头测试 `tests/unit/AutomationControlPeerTests.cpp` / `AutomationSelectorPeerTests.cpp`，真实 UIA 客户端自测 `FluentUITests.exe --uia-smoke`；第 2 阶段 14 处变异全部被测试抓到。
+
 ## 相关控件
 
 - [ScrollViewer](ScrollViewer.md) — 内嵌的滚动条模型（偏移、淡出、拖动）

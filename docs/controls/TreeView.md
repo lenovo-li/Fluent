@@ -190,6 +190,21 @@ demo 导航 → 数据控件 → TreeView（nav id 402）；demo 左侧的导航
 
 ---
 
+## UI Automation
+
+TreeView 的 peer：
+
+| 项 | 值 |
+|---|---|
+| ControlType | Tree |
+| 模式 | Selection、Scroll。子节点是当前可见行（折叠的子树不在树里），按行的稳定 id 作 key，所以展开节点时其他行的节点不失效；每行 TreeItem 提供 ExpandCollapse（无子行为 LeafNode，对其 Expand 返回 `UIA_E_INVALIDOPERATION`）和 SelectionItem。新增的行位置反查表让 `VisibleIndexByRow` 从线性查找变为 O(1) |
+| AutomationId | `SetAutomationId` |
+| HelpText | `Tooltip()` |
+
+惰性创建：只有 UIA 客户端访问到这个控件时才创建 peer，没有客户端时零开销。模式操作经投递消息执行，执行前重新检查控件仍在树上且已启用。属性变化只在真正变化且有客户端监听时发送。自定义方式见 inheritance-guide.md 的“UI Automation”一节。
+
+验证：无头测试 `tests/unit/AutomationControlPeerTests.cpp` / `AutomationSelectorPeerTests.cpp`，真实 UIA 客户端自测 `FluentUITests.exe --uia-smoke`；第 2 阶段 14 处变异全部被测试抓到。
+
 ## 相关控件
 
 - [ListBox](ListBox.md) — 扁平的虚拟化列表，同样基于 `Selector`

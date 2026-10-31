@@ -10,6 +10,9 @@
 #include "../fl_common.h"
 
 namespace fluent::automation {
+
+void ReleaseCaptionProviders(IUiaCore& core, Microsoft::WRL::ComPtr<IUnknown> (&caps)[3]);
+
 namespace {
 // UIA event ids (uiautomationclient.h), kept here so this file needs no UIA header.
 constexpr int kFocusChangedEventId = 20005;     // UIA_AutomationFocusChangedEventId
@@ -90,9 +93,10 @@ void AutomationHost::QueueDisconnect(IUnknown* frozen) {
     RequestFlush();
 }
 
-void AutomationHost::PostAction(IUnknown* provider, PeerAction action, const wchar_t* value) {
+void AutomationHost::PostAction(IUnknown* provider, PeerAction action, const wchar_t* value,
+                                double a, double b) {
     if (torn_down_ || !provider) return;
-    actions_.push_back({Ref(provider), action, value ? value : L""});
+    actions_.push_back({Ref(provider), action, value ? value : L"", a, b});
     RequestFlush();
 }
 
@@ -108,6 +112,12 @@ void AutomationHost::QueueChanged(IUnknown* p) {
 void AutomationHost::QueueInvoked(IUnknown* p) { if (p && !torn_down_) { PushUnique(invoked_, p); RequestFlush(); } }
 void AutomationHost::QueueSelected(IUnknown* p) { if (p && !torn_down_) { PushUnique(selected_, p); RequestFlush(); } }
 
+void AutomationHost::QueueTrim(IUnknown* p) {
+    if (!p || torn_down_) return;
+    PushUnique(trims_, p);
+    RequestFlush();
+}
+
 void AutomationHost::QueueChildrenChanged(IUnknown* parent) {
     // No client ever connected (no root): nobody holds a view of the tree to fix.
     if (!root_ || torn_down_ || !core_->ClientsAreListening()) return;
@@ -122,13 +132,26 @@ void AutomationHost::QueueChildrenChanged(IUnknown* parent) {
 void AutomationHost::OnFlush() {
     flushPosted_ = false;
     if (torn_down_) return;
-    for (int round = 0; round < kMaxFlushRounds && (!actions_.empty() || !disconnects_.empty());
+    for (int round = 0;
+         round < kMaxFlushRounds &&
+         (!actions_.empty() || !captionInvokes_.empty() || !disconnects_.empty());
          ++round) {
         std::vector<Action> actions;
         actions.swap(actions_);
-        for (const Action& a : actions) RunPeerAction(a.provider.Get(), a.action, a.value);
+        for (const Action& a : actions) RunPeerAction(a.provider.Get(), a.action, a.value, a.a, a.b);
+        std::vector<int> caps;
+        caps.swap(captionInvokes_);
+        for (int hit : caps)
+            if (window_) window_->AutomationCaptionInvoke(hit);  // may destroy the window
+        if (torn_down_) return;
         FlushDisconnects();
     }
+    // Cache trims: run the container's re-check (it releases the excess) whether or
+    // not a client listens; property raises inside still honour the listener gate.
+    std::vector<Ref> trims;
+    trims.swap(trims_);
+    for (const Ref& t : trims)
+        if (AutomationPeer* p = PeerFromProvider(t.Get())) p->OnFlushRecheck();
     RaiseEvents();
     // Leftover work after the round cap: post again. But disconnects left only
     // because we are inside SendMessage (a modal loop nested in a sent message
@@ -168,7 +191,10 @@ void AutomationHost::RaiseEvents() {
     // value", which UIA clients treat as advisory.)
     if (!core_->ClientsAreListening()) return;
     // A frozen provider (element gone since queuing) has no peer: skipped inside.
-    for (const Ref& c : changed) RaiseChangedProperties(core_, c.Get());
+    for (const Ref& c : changed) {
+        if (AutomationPeer* p = PeerFromProvider(c.Get())) p->OnFlushRecheck();
+        RaiseChangedProperties(core_, c.Get());
+    }
     for (const Ref& i : invoked)
         if (PeerFromProvider(i.Get())) core_->RaiseEvent(i.Get(), kInvokedEventId);
     for (const Ref& sel : selected)
@@ -190,6 +216,8 @@ void AutomationHost::OnFocusChanged(UIElement* newFocus) {
     UIElement* listed = NearestListed(*this, newFocus);
     if (!listed) return;
     AutomationPeer* peer = listed->GetOrCreateAutomationPeer();
+    // Focus on a list announces its current item, as Narrator expects.
+    if (AutomationPeer* item = peer ? peer->FocusedItem() : nullptr) peer = item;
     IUnknown* prov = peer ? peer->Provider() : nullptr;
     if (!prov) return;
     focus_ = prov;  // coalesced: only the last focus change of a batch is raised
@@ -214,10 +242,12 @@ void AutomationHost::OnWindowDestroying() {
     if (torn_down_) return;
     torn_down_ = true;  // stop serving WM_GETOBJECT; stop queuing actions/events
     actions_.clear();
+    captionInvokes_.clear();
     changed_.clear();
     invoked_.clear();
     selected_.clear();
     structure_.clear();
+    trims_.clear();
     focus_.Reset();
     focusRoot_ = structureRoot_ = false;
 }
@@ -231,6 +261,7 @@ void AutomationHost::OnWindowDestroyed(HWND hwnd) {
     } else {
         FlushDisconnects();
     }
+    ReleaseCaptionProviders(*core_, captions_);
     if (!root_) return;  // no client ever asked: nothing was handed out
     // One summary line per window that had a client: proves element disconnects
     // happened and succeeded without a trace per element (a large tree has hundreds).

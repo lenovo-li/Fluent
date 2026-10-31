@@ -145,6 +145,9 @@ public:
     int HitTestItem(float dipX, float dipY) const;
 
 protected:
+    // UI Automation peer (NavRailPeer.cpp): a List of ListItems + ExpandCollapse.
+    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
+
     SizeDip MeasureOverride(float availW, float availH) override;
     void ArrangeOverride(const RectDip& content) override;
 

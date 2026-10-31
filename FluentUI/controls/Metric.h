@@ -29,6 +29,8 @@ namespace fluent {
 
 class Metric : public Control {
 public:
+    // UI Automation peer (automation/RangeAndContainerPeers.h).
+    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
     // How to colour a delta. Explicit rather than inferred from the string so the caller
     // cannot be surprised: parsing "+1.2%" to guess a direction would break on "1.2pp",
     // "▲1.2" or a localised minus sign.

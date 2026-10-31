@@ -17,6 +17,8 @@ namespace fluent {
 
 class Slider : public RangeBase {
 public:
+    // UI Automation peer (automation/RangeAndContainerPeers.h).
+    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
     enum class Orientation { Horizontal, Vertical };
 
     Slider() { SetFocusable(true); }

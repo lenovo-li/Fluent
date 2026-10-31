@@ -113,6 +113,26 @@ public:
     // row-flavoured aliases: they read better at a tree call site, and they are
     // what the existing tests and demo call. The indices are ROW indices (into
     // items_), not visible indices — same as before the hoist.
+    // --- Visible rows, for UI Automation (O(1) each) ------------------------
+    // The rows currently shown (collapsed subtrees excluded), in display order.
+    int VisibleRowCount() const { return static_cast<int>(visibleRows_.size()); }
+    // Row index (into the row vector) of visible row v, or -1.
+    int RowIndexAtVisible(int v) const {
+        return v >= 0 && v < VisibleRowCount() ? visibleRows_[v] : -1;
+    }
+    // Visible position of a row id, or -1 when hidden (inside a collapsed parent).
+    int VisibleIndexOfId(int id) const;
+    // Visible row v's rect in host-client DIPs, clipped to the viewport; empty when
+    // scrolled out.
+    RectDip VisibleRowRect(int v) const;
+    int VisibleRowAt(float dipY) const;
+    void ScrollVisibleRowIntoView(int v);
+    const ScrollViewer& Scroller() const { return scroll_; }
+    void SetScrollOffset(float dip) {
+        scroll_.SetOffset(dip);
+        Invalidate();
+    }
+
     std::vector<int> SelectedRowIndices() const { return SelectedIndices(); }
     bool IsRowSelected(int rowIndex) const { return IsSelected(rowIndex); }
     void ToggleRowSelection(int rowIndex) { ToggleSelection(rowIndex); }
@@ -157,6 +177,8 @@ public:
     void OnPointerReleased(PointerEventArgs& e) override;
 
 protected:
+    // UI Automation peer (automation/SelectorPeers.h).
+    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
     void OnAttachedToTree() override;
     void OnDetachedFromTree() override;
     void OnBoundsChanged() override;
@@ -219,6 +241,10 @@ private:
 
     // Derived tree state (items_ + selectedIndex_ live in the Selector base).
     std::vector<int> visibleRows_;
+    // Inverse of visibleRows_: row index -> visible position, -1 when hidden.
+    // Rebuilt with visibleRows_ so a row's position is O(1) (UIA asks it per
+    // navigation step; a linear search made a full walk quadratic).
+    std::vector<int> visiblePos_;
     std::unordered_map<int, int> idToIndex_;
     std::vector<int> parentIndex_;
     int pendingSelectedId_ = -1;   // captured across a SetRows to restore selection

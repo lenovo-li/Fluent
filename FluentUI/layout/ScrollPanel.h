@@ -201,6 +201,8 @@ public:
     }
 
 protected:
+    // UI Automation peer (automation/RangeAndContainerPeers.h).
+    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
     // Dirty-walk hooks (see Panel). railsDirty_ is the one piece of dirty state
     // here that is NOT in dirty_, so it must be reached through the subtree mark:
     // InvalidateRails raises it together with InvalidateDirty(None), and that call

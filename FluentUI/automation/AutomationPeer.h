@@ -29,6 +29,7 @@ class UIElement;
 namespace fluent::automation {
 
 class IAutomationSite;
+class AutomationPeer;
 
 class IInvokePeer {
 public:
@@ -56,6 +57,63 @@ public:
     virtual ~ISelectionItemPeer() = default;
     virtual bool IsSelected() const = 0;
     virtual void Select() = 0;
+    // Multi-select containers override; single-select: add = select, remove refused.
+    virtual bool CanAddRemove() const { return false; }
+    virtual void AddToSelection() { Select(); }
+    virtual void RemoveFromSelection() {}
+    // The selection container's peer (a ListBox for its rows), or null.
+    virtual AutomationPeer* SelectionContainer() const { return nullptr; }
+};
+// A container's selection, answered by index so a 1M-row multi-selection is never
+// materialized: GetSelection hands out at most kMaxReported items.
+class ISelectionPeer {
+public:
+    virtual ~ISelectionPeer() = default;
+    virtual bool CanSelectMultiple() const = 0;
+    virtual bool IsSelectionRequired() const { return false; }
+    virtual size_t SelectedIndex() const = 0;   // primary selection; >= item count = none
+    virtual size_t SelectedCount() const = 0;
+    virtual bool IsIndexSelected(size_t i) const = 0;
+    static constexpr size_t kMaxReported = 256;
+};
+
+class IRangeValuePeer {
+public:
+    virtual ~IRangeValuePeer() = default;
+    virtual double GetValue() const = 0;
+    virtual double GetMinimum() const = 0;
+    virtual double GetMaximum() const = 0;
+    virtual double GetSmallChange() const = 0;
+    virtual double GetLargeChange() const = 0;
+    virtual bool IsReadOnly() const = 0;
+    virtual void SetValue(double v) = 0;  // clamped by the control
+};
+enum class ExpandState : int32_t { Collapsed = 0, Expanded = 1, PartiallyExpanded = 2, LeafNode = 3 };
+class IExpandCollapsePeer {
+public:
+    virtual ~IExpandCollapsePeer() = default;
+    virtual ExpandState GetExpandState() const = 0;
+    virtual void Expand() = 0;
+    virtual void Collapse() = 0;
+};
+// Percent-based like UIA's ScrollPattern: 0..100, or -1 (UIA_ScrollPatternNoScroll)
+// on an axis that cannot scroll.
+class IScrollPeer {
+public:
+    virtual ~IScrollPeer() = default;
+    virtual double HorizontalPercent() const = 0;
+    virtual double VerticalPercent() const = 0;
+    virtual double HorizontalViewSize() const = 0;  // visible share, 0..100
+    virtual double VerticalViewSize() const = 0;
+    virtual void SetScrollPercent(double h, double v) = 0;  // -1 = leave that axis
+};
+// A container whose items are not elements (list rows, tree rows, tabs): the peer
+// answers child navigation itself. Children are ItemPeers it owns.
+class IItemsPeer {
+public:
+    virtual ~IItemsPeer() = default;
+    virtual size_t ItemCount() const = 0;
+    virtual AutomationPeer* ItemAt(size_t i) = 0;   // created on demand, owned by the peer
 };
 
 class AutomationPeer;
@@ -91,6 +149,35 @@ public:
     virtual ITogglePeer* AsToggle() { return nullptr; }
     virtual IValuePeer* AsValue() { return nullptr; }
     virtual ISelectionItemPeer* AsSelectionItem() { return nullptr; }
+    virtual IRangeValuePeer* AsRangeValue() { return nullptr; }
+    virtual IExpandCollapsePeer* AsExpandCollapse() { return nullptr; }
+    virtual IScrollPeer* AsScroll() { return nullptr; }
+    virtual IItemsPeer* AsItems() { return nullptr; }
+    virtual ISelectionPeer* AsSelection() { return nullptr; }
+    // ScrollItem pattern: brings the element/item into view (posted action).
+    virtual bool CanScrollIntoView() const { return false; }
+    virtual void ScrollIntoView() {}
+
+    // --- What the provider reports, via the peer so ItemPeer can override --------
+    // Defaults read the owner element. An ItemPeer (a list row, a tab header) has
+    // no element of its own and answers from its container instead.
+    virtual RectDip BoundsInHostDip() const;
+    virtual bool IsEnabled() const;
+    virtual bool IsKeyboardFocusable() const;
+    virtual bool HasFocusWithin() const;   // ANDed with the host's OS focus
+    virtual bool IsOffscreen() const;
+    virtual std::wstring GetHelpText() const;
+    virtual std::wstring GetAutomationId() const;
+    // Non-null only for an ItemPeer: the container peer that lists it.
+    virtual AutomationPeer* ItemContainer() const { return nullptr; }
+    // Containers: the item under a host-DIP point / the keyboard-focused item, or
+    // null (then the container itself answers).
+    virtual AutomationPeer* ItemAtPoint(float x, float y) {
+        UNREFERENCED_PARAMETER(x);
+        UNREFERENCED_PARAMETER(y);
+        return nullptr;
+    }
+    virtual AutomationPeer* FocusedItem() { return nullptr; }
 
     // The COM provider for this peer, created on first use (IUnknown, not AddRef'd).
     IUnknown* Provider();
@@ -104,11 +191,24 @@ public:
     // Called (posted, coalesced) after the owner invalidated while a client may be
     // watching; the host re-reads properties and raises only real changes.
     virtual void OnOwnerInvalidated();
+    // Runs from the host's flush only (after posted actions, never inside a client
+    // call or an invalidation), before the property re-check. Containers release
+    // vanished / excess item peers here: releasing one synchronously could destroy
+    // the item whose action is on the stack (TreeView Collapse invalidates while
+    // the TreeItem's Collapse() runs).
+    virtual void OnFlushRecheck() {}
+
+protected:
+    // A container's item peers release with it (or when their item disappears).
+    // Overrides release their items and then call the base.
+    virtual void ReleaseOwned(IAutomationSite* site) { UNREFERENCED_PARAMETER(site); }
+    // Lets a container release a peer it owns (Release is otherwise UIElement-only).
+    static void ReleasePeer(AutomationPeer& p, IAutomationSite* site) { p.Release(site); }
 
 private:
     friend class fluent::UIElement;
     // Freezes the provider (it stops reaching this peer) and hands it to `site` for
-    // a deferred UIA disconnect; null site = freeze only. Called only by UIElement.
+    // a deferred UIA disconnect; null site = freeze only. Releases owned items first.
     void Release(IAutomationSite* site);
 
     UIElement& owner_;

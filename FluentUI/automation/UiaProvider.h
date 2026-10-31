@@ -76,7 +76,8 @@ void FreezeProvider(IUnknown* provider);
 // The peer behind an unfrozen element provider, else null.
 AutomationPeer* PeerFromProvider(IUnknown* provider);
 // Runs a posted action on the provider's peer, if it is still unfrozen.
-void RunPeerAction(IUnknown* provider, PeerAction action, const std::wstring& value);
+void RunPeerAction(IUnknown* provider, PeerAction action, const std::wstring& value,
+                   double a = 0, double b = 0);
 // Re-reads the reported properties and raises UIA property events for the ones that
 // changed since the last raise. Null `core` only records the baseline.
 void RaiseChangedProperties(IUiaCore* core, IUnknown* provider);

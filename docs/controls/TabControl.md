@@ -185,6 +185,21 @@ demo 导航 → 窗口 & 对话框 → TabControl（nav id 601）。
 
 ---
 
+## UI Automation
+
+TabControl 的 peer：
+
+| 项 | 值 |
+|---|---|
+| ControlType | Tab |
+| 模式 | Selection（必须有选中项）。子节点先是各个 TabItem（Name = `HeaderAt(i)`，矩形 = `HeaderRect(i)`，SelectionItem 走 `SetSelectedIndex`），然后是当前选中页 |
+| AutomationId | `SetAutomationId` |
+| HelpText | `Tooltip()` |
+
+惰性创建：只有 UIA 客户端访问到这个控件时才创建 peer，没有客户端时零开销。模式操作经投递消息执行，执行前重新检查控件仍在树上且已启用。属性变化只在真正变化且有客户端监听时发送。自定义方式见 inheritance-guide.md 的“UI Automation”一节。
+
+验证：无头测试 `tests/unit/AutomationControlPeerTests.cpp` / `AutomationSelectorPeerTests.cpp`，真实 UIA 客户端自测 `FluentUITests.exe --uia-smoke`；第 2 阶段 14 处变异全部被测试抓到。
+
 ## 相关控件
 
 - [ScrollPanel](ScrollPanel.md) — 选项卡内容超出高度时放进它

@@ -105,6 +105,11 @@ set(FLUENTUI_SOURCES
     FluentUI/automation/AutomationTree.cpp
     FluentUI/automation/ControlPeers.cpp
     FluentUI/automation/UiaElementProvider.cpp
+    FluentUI/automation/ItemPeers.cpp
+    FluentUI/automation/UiaPatterns.cpp
+    FluentUI/automation/RangeAndContainerPeers.cpp
+    FluentUI/automation/SelectorPeers.cpp
+    FluentUI/automation/UiaCaptionButtons.cpp
     FluentUI/window/ThemeHost.cpp
     FluentUI/window/DiagnosticsHost.cpp
     FluentUI/window/DialogHost.cpp

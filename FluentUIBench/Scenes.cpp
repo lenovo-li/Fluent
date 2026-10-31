@@ -502,6 +502,7 @@ struct BenchUiaCore final : automation::IUiaCore {
     HRESULT RaiseEvent(IUnknown*, int) override { ++raised; return S_OK; }
     HRESULT RaiseBoolChanged(IUnknown*, int, bool, bool) override { ++raised; return S_OK; }
     HRESULT RaiseIntChanged(IUnknown*, int, int, int) override { ++raised; return S_OK; }
+    HRESULT RaiseDoubleChanged(IUnknown*, int, double, double) override { ++raised; return S_OK; }
     HRESULT RaiseStringChanged(IUnknown*, int, const wchar_t*, const wchar_t*) override { ++raised; return S_OK; }
     HRESULT RaiseChildrenInvalidated(IUnknown*) override { ++raised; return S_OK; }
     void PostToHost(HWND, UINT) override { ++posts; }

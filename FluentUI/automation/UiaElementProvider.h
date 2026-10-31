@@ -24,7 +24,12 @@ class ElementProvider final : public IRawElementProviderSimple,
                               public IInvokeProvider,
                               public IToggleProvider,
                               public IValueProvider,
-                              public ISelectionItemProvider {
+                              public ISelectionItemProvider,
+                              public IRangeValueProvider,
+                              public IExpandCollapseProvider,
+                              public IScrollProvider,
+                              public ISelectionProvider,
+                              public IScrollItemProvider {
 public:
     explicit ElementProvider(AutomationPeer& peer);
 
@@ -36,7 +41,11 @@ public:
     struct Reported {
         bool valid = false;
         bool enabled = false;
-        int toggle = -1;  // -1 = no Toggle pattern
+        int toggle = -1;    // -1 = no Toggle pattern
+        int expand = -1;    // -1 = no ExpandCollapse pattern
+        double range = 0;   // RangeValue value (hasRange)
+        bool hasRange = false;
+        size_t selected = SIZE_MAX, selectedCount = 0;  // container selection
         std::wstring name, value;
     } reported;
 
@@ -71,13 +80,40 @@ public:
     IFACEMETHODIMP RemoveFromSelection() override;
     IFACEMETHODIMP get_IsSelected(BOOL* ret) override;
     IFACEMETHODIMP get_SelectionContainer(IRawElementProviderSimple** ret) override;
+    // IRangeValueProvider (get_IsReadOnly is shared with IValueProvider: same signature)
+    IFACEMETHODIMP SetValue(double val) override;
+    IFACEMETHODIMP get_Value(double* ret) override;
+    IFACEMETHODIMP get_Maximum(double* ret) override;
+    IFACEMETHODIMP get_Minimum(double* ret) override;
+    IFACEMETHODIMP get_LargeChange(double* ret) override;
+    IFACEMETHODIMP get_SmallChange(double* ret) override;
+    // IExpandCollapseProvider
+    IFACEMETHODIMP Expand() override;
+    IFACEMETHODIMP Collapse() override;
+    IFACEMETHODIMP get_ExpandCollapseState(ExpandCollapseState* ret) override;
+    // IScrollProvider
+    IFACEMETHODIMP Scroll(ScrollAmount h, ScrollAmount v) override;
+    IFACEMETHODIMP SetScrollPercent(double h, double v) override;
+    IFACEMETHODIMP get_HorizontalScrollPercent(double* ret) override;
+    IFACEMETHODIMP get_VerticalScrollPercent(double* ret) override;
+    IFACEMETHODIMP get_HorizontalViewSize(double* ret) override;
+    IFACEMETHODIMP get_VerticalViewSize(double* ret) override;
+    IFACEMETHODIMP get_HorizontallyScrollable(BOOL* ret) override;
+    IFACEMETHODIMP get_VerticallyScrollable(BOOL* ret) override;
+    // ISelectionProvider
+    IFACEMETHODIMP GetSelection(SAFEARRAY** ret) override;
+    IFACEMETHODIMP get_CanSelectMultiple(BOOL* ret) override;
+    IFACEMETHODIMP get_IsSelectionRequired(BOOL* ret) override;
+    // IScrollItemProvider
+    IFACEMETHODIMP ScrollIntoView() override;
 
 private:
     ~ElementProvider() = default;
     void CheckThread(const char* m) const { CheckProviderThread(uiThreadId_, m); }
     // Live = not frozen and the element still attached to a site.
     IAutomationSite* LiveSite() const;
-    HRESULT Post(PeerAction action, const wchar_t* value = nullptr);
+    HRESULT Post(PeerAction action, const wchar_t* value = nullptr, double a = 0, double b = 0);
+    friend class PatternAccess;
 
     std::atomic<ULONG> refs_{1};
     AutomationPeer* peer_;  // null once frozen
@@ -91,6 +127,7 @@ private:
     // stay constant, so QueryInterface answers from these even after freeze (the
     // pattern methods themselves then return UIA_E_ELEMENTNOTAVAILABLE).
     const bool hasInvoke_, hasToggle_, hasValue_, hasSelectionItem_;
+    const bool hasRange_, hasExpand_, hasScroll_, hasSelection_, hasScrollItem_;
 };
 
 }  // namespace fluent::automation

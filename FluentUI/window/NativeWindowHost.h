@@ -887,6 +887,15 @@ private:
         return i < elements_.size() ? elements_[i] : nullptr;
     }
     UIElement* AutomationFocusedElement() const override { return FocusedElement(); }
+    RectDip AutomationCaptionRect(int hit) const override { return CaptionButtonRect(hit); }
+    void AutomationCaptionInvoke(int hit) override {
+        if (!hwnd_ || destroying_) return;
+        const WPARAM cmd = hit == HTMINBUTTON ? SC_MINIMIZE
+                           : hit == HTCLOSE   ? SC_CLOSE
+                           : (IsZoomed(hwnd_) ? SC_RESTORE : SC_MAXIMIZE);
+        // Same command the caption click sends (WM_LBUTTONUP on the button).
+        PostMessageW(hwnd_, WM_SYSCOMMAND, cmd, 0);
+    }
 
     // Per-frame animation subsystem. FrameHost encapsulates the
     // frame scheduler (clock: running/dt state, arm/disarm logic) and animation

@@ -201,6 +201,8 @@ public:
     void OnAnimationTick(float dtSec) override;
 
 protected:
+    // UI Automation peer (automation/SelectorPeers.h).
+    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
     // Reports only the SELECTED content (see the note on HitTestDeep above);
     // test and clear are inherited from Panel and still cover every page.
     void CollectDirtyBoundsOverride(std::vector<RectDip>& out) override;

@@ -63,6 +63,10 @@ struct RecordingCore final : fluent::automation::IUiaCore {
         props.push_back({id, std::to_wstring(v)});
         return S_OK;
     }
+    HRESULT RaiseDoubleChanged(IUnknown*, int id, double, double v) override {
+        props.push_back({id, std::to_wstring(v)});
+        return S_OK;
+    }
     HRESULT RaiseStringChanged(IUnknown*, int id, const wchar_t*, const wchar_t* v) override {
         props.push_back({id, v});
         return S_OK;

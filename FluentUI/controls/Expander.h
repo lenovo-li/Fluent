@@ -185,6 +185,8 @@ public:
     }
 
 protected:
+    // UI Automation peer (automation/RangeAndContainerPeers.h).
+    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
     // Dirty-walk hooks: self, then the single content child through its PUBLIC
     // entry point (CollectDirtyBounds / AnyDirtyInSubtree / ClearDirtySubtree),
     // which is where the subtree-mark pruning happens.

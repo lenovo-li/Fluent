@@ -51,6 +51,15 @@ public:
     virtual size_t AutomationRootCount() const = 0;
     virtual UIElement* AutomationRootAt(size_t i) const = 0;
     virtual UIElement* AutomationFocusedElement() const = 0;
+    // The window's own caption buttons (HTMINBUTTON / HTMAXBUTTON / HTCLOSE), drawn
+    // by the host rather than as elements. Empty rect = no such button. Defaults:
+    // none, so a window without custom chrome (and every test fake) exposes none.
+    virtual RectDip AutomationCaptionRect(int hit) const {
+        UNREFERENCED_PARAMETER(hit);
+        return {};
+    }
+    // Run the button's command (posted; never from inside a COM call).
+    virtual void AutomationCaptionInvoke(int hit) { UNREFERENCED_PARAMETER(hit); }
 };
 
 // Posted to the host window to run the queues (WM_APP numbering: services/PopupHost.h).
@@ -96,11 +105,16 @@ public:
     UIElement* RootElementAt(size_t i) const override;
     UIElement* FocusedElement() const override;
     void QueueDisconnect(IUnknown* frozenProvider) override;
-    void PostAction(IUnknown* provider, PeerAction action, const wchar_t* value) override;
+    void PostAction(IUnknown* provider, PeerAction action, const wchar_t* value, double a,
+                    double b) override;
     void QueueChanged(IUnknown* provider) override;
     void QueueInvoked(IUnknown* provider) override;
     void QueueSelected(IUnknown* provider) override;
     void QueueChildrenChanged(IUnknown* parentProviderOrNull) override;
+    void QueueTrim(IUnknown* containerProvider) override;
+    RectDip CaptionRect(int hit) const override;
+    void PostCaptionInvoke(int hit) override;
+    IUnknown* CaptionProvider(int slot) override;
 
 private:
     using Ref = Microsoft::WRL::ComPtr<IUnknown>;
@@ -108,6 +122,7 @@ private:
         Ref provider;
         PeerAction action;
         std::wstring value;
+        double a, b;
     };
     void RequestFlush();
     void FlushDisconnects();
@@ -121,8 +136,10 @@ private:
     bool flushPosted_ = false;
     unsigned disconnected_ = 0, disconnectFailures_ = 0;  // traced at window teardown
     std::vector<Action> actions_;
+    std::vector<int> captionInvokes_;
+    Ref captions_[3];  // min, max, close providers (created on first navigation)
     std::vector<Ref> disconnects_;
-    std::vector<Ref> changed_, invoked_, selected_, structure_;
+    std::vector<Ref> changed_, invoked_, selected_, structure_, trims_;
     Ref focus_;
     bool focusRoot_ = false;      // focus event for the window root itself
     bool structureRoot_ = false;  // the root's children changed

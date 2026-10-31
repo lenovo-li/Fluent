@@ -523,6 +523,18 @@ Rules a peer must follow, and why:
 
 `ButtonBase::PerformActivate()` is the public programmatic activation (same effect as a click; ignored when disabled) that `ButtonPeer`/`TogglePeer`/`RadioButtonPeer` call.
 
+More patterns are available to a peer: `IRangeValuePeer` (Slider, NumericUpDown, ProgressBar, Rating), `IExpandCollapsePeer` (Expander, ComboBox, TreeView rows, NavRail), `IScrollPeer` (ScrollPanel, ListBox, TreeView; percent-based, `-1` = axis cannot scroll), `ISelectionPeer` (containers; answered by index, `GetSelection` capped at 256), and `CanScrollIntoView()`/`ScrollIntoView()` for ScrollItem. Built-in peers: `automation/RangeAndContainerPeers.h`, `automation/SelectorPeers.h`.
+
+**Items that are not elements.** A control that draws its own rows (a list, a tree, tab headers) derives its peer from `ItemsContainerPeer` (`automation/ItemPeers.h`), or from `SelectableContainerPeer` when the rows are selectable, and supplies `ItemCount()`, `ItemName(i)`, `ItemRect(i)` (host DIPs, empty when scrolled out), and the selection hooks. Row peers are created only when a client reaches them, keyed by index by default; override `KeyAt`/`IndexOfKey` to key by a stable id (TreeView does), so a row that only moved keeps its UIA identity. Rules:
+
+- Never release item peers synchronously. `ItemAt` may run inside a client call made on behalf of another cached item; vanished rows and the bounded cache (`kMaxCachedItems` = 1024) are pruned in `OnFlushRecheck()`, which the host calls from its flush.
+- A gone item (its key no longer maps to a row) stays connected until that flush but reports `IsEnabled() == false`, so an action on it is refused instead of handing an out-of-range index to the control.
+- Hit-testing over many rows must be arithmetic: override `ItemAtPoint` (ListBox, TreeView) instead of the default scan.
+
+`NavRail` (`extensions/NavigationControls/NavRailPeer.cpp`) is the worked example of all of this written from outside the core library.
+
+Programmatic entry points added for UIA, all public: `Hyperlink::PerformActivate()`, `ComboBox::IsDropDownOpen()`/`SetDropDownOpen()`, `ListBox::ItemRect()`/`ItemIndexAt()`/`ScrollItemIntoView()`/`Scroller()`, `TreeView::VisibleRowCount()`/`RowIndexAtVisible()`/`VisibleIndexOfId()`/`VisibleRowRect()`/`VisibleRowAt()`/`ScrollVisibleRowIntoView()`/`Scroller()`, `TextEditBase::ReplaceAllAsUserEdit()`. Expander's peer is a Group (Name = `Header()`) with ExpandCollapse that animates like a header click.
+
 ## Common Patterns
 
 ### Pattern 1: Call Base Then Decorate

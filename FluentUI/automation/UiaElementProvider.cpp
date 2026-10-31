@@ -4,6 +4,7 @@
 #include "AutomationGeometry.h"
 #include "AutomationPeer.h"
 #include "AutomationTree.h"
+#include "ItemPeers.h"
 #include "../core/UIElement.h"
 
 namespace fluent::automation {
@@ -31,7 +32,12 @@ ElementProvider::ElementProvider(AutomationPeer& peer)
       hasInvoke_(peer.AsInvoke() != nullptr),
       hasToggle_(peer.AsToggle() != nullptr),
       hasValue_(peer.AsValue() != nullptr),
-      hasSelectionItem_(peer.AsSelectionItem() != nullptr) {}
+      hasSelectionItem_(peer.AsSelectionItem() != nullptr),
+      hasRange_(peer.AsRangeValue() != nullptr),
+      hasExpand_(peer.AsExpandCollapse() != nullptr),
+      hasScroll_(peer.AsScroll() != nullptr),
+      hasSelection_(peer.AsSelection() != nullptr),
+      hasScrollItem_(peer.CanScrollIntoView()) {}
 
 ULONG ElementProvider::Release() {
     const ULONG left = --refs_;
@@ -54,6 +60,16 @@ HRESULT ElementProvider::QueryInterface(REFIID riid, void** out) {
         *out = static_cast<IValueProvider*>(this);
     else if (riid == __uuidof(ISelectionItemProvider) && hasSelectionItem_)
         *out = static_cast<ISelectionItemProvider*>(this);
+    else if (riid == __uuidof(IRangeValueProvider) && hasRange_)
+        *out = static_cast<IRangeValueProvider*>(this);
+    else if (riid == __uuidof(IExpandCollapseProvider) && hasExpand_)
+        *out = static_cast<IExpandCollapseProvider*>(this);
+    else if (riid == __uuidof(IScrollProvider) && hasScroll_)
+        *out = static_cast<IScrollProvider*>(this);
+    else if (riid == __uuidof(ISelectionProvider) && hasSelection_)
+        *out = static_cast<ISelectionProvider*>(this);
+    else if (riid == __uuidof(IScrollItemProvider) && hasScrollItem_)
+        *out = static_cast<IScrollItemProvider*>(this);
     else
         return E_NOINTERFACE;
     AddRef();
@@ -73,11 +89,11 @@ IAutomationSite* ElementProvider::LiveSite() const {
     return peer_ ? peer_->Owner().AutomationSite() : nullptr;
 }
 
-HRESULT ElementProvider::Post(PeerAction action, const wchar_t* value) {
+HRESULT ElementProvider::Post(PeerAction action, const wchar_t* value, double a, double b) {
     IAutomationSite* site = LiveSite();
     if (!site) return UIA_E_ELEMENTNOTAVAILABLE;
-    if (!peer_->Owner().IsEnabled()) return UIA_E_ELEMENTNOTENABLED;
-    site->PostAction(static_cast<IRawElementProviderSimple*>(this), action, value);
+    if (!peer_->IsEnabled()) return UIA_E_ELEMENTNOTENABLED;
+    site->PostAction(static_cast<IRawElementProviderSimple*>(this), action, value, a, b);
     return S_OK;
 }
 
@@ -101,6 +117,11 @@ HRESULT ElementProvider::GetPatternProvider(PATTERNID id, IUnknown** ret) {
     else if (id == UIA_TogglePatternId) QueryInterface(__uuidof(IToggleProvider), &p);
     else if (id == UIA_ValuePatternId) QueryInterface(__uuidof(IValueProvider), &p);
     else if (id == UIA_SelectionItemPatternId) QueryInterface(__uuidof(ISelectionItemProvider), &p);
+    else if (id == UIA_RangeValuePatternId) QueryInterface(__uuidof(IRangeValueProvider), &p);
+    else if (id == UIA_ExpandCollapsePatternId) QueryInterface(__uuidof(IExpandCollapseProvider), &p);
+    else if (id == UIA_ScrollPatternId) QueryInterface(__uuidof(IScrollProvider), &p);
+    else if (id == UIA_SelectionPatternId) QueryInterface(__uuidof(ISelectionProvider), &p);
+    else if (id == UIA_ScrollItemPatternId) QueryInterface(__uuidof(IScrollItemProvider), &p);
     *ret = static_cast<IUnknown*>(p);  // null (S_OK) = pattern not supported
     return S_OK;
 }
@@ -112,31 +133,34 @@ HRESULT ElementProvider::GetPropertyValue(PROPERTYID id, VARIANT* ret) {
     VariantInit(ret);
     IAutomationSite* site = LiveSite();
     if (!site) return UIA_E_ELEMENTNOTAVAILABLE;
-    const AutomationPeer& peer = *peer_;
-    const UIElement& e = peer.Owner();
+    AutomationPeer& peer = *peer_;
     switch (id) {
         case UIA_ControlTypePropertyId:
             ret->vt = VT_I4;
             ret->lVal = static_cast<LONG>(peer.GetControlType());
             return S_OK;
         case UIA_NamePropertyId: return ReturnString(peer.GetName(), ret);
-        case UIA_AutomationIdPropertyId:
-            return e.AutomationId().empty() ? S_OK : ReturnString(e.AutomationId(), ret);
+        case UIA_AutomationIdPropertyId: {
+            const std::wstring id = peer.GetAutomationId();
+            return id.empty() ? S_OK : ReturnString(id, ret);
+        }
         case UIA_FrameworkIdPropertyId: return ReturnString(L"FluentUI", ret);
-        case UIA_HelpTextPropertyId:
-            return e.Tooltip().empty() ? S_OK : ReturnString(e.Tooltip(), ret);
-        case UIA_IsEnabledPropertyId: ReturnBool(e.IsEnabled(), ret); return S_OK;
-        case UIA_IsKeyboardFocusablePropertyId: ReturnBool(e.IsFocusable(), ret); return S_OK;
+        case UIA_HelpTextPropertyId: {
+            const std::wstring h = peer.GetHelpText();
+            return h.empty() ? S_OK : ReturnString(h, ret);
+        }
+        case UIA_IsEnabledPropertyId: ReturnBool(peer.IsEnabled(), ret); return S_OK;
+        case UIA_IsKeyboardFocusablePropertyId: ReturnBool(peer.IsKeyboardFocusable(), ret); return S_OK;
         case UIA_HasKeyboardFocusPropertyId:
             // The focus manager keeps its element while the window is inactive (so it
             // can restore it); UIA must only report focus the user actually has.
-            ReturnBool(e.IsFocused() && site->HostHasOsFocus(), ret);
+            ReturnBool(peer.HasFocusWithin() && site->HostHasOsFocus(), ret);
             return S_OK;
         case UIA_IsControlElementPropertyId: ReturnBool(peer.IsControlElement(), ret); return S_OK;
         case UIA_IsContentElementPropertyId: ReturnBool(peer.IsContentElement(), ret); return S_OK;
         case UIA_IsPasswordPropertyId: ReturnBool(peer.IsPassword(), ret); return S_OK;
         case UIA_IsOffscreenPropertyId:
-            ReturnBool(!e.IsEffectivelyVisible() || e.WindowClippedBounds().isEmpty(), ret);
+            ReturnBool(peer.IsOffscreen(), ret);
             return S_OK;
         default: return S_OK;  // VT_EMPTY: UIA supplies its default
     }
@@ -157,18 +181,57 @@ HRESULT ElementProvider::Navigate(NavigateDirection dir, IRawElementProviderFrag
     *ret = nullptr;
     IAutomationSite* site = LiveSite();
     if (!site) return UIA_E_ELEMENTNOTAVAILABLE;
-    UIElement& e = peer_->Owner();
+    AutomationPeer& peer = *peer_;
+    UIElement& e = peer.Owner();
+    AutomationPeer* container = peer.ItemContainer();  // non-null: this is an item
+    IItemsPeer* items = peer.AsItems();                 // non-null: this lists items
     switch (dir) {
         case NavigateDirection_Parent:
+            if (container) return FragmentForPeer(container, ret);
             if (UIElement* p = ExposedParent(e)) return FragmentForElement(p, ret);
             if (IUnknown* root = site->RootProvider())
                 return root->QueryInterface(IID_PPV_ARGS(ret));
             return S_OK;
+        case NavigateDirection_FirstChild:
+            if (container) return S_OK;  // items are leaves
+            if (items && items->ItemCount() > 0) return FragmentForPeer(items->ItemAt(0), ret);
+            return FragmentForElement(FirstExposedChild(e), ret);
+        case NavigateDirection_LastChild:
+            if (container) return S_OK;
+            if (UIElement* last = LastExposedChild(e)) return FragmentForElement(last, ret);
+            if (items && items->ItemCount() > 0)
+                return FragmentForPeer(items->ItemAt(items->ItemCount() - 1), ret);
+            return S_OK;
         case NavigateDirection_NextSibling:
         case NavigateDirection_PreviousSibling: {
+            const bool next = dir == NavigateDirection_NextSibling;
+            if (container) {
+                // Within the container's items, then on into its element children.
+                IItemsPeer* list = container->AsItems();
+                const size_t i = static_cast<ItemPeer&>(peer).Index();
+                if (next) {
+                    if (i + 1 < list->ItemCount()) return FragmentForPeer(list->ItemAt(i + 1), ret);
+                    return FragmentForElement(FirstExposedChild(container->Owner()), ret);
+                }
+                return (i > 0 && i < list->ItemCount()) ? FragmentForPeer(list->ItemAt(i - 1), ret)
+                                                        : S_OK;
+            }
             size_t at = 0;
-            UIElement* s = ExposedSibling(*site, e, dir == NavigateDirection_NextSibling ? +1 : -1,
-                                          siblingHint_, &at);
+            UIElement* s = ExposedSibling(*site, e, next ? +1 : -1, siblingHint_, &at);
+            if (!s && !next && !ExposedParent(e)) {
+                // The first window root's previous siblings are the caption buttons.
+                for (int c = 2; c >= 0; --c)
+                    if (IUnknown* cp = site->CaptionProvider(c)) return cp->QueryInterface(IID_PPV_ARGS(ret));
+                return S_OK;
+            }
+            if (!s && !next) {
+                // First element child of a container that also lists items: the
+                // previous sibling is its last item.
+                UIElement* p = ExposedParent(e);
+                AutomationPeer* pp = p ? p->AutomationPeerIfAny() : nullptr;
+                IItemsPeer* pl = pp ? pp->AsItems() : nullptr;
+                if (pl && pl->ItemCount() > 0) return FragmentForPeer(pl->ItemAt(pl->ItemCount() - 1), ret);
+            }
             const HRESULT hr = FragmentForElement(s, ret);
             // Seed the sibling's own hint so the walk's next step starts there.
             if (*ret) {
@@ -178,8 +241,6 @@ HRESULT ElementProvider::Navigate(NavigateDirection dir, IRawElementProviderFrag
             }
             return hr;
         }
-        case NavigateDirection_FirstChild: return FragmentForElement(FirstExposedChild(e), ret);
-        case NavigateDirection_LastChild: return FragmentForElement(LastExposedChild(e), ret);
         default: return S_OK;
     }
 }
@@ -204,7 +265,7 @@ HRESULT ElementProvider::get_BoundingRectangle(UiaRect* ret) {
     if (!site) return UIA_E_ELEMENTNOTAVAILABLE;
     const POINT o = site->ClientOriginOnScreen();
     const ScreenRect r =
-        ScreenRectFromHostDip(peer_->Owner().BoundsInHostDip(), o.x, o.y, site->Dpi());
+        ScreenRectFromHostDip(peer_->BoundsInHostDip(), o.x, o.y, site->Dpi());
     *ret = UiaRect{r.left, r.top, r.width, r.height};  // not clipped (UIA convention)
     return S_OK;
 }
@@ -267,19 +328,31 @@ HRESULT ElementProvider::get_Value(BSTR* ret) {
     return *ret ? S_OK : E_OUTOFMEMORY;
 }
 HRESULT ElementProvider::get_IsReadOnly(BOOL* ret) {
+    // One method serves IValueProvider and IRangeValueProvider (identical
+    // signatures). A peer with both reports read-only if either is.
     CheckThread("get_IsReadOnly");
     if (!ret) return E_POINTER;
-    IValuePeer* v = LiveSite() ? peer_->AsValue() : nullptr;
-    if (!v) return UIA_E_ELEMENTNOTAVAILABLE;
-    *ret = v->IsReadOnly() ? TRUE : FALSE;
+    if (!LiveSite()) return UIA_E_ELEMENTNOTAVAILABLE;
+    IValuePeer* v = peer_->AsValue();
+    IRangeValuePeer* r = peer_->AsRangeValue();
+    if (!v && !r) return UIA_E_ELEMENTNOTAVAILABLE;
+    *ret = ((v && v->IsReadOnly()) || (r && r->IsReadOnly())) ? TRUE : FALSE;
     return S_OK;
 }
 HRESULT ElementProvider::Select() { CheckThread("Select"); return Post(PeerAction::Select); }
-// Radio-style items are single-select: adding is selecting, removing is refused.
-HRESULT ElementProvider::AddToSelection() { CheckThread("AddToSelection"); return Post(PeerAction::Select); }
+// Single-select items: adding is selecting, removing is refused. Multi-select
+// containers' items (CanAddRemove) post the real add/remove.
+HRESULT ElementProvider::AddToSelection() {
+    CheckThread("AddToSelection");
+    ISelectionItemPeer* si = LiveSite() ? peer_->AsSelectionItem() : nullptr;
+    if (!si) return UIA_E_ELEMENTNOTAVAILABLE;
+    return Post(si->CanAddRemove() ? PeerAction::AddToSelection : PeerAction::Select);
+}
 HRESULT ElementProvider::RemoveFromSelection() {
     CheckThread("RemoveFromSelection");
-    return LiveSite() ? UIA_E_INVALIDOPERATION : UIA_E_ELEMENTNOTAVAILABLE;
+    ISelectionItemPeer* si = LiveSite() ? peer_->AsSelectionItem() : nullptr;
+    if (!si) return UIA_E_ELEMENTNOTAVAILABLE;
+    return si->CanAddRemove() ? Post(PeerAction::RemoveFromSelection) : UIA_E_INVALIDOPERATION;
 }
 HRESULT ElementProvider::get_IsSelected(BOOL* ret) {
     CheckThread("get_IsSelected");
@@ -292,8 +365,12 @@ HRESULT ElementProvider::get_IsSelected(BOOL* ret) {
 HRESULT ElementProvider::get_SelectionContainer(IRawElementProviderSimple** ret) {
     CheckThread("get_SelectionContainer");
     if (!ret) return E_POINTER;
-    *ret = nullptr;  // a RadioButton group is an int*, not an element
-    return LiveSite() ? S_OK : UIA_E_ELEMENTNOTAVAILABLE;
+    *ret = nullptr;  // null for a RadioButton: its group is an int*, not an element
+    ISelectionItemPeer* si = LiveSite() ? peer_->AsSelectionItem() : nullptr;
+    if (!si) return UIA_E_ELEMENTNOTAVAILABLE;
+    AutomationPeer* c = si->SelectionContainer();
+    IUnknown* prov = c ? c->Provider() : nullptr;
+    return prov ? prov->QueryInterface(IID_PPV_ARGS(ret)) : S_OK;
 }
 
 // --- Free functions (UiaProvider.h / UiaInternal.h) ---------------------------
@@ -325,6 +402,12 @@ AutomationPeer* PeerFromProvider(IUnknown* provider) {
     return p ? p->Peer() : nullptr;
 }
 
+HRESULT FragmentForPeer(AutomationPeer* peer, IRawElementProviderFragment** out) {
+    *out = nullptr;
+    IUnknown* prov = peer ? peer->Provider() : nullptr;
+    return prov ? prov->QueryInterface(IID_PPV_ARGS(out)) : S_OK;
+}
+
 HRESULT FragmentForElement(UIElement* e, IRawElementProviderFragment** out) {
     *out = nullptr;
     if (!e) return S_OK;
@@ -334,11 +417,12 @@ HRESULT FragmentForElement(UIElement* e, IRawElementProviderFragment** out) {
 }
 
 
-void RunPeerAction(IUnknown* provider, PeerAction action, const std::wstring& value) {
+void RunPeerAction(IUnknown* provider, PeerAction action, const std::wstring& value,
+                   double a, double b) {
     AutomationPeer* peer = PeerFromProvider(provider);
     // Re-checked here, after the COM call returned: the element may have been
     // disabled, detached or destroyed in between (then the provider is frozen).
-    if (!peer || !peer->Owner().IsEnabled()) return;
+    if (!peer || !peer->IsEnabled()) return;
     switch (action) {
         case PeerAction::Invoke:
             if (IInvokePeer* i = peer->AsInvoke()) i->Invoke();
@@ -353,6 +437,27 @@ void RunPeerAction(IUnknown* provider, PeerAction action, const std::wstring& va
             if (IValuePeer* v = peer->AsValue(); v && !v->IsReadOnly()) v->SetValue(value);
             break;
         case PeerAction::SetFocus: peer->SetFocusFromAutomation(); break;
+        case PeerAction::SetRangeValue:
+            if (IRangeValuePeer* r = peer->AsRangeValue(); r && !r->IsReadOnly()) r->SetValue(a);
+            break;
+        case PeerAction::Expand:
+            if (IExpandCollapsePeer* x = peer->AsExpandCollapse()) x->Expand();
+            break;
+        case PeerAction::Collapse:
+            if (IExpandCollapsePeer* x = peer->AsExpandCollapse()) x->Collapse();
+            break;
+        case PeerAction::SetScroll:
+            if (IScrollPeer* sc = peer->AsScroll()) sc->SetScrollPercent(a, b);
+            break;
+        case PeerAction::AddToSelection:
+            if (ISelectionItemPeer* si = peer->AsSelectionItem()) si->AddToSelection();
+            break;
+        case PeerAction::RemoveFromSelection:
+            if (ISelectionItemPeer* si = peer->AsSelectionItem()) si->RemoveFromSelection();
+            break;
+        case PeerAction::ScrollIntoView:
+            if (peer->CanScrollIntoView()) peer->ScrollIntoView();
+            break;
     }
 }
 
@@ -363,9 +468,18 @@ void RaiseChangedProperties(IUiaCore* core, IUnknown* provider) {
     ElementProvider::Reported& was = p->reported;
     ElementProvider::Reported now;
     now.valid = true;
-    now.enabled = peer->Owner().IsEnabled();
+    now.enabled = peer->IsEnabled();
     now.name = peer->GetName();
     if (ITogglePeer* t = peer->AsToggle()) now.toggle = static_cast<int>(t->GetToggleState());
+    if (IExpandCollapsePeer* x = peer->AsExpandCollapse()) now.expand = static_cast<int>(x->GetExpandState());
+    if (IRangeValuePeer* r = peer->AsRangeValue()) {
+        now.hasRange = true;
+        now.range = r->GetValue();
+    }
+    if (ISelectionPeer* sel = peer->AsSelection()) {
+        now.selected = sel->SelectedIndex();
+        now.selectedCount = sel->SelectedCount();
+    }
     // A password's value is never reported, so it can never be raised either. A
     // multi-line document does not raise Value changes at all (that is TextPattern's
     // job), and a long single-line value is not compared: either would copy the
@@ -385,6 +499,21 @@ void RaiseChangedProperties(IUiaCore* core, IUnknown* provider) {
         if (was.value != now.value)
             core->RaiseStringChanged(provider, UIA_ValueValuePropertyId, was.value.c_str(),
                                     now.value.c_str());
+        if (was.expand != now.expand && now.expand >= 0)
+            core->RaiseIntChanged(provider, UIA_ExpandCollapseExpandCollapseStatePropertyId,
+                                  was.expand, now.expand);
+        if (now.hasRange && was.range != now.range)
+            core->RaiseDoubleChanged(provider, UIA_RangeValueValuePropertyId, was.range, now.range);
+        if (was.selected != now.selected || was.selectedCount != now.selectedCount) {
+            // One newly selected item: ElementSelected on it (what Narrator speaks).
+            // Anything bigger (a range, a clear): Selection_Invalidated on the
+            // container, so a 1M-row Shift+End never raises 1M events.
+            IItemsPeer* items = peer->AsItems();
+            AutomationPeer* item = (items && now.selectedCount == 1 && now.selected < items->ItemCount())
+                                       ? items->ItemAt(now.selected) : nullptr;
+            if (item) core->RaiseEvent(item->Provider(), UIA_SelectionItem_ElementSelectedEventId);
+            else core->RaiseEvent(provider, UIA_Selection_InvalidatedEventId);
+        }
     }
     was = std::move(now);
 }

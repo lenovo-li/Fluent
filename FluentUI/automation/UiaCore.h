@@ -40,6 +40,8 @@ public:
     // UiaRaiseAutomationPropertyChangedEvent for a VT_BOOL / VT_I4 / VT_BSTR value.
     virtual HRESULT RaiseBoolChanged(IUnknown* provider, int propertyId, bool oldV, bool newV) = 0;
     virtual HRESULT RaiseIntChanged(IUnknown* provider, int propertyId, int oldV, int newV) = 0;
+    virtual HRESULT RaiseDoubleChanged(IUnknown* provider, int propertyId, double oldV,
+                                       double newV) = 0;
     virtual HRESULT RaiseStringChanged(IUnknown* provider, int propertyId, const wchar_t* oldV,
                                        const wchar_t* newV) = 0;
     // UiaRaiseStructureChangedEvent(provider, StructureChangeType_ChildrenInvalidated).

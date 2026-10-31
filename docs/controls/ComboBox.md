@@ -331,6 +331,21 @@ demo 导航 → 基础输入 → ComboBox。包含只读、可编辑、多选项
 
 ---
 
+## UI Automation
+
+ComboBox 的 peer：
+
+| 项 | 值 |
+|---|---|
+| ControlType | ComboBox |
+| 模式 | ExpandCollapse（新的公开 `IsDropDownOpen` / `SetDropDownOpen`）、Selection、Value（显示的文本；可编辑时可写）。下拉项在关闭时也存在（WPF 方式），此时为 offscreen |
+| AutomationId | `SetAutomationId` |
+| HelpText | `Tooltip()` |
+
+惰性创建：只有 UIA 客户端访问到这个控件时才创建 peer，没有客户端时零开销。模式操作经投递消息执行，执行前重新检查控件仍在树上且已启用。属性变化只在真正变化且有客户端监听时发送。自定义方式见 inheritance-guide.md 的“UI Automation”一节。
+
+验证：无头测试 `tests/unit/AutomationControlPeerTests.cpp` / `AutomationSelectorPeerTests.cpp`，真实 UIA 客户端自测 `FluentUITests.exe --uia-smoke`；第 2 阶段 14 处变异全部被测试抓到。
+
 ## 相关控件
 
 - [MenuFlyout](MenuFlyout.md) — 同样的弹出基础设施，但用于上下文菜单

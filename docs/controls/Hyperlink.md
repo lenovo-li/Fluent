@@ -138,6 +138,21 @@ terms->SetVAlign(VAlign::Center);
 
 ---
 
+## UI Automation
+
+Hyperlink 的 peer：
+
+| 项 | 值 |
+|---|---|
+| ControlType | Hyperlink |
+| 模式 | Invoke（新的公开 `PerformActivate()`，等同不按 Ctrl 的点击，按激活策略触发 Click 或打开 URI）；Value = `Uri()`，只读 |
+| AutomationId | `SetAutomationId` |
+| HelpText | `Tooltip()` |
+
+惰性创建：只有 UIA 客户端访问到这个控件时才创建 peer，没有客户端时零开销。模式操作经投递消息执行，执行前重新检查控件仍在树上且已启用。属性变化只在真正变化且有客户端监听时发送。自定义方式见 inheritance-guide.md 的“UI Automation”一节。
+
+验证：无头测试 `tests/unit/AutomationControlPeerTests.cpp` / `AutomationSelectorPeerTests.cpp`，真实 UIA 客户端自测 `FluentUITests.exe --uia-smoke`；第 2 阶段 14 处变异全部被测试抓到。
+
 ## 备注
 
 ### 性能特征

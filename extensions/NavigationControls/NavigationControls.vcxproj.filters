@@ -9,6 +9,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="NavRail.cpp" />
+    <ClCompile Include="NavRailPeer.cpp" />
     <ClCompile Include="OverlayHost.cpp" />
     <ClCompile Include="PageHost.cpp" />
   </ItemGroup>

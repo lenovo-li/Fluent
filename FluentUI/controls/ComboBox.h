@@ -79,6 +79,16 @@ public:
     void SetEditable(bool editable);
     bool IsEditable() const { return editable_; }
 
+    // Dropdown state, public for UI Automation's ExpandCollapse pattern (run from
+    // a posted action, never from inside a dispatch). Open is a no-op while
+    // detached; both are idempotent.
+    bool IsDropDownOpen() const { return popupOpen_; }
+    void SetDropDownOpen(bool open) {
+        if (open == popupOpen_) return;
+        if (open) OpenPopup();
+        else ClosePopup();
+    }
+
     // The current header text. In editable mode this is the typed text; otherwise
     // it is the selected item's text (empty when nothing is selected), so a caller
     // can read the value without branching on the mode.
@@ -126,6 +136,8 @@ public:
     float VisualOverflowDip() const override;
 
 protected:
+    // UI Automation peer (automation/SelectorPeers.h).
+    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
     void OnStateChanged() override;
     void OnFocusChanged() override { Invalidate(); }
     void OnClickRouted(PointerEventArgs& e) override;

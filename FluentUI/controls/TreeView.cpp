@@ -395,6 +395,8 @@ void TreeView::RebuildVisible()
         }
         if (!isHidden) visibleRows_.push_back(i);
     }
+    visiblePos_.assign(items_.size(), -1);
+    for (int v = 0; v < static_cast<int>(visibleRows_.size()); ++v) visiblePos_[visibleRows_[v]] = v;
 }
 
 int TreeView::RowIndexById(int id) const
@@ -406,9 +408,35 @@ int TreeView::RowIndexById(int id) const
 
 int TreeView::VisibleIndexByRow(int rowIndex) const
 {
-    for (int i = 0; i < static_cast<int>(visibleRows_.size()); ++i)
-        if (visibleRows_[i] == rowIndex) return i;
-    return -1;
+    return rowIndex >= 0 && rowIndex < static_cast<int>(visiblePos_.size()) ? visiblePos_[rowIndex] : -1;
+}
+
+int TreeView::VisibleIndexOfId(int id) const { return VisibleIndexByRow(RowIndexById(id)); }
+
+RectDip TreeView::VisibleRowRect(int v) const
+{
+    if (v < 0 || v >= VisibleRowCount()) return {};
+    const float top = bounds_.y + v * rowHeight_ - CurrentOffset();
+    const float y0 = std::max(top, bounds_.y);
+    const float y1 = std::min(top + rowHeight_, bounds_.bottom());
+    if (y1 <= y0) return {};
+    return {bounds_.x, y0, bounds_.w, y1 - y0};
+}
+
+int TreeView::VisibleRowAt(float dipY) const
+{
+    const int v = static_cast<int>((dipY - bounds_.y + CurrentOffset()) / rowHeight_);
+    return v >= 0 && v < VisibleRowCount() ? v : -1;
+}
+
+void TreeView::ScrollVisibleRowIntoView(int v)
+{
+    if (v < 0 || v >= VisibleRowCount()) return;
+    const float target = EnsureVisibleOffset(v * rowHeight_, rowHeight_, CurrentOffset(), bounds_.h);
+    if (target != scroll_.Offset()) {
+        scroll_.SetOffset(target);
+        Invalidate();
+    }
 }
 
 int TreeView::HitRow(float dipY) const

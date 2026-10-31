@@ -198,6 +198,9 @@
     <ClInclude Include="automation\ControlPeers.h" />
     <ClInclude Include="automation\UiaInternal.h" />
     <ClInclude Include="automation\UiaElementProvider.h" />
+    <ClInclude Include="automation\ItemPeers.h" />
+    <ClInclude Include="automation\RangeAndContainerPeers.h" />
+    <ClInclude Include="automation\SelectorPeers.h" />
     <ClInclude Include="WindowRegistry.h" />
     <ClInclude Include="services\PopupState.h" />
     <ClInclude Include="services\TooltipService.h" />
@@ -300,6 +303,11 @@
     <ClCompile Include="automation\AutomationTree.cpp" />
     <ClCompile Include="automation\ControlPeers.cpp" />
     <ClCompile Include="automation\UiaElementProvider.cpp" />
+    <ClCompile Include="automation\ItemPeers.cpp" />
+    <ClCompile Include="automation\UiaPatterns.cpp" />
+    <ClCompile Include="automation\RangeAndContainerPeers.cpp" />
+    <ClCompile Include="automation\SelectorPeers.cpp" />
+    <ClCompile Include="automation\UiaCaptionButtons.cpp" />
     <ClCompile Include="window\ThemeHost.cpp" />
     <ClCompile Include="window\DiagnosticsHost.cpp" />
     <ClCompile Include="window\Window.cpp" />

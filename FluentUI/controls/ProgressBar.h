@@ -20,6 +20,8 @@ namespace fluent {
 
 class ProgressBar : public RangeBase {
 public:
+    // UI Automation peer (automation/RangeAndContainerPeers.h).
+    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
     ProgressBar() {
         // Default 0..1 range; callers may widen it via RangeBase::SetMinimum/SetMaximum.
         min_ = 0.0f;
