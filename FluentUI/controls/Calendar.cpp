@@ -67,6 +67,16 @@ Calendar::Calendar() {
     SetFocusable(true);
 }
 
+bool Calendar::PerformSelectDate(int year, int month, int day) {
+    if (!IsDateEnabled(year, month, day)) return false;
+    SetSelectedDate(year, month, day);
+    RoutedEventArgs args;
+    args.source = this;
+    args.originalSource = this;
+    selectionChanged_.Raise(*this, args);
+    return true;
+}
+
 void Calendar::SetSelectedDate(int year, int month, int day) {
     // Reject a date the constraints forbid (min/max range, blackout dates),
     // programmatic caller or not.
@@ -360,13 +370,7 @@ void Calendar::OnPointerPressed(PointerEventArgs& e) {
     if (cell >= 0) {
         int y, m, d;
         CellDate(cell, y, m, d);
-        if (IsDateEnabled(y, m, d)) {
-            SetSelectedDate(y, m, d);
-            RoutedEventArgs args;
-            args.source = this;
-            args.originalSource = this;
-            selectionChanged_.Raise(*this, args);
-        }
+        PerformSelectDate(y, m, d);  // a disabled date: no-op, click still swallowed
         e.handled = true;
     }
 }

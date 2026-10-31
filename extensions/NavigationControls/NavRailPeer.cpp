@@ -41,7 +41,7 @@ public:
         const NavRailItem* item = Item(i);
         return item && item->header && Rail().PaneMode();
     }
-    bool ItemEnabled(size_t i) const { return Rail().IsItemSelectable(static_cast<int>(i)); }
+    bool ItemEnabled(size_t i) const override { return Rail().IsItemSelectable(static_cast<int>(i)); }
     RectDip ItemRect(size_t i) const override { return Rail().ItemRect(static_cast<int>(i)); }
     void SelectItem(size_t i) override { Rail().PerformSelect(static_cast<int>(i)); }
     bool CanSelectMultiple() const override { return false; }
@@ -88,7 +88,6 @@ public:
         return Rail().ItemIsHeader(Index()) ? automation::ControlType::Text
                                             : automation::ControlType::ListItem;
     }
-    bool IsEnabled() const override { return SelectableItemPeer::IsEnabled() && Rail().ItemEnabled(Index()); }
 
 private:
     NavRailPeer& Rail() const { return static_cast<NavRailPeer&>(Container()); }

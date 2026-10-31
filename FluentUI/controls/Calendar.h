@@ -117,6 +117,10 @@ public:
 
     // Raised when the user selects a date (click or Enter). Payload is unused.
     Event<Calendar, RoutedEventArgs>& SelectionChanged() { return selectionChanged_; }
+    // Select the way a click on a day cell does: refuses disabled dates, raises
+    // SelectionChanged (SetSelectedDate is silent). Returns whether it selected.
+    // UI Automation's SelectionItem.Select on a day cell uses it.
+    bool PerformSelectDate(int year, int month, int day);
 
     void Measure(float availW, float availH) override;
     void Arrange(const RectDip& finalRect) override;
@@ -130,6 +134,8 @@ public:
 
 protected:
     void OnThemeChanged() override { Invalidate(); }
+    // UI Automation peer (automation/DataPeers.h).
+    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
 
     // --- Extension points for derived classes --------------------------------
     //

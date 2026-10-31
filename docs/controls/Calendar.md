@@ -119,6 +119,23 @@ sub_ = cal->SelectionChanged().Subscribe(this,
 
 ---
 
+## UI Automation
+
+Calendar 的 peer（`automation/DataPeers.h`）：
+
+| 项 | 值 |
+|---|---|
+| ControlType | Calendar |
+| 模式 | Selection（单选，必须有选中） |
+| 子节点 | 42 个日期格，DataItem，Name = 用户区域设置的长日期（`GetDateFormatEx(DATE_LONGDATE)`，例如 “2026年11月1日”），超出 min/max 或在 blackout 中的日期 IsEnabled = false |
+| SelectionItem | Select 走新的公开 `PerformSelectDate`（与点击日期格相同：拒绝禁用日期，触发 `SelectionChanged`）；`SetSelectedDate` 是程序设置，不触发 |
+
+日期格按日期（yyyymmdd）作 key：翻到下个月后，不再显示的日期节点被释放并发 ChildrenInvalidated，两个月共有的溢出日期保留原节点。命中测试先把点按 Viewbox 反算，再用 `HitTestCell`。
+
+惰性创建：只有 UIA 客户端访问到这个控件时才创建 peer，没有客户端时零开销。行（项）不是元素，客户端访问到才创建节点。模式操作经投递消息执行，执行前重新检查控件仍在树上且已启用。自定义方式见 inheritance-guide.md 的“UI Automation”一节。
+
+验证：无头测试 `tests/unit/AutomationDataPeerTests.cpp`，真实 UIA 客户端自测 `FluentUITests.exe --uia-smoke`；12 处变异（把操作换回不发事件的 setter、行名只取一列、日期按下标作 key、日志行序号不前进等）全部被测试抓到。讲述人实际朗读的效果需要在真机上听。
+
 ## 备注
 
 ### 修过的 bug

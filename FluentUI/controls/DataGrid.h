@@ -97,6 +97,9 @@ public:
     void RefreshCells() { Invalidate(); }
 
     void SetCellProvider(CellProvider provider);
+    // The provider's text for a cell, or empty when there is no provider or the
+    // indices are out of range. What UI Automation reads as a row's name.
+    std::wstring CellText(int row, int col) const;
     void SetRowColorProvider(RowColorProvider provider);
 
     // --- Appearance ------------------------------------------------------
@@ -240,12 +243,20 @@ public:
     // of synthesising wheel events.
     void SetVerticalOffset(float dip);
     float VerticalOffset() const { return scroll_.Offset(); }
+    // Scroll range ends (content minus viewport; the frozen band excluded on X).
+    float MaxVerticalOffset() const;
+    float MaxHorizontalOffset() const;
     void SetHorizontalOffset(float dip);
     float HorizontalOffset() const { return scroll_.OffsetX(); }
 
     // Scroll a row into view. Needed by keyboard navigation and by an app restoring a
     // selection; without it "select row 900" would leave the viewport at the top.
     void ScrollRowIntoView(int row);
+    // The row under a control-space y (the click path's arithmetic), or -1.
+    int RowIndexAt(float dipY) const { return RowAtPoint(dipY); }
+    // Ctrl+click's path: add/remove one row and raise SelectionChanged. UI
+    // Automation's AddToSelection / RemoveFromSelection in Multiple mode.
+    void PerformToggleRowSelection(int row) { ToggleRowSelection(row); }
 
     // --- Element contract -------------------------------------------------
     void Measure(float availW, float availH) override;
@@ -268,6 +279,8 @@ public:
     // propagates the context to them automatically. Same wiring ListBox does for scroll_.
     void OnAttachedToTree() override;
     void OnDetachedFromTree() override;
+    // UI Automation peer (automation/DataPeers.h).
+    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
 
 private:
     // Row under a point, or -1. Shared by pointer handling and tests.

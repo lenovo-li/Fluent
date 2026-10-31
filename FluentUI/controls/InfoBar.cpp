@@ -256,6 +256,13 @@ void InfoBar::Render(const DrawingContext& dc) {
     }
 }
 
+void InfoBar::PerformClose() {
+    if (!closable_ || !IsEnabled()) return;
+    RoutedEventArgs args{};
+    args.source = this;
+    closed_.Raise(*this, args);
+}
+
 UIElement* InfoBar::HitTestDeep(float dipX, float dipY) {
     if (!IsVisible() || !bounds_.contains(dipX, dipY)) return nullptr;
     return this;
@@ -266,9 +273,7 @@ void InfoBar::OnPointerPressed(PointerEventArgs& e) {
     if (CloseButtonRect().contains(e.position.x, e.position.y)) {
         // No explicit focus call: InputManager gives focus to the pressed element when it
         // is focusable, which SetClosable already arranged.
-        RoutedEventArgs args{};
-        args.source = this;
-        closed_.Raise(*this, args);
+        PerformClose();
         e.handled = true;
     }
 }
@@ -295,9 +300,7 @@ void InfoBar::OnKeyDownRouted(KeyEventArgs& e) {
     // be reached by keyboard anyway.
     if (!closable_) return;
     if (e.vk == VK_SPACE || e.vk == VK_RETURN) {
-        RoutedEventArgs args{};
-        args.source = this;
-        closed_.Raise(*this, args);
+        PerformClose();
         e.handled = true;
     }
 }

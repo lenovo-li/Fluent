@@ -48,6 +48,10 @@ public:
     bool IsOffscreen() const override;
     void SetFocusFromAutomation() override;
 
+    // A rect in the owner control's own space mapped to host DIPs through the
+    // owner's ancestors (Viewbox scaling), the way the owner's own bounds are.
+    RectDip OwnerRectToHost(const RectDip& local) const;
+
 private:
     friend class ItemsContainerPeer;
     ItemsContainerPeer& container_;

@@ -29,6 +29,9 @@ public:
     ControlType GetControlType() const override { return type_; }
     std::wstring GetName() const override;
     RectDip BoundsInHostDip() const override;
+    // Live, the owner enabled, and the container's ItemEnabled (a disabled day,
+    // a NavRail section header): UIA refuses Select on a disabled item.
+    bool IsEnabled() const override;
     ISelectionItemPeer* AsSelectionItem() override { return this; }
     bool IsSelected() const override;
     void Select() override;
@@ -57,6 +60,10 @@ public:
     virtual void SelectItem(size_t i) = 0;
     virtual void SetItemInSelection(size_t i, bool on) { if (on) SelectItem(i); }
     virtual void ScrollItemIntoView(size_t i) { UNREFERENCED_PARAMETER(i); }
+    virtual bool ItemEnabled(size_t i) const {
+        UNREFERENCED_PARAMETER(i);
+        return true;
+    }
     AutomationPeer* ItemAtPoint(float x, float y) override;
     size_t FocusedIndex() const override { return SelectedIndex(); }
 

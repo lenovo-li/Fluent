@@ -234,6 +234,23 @@ grid->SetRowColorProvider([win](int row, D2D1_COLOR_F& out) {
 
 ---
 
+## UI Automation
+
+DataGrid 的 peer（`automation/DataPeers.h`）：
+
+| 项 | 值 |
+|---|---|
+| ControlType | DataGrid |
+| 模式 | Selection（单选/多选）、Scroll（横向与纵向，范围与控件自己的滚动一致，冻结列不计入横向） |
+| 行 | DataItem，Name = 各单元格文本用 “, ” 连接（最多 16 列，新的公开 `CellText`）；SelectionItem：Select 走 `SetSelectedRow`，多选的 Add/Remove 走新的公开 `PerformToggleRowSelection`（与 Ctrl+点击相同），都触发 `SelectionChanged`；ScrollItem 走 `ScrollRowIntoView` |
+| 命中测试 | 新的公开 `RowIndexAt`（点击用的同一算式），O(1) |
+
+行按下标作 key：重新排序后行名会在下一次检查时更新，行数变化时全部释放并发 ChildrenInvalidated。尚未提供：列标题节点、单元格节点、Grid/Table 模式（讲述人可以按行读，不能按单元格导航）。新的公开 `MaxVerticalOffset` / `MaxHorizontalOffset`。
+
+惰性创建：只有 UIA 客户端访问到这个控件时才创建 peer，没有客户端时零开销。行（项）不是元素，客户端访问到才创建节点。模式操作经投递消息执行，执行前重新检查控件仍在树上且已启用。自定义方式见 inheritance-guide.md 的“UI Automation”一节。
+
+验证：无头测试 `tests/unit/AutomationDataPeerTests.cpp`，真实 UIA 客户端自测 `FluentUITests.exe --uia-smoke`；12 处变异（把操作换回不发事件的 setter、行名只取一列、日期按下标作 key、日志行序号不前进等）全部被测试抓到。讲述人实际朗读的效果需要在真机上听。
+
 ## 备注
 
 ### 性能特征

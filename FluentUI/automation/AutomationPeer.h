@@ -183,6 +183,9 @@ public:
     virtual bool IsOffscreen() const;
     virtual std::wstring GetHelpText() const;
     virtual std::wstring GetAutomationId() const;
+    // A live region (InfoBar) announces its changes; the peer raises
+    // LiveRegionChanged itself (IAutomationSite::QueueEvent) when its text changes.
+    virtual LiveSetting GetLiveSetting() const { return LiveSetting::Off; }
     // Non-null only for an ItemPeer: the container peer that lists it.
     virtual AutomationPeer* ItemContainer() const { return nullptr; }
     // Containers: the item under a host-DIP point / the keyboard-focused item, or

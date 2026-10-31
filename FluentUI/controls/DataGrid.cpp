@@ -202,6 +202,13 @@ void DataGrid::SetSelectedRow(int row) {
 
 void DataGrid::SelectSingleRow(int row) { SetSelectedRow(row); }
 
+std::wstring DataGrid::CellText(int row, int col) const {
+    if (!cellProvider_ || row < 0 || row >= rowCount_ || col < 0 ||
+        col >= static_cast<int>(columns_.size()))
+        return {};
+    return cellProvider_(row, col);
+}
+
 void DataGrid::ToggleRowSelection(int row) {
     if (row < 0 || row >= rowCount_) return;
     auto it = std::find(selectedRows_.begin(), selectedRows_.end(), row);
@@ -410,6 +417,9 @@ void DataGrid::ScrollRowIntoView(int row) {
     else if (rowBottom > viewBottom) scroll_.SetOffset(rowBottom - vp.h);
     Invalidate();
 }
+
+float DataGrid::MaxVerticalOffset() const { return scroll_.MaxOffset(); }
+float DataGrid::MaxHorizontalOffset() const { return scroll_.MaxOffsetX(); }
 
 void DataGrid::ClampScroll() {
     const RectDip vp = ViewportRect();

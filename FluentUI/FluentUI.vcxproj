@@ -200,6 +200,7 @@
     <ClInclude Include="automation\UiaElementProvider.h" />
     <ClInclude Include="automation\ItemPeers.h" />
     <ClInclude Include="automation\RangeAndContainerPeers.h" />
+    <ClInclude Include="automation\DataPeers.h" />
     <ClInclude Include="automation\SelectorPeers.h" />
     <ClInclude Include="WindowRegistry.h" />
     <ClInclude Include="services\PopupState.h" />
@@ -308,6 +309,7 @@
     <ClCompile Include="automation\RangeAndContainerPeers.cpp" />
     <ClCompile Include="automation\SelectorPeers.cpp" />
     <ClCompile Include="automation\UiaCaptionButtons.cpp" />
+    <ClCompile Include="automation\DataPeers.cpp" />
     <ClCompile Include="automation\UiaTextPattern.cpp" />
     <ClCompile Include="window\ThemeHost.cpp" />
     <ClCompile Include="window\DiagnosticsHost.cpp" />

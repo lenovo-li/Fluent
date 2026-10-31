@@ -136,6 +136,25 @@ log->AppendLine({
 
 ---
 
+## UI Automation
+
+LogViewer 的 peer（`automation/DataPeers.h`）：
+
+| 项 | 值 |
+|---|---|
+| ControlType | List |
+| 模式 | Scroll（纵向） |
+| 子节点 | 每一行一个 ListItem，Name = 该行文本（最多 1024 字符），ScrollItem 走新的公开 `ScrollLineIntoView` |
+| 命中测试 | 新的公开 `LineIndexAt`，二分查找，O(log n) |
+
+行按序号作 key（新的公开 `FirstLineSerial()` + 下标），`SetMaxLines` 从前面裁掉旧行时序号继续增长：客户端停在第 900 行时，前面的行掉出去不影响它的节点，被裁掉的行的节点被释放。新的公开 `LineText` / `LineRect` / `VerticalOffset` / `MaxVerticalOffset` / `SetVerticalOffset`（滚离底部会停止跟随尾部，与滚轮相同）。
+
+代价：正在追加的日志每帧都在改变行数。有客户端监听时，每帧为它发一次 ChildrenInvalidated（合并后），每次检查最多 64 个可见行的名字；客户端离开后什么都不发，缓存在下一次行数变化时丢弃。新行不作为 live region 朗读（每秒上千行会让讲述人无法使用）。
+
+惰性创建：只有 UIA 客户端访问到这个控件时才创建 peer，没有客户端时零开销。行（项）不是元素，客户端访问到才创建节点。模式操作经投递消息执行，执行前重新检查控件仍在树上且已启用。自定义方式见 inheritance-guide.md 的“UI Automation”一节。
+
+验证：无头测试 `tests/unit/AutomationDataPeerTests.cpp`，真实 UIA 客户端自测 `FluentUITests.exe --uia-smoke`；12 处变异（把操作换回不发事件的 setter、行名只取一列、日期按下标作 key、日志行序号不前进等）全部被测试抓到。讲述人实际朗读的效果需要在真机上听。
+
 ## 备注
 
 ### 性能特征

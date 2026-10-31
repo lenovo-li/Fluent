@@ -110,6 +110,7 @@ set(FLUENTUI_SOURCES
     FluentUI/automation/RangeAndContainerPeers.cpp
     FluentUI/automation/SelectorPeers.cpp
     FluentUI/automation/UiaCaptionButtons.cpp
+    FluentUI/automation/DataPeers.cpp
     FluentUI/automation/UiaTextPattern.cpp
     FluentUI/window/ThemeHost.cpp
     FluentUI/window/DiagnosticsHost.cpp

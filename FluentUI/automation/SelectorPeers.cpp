@@ -21,14 +21,10 @@ std::wstring SelectableItemPeer::GetName() const { return C(*this).ItemName(Inde
 RectDip SelectableItemPeer::BoundsInHostDip() const {
     // The control's rect is in its own coordinate space; map it through the
     // owner's ancestors exactly like the owner's own bounds (Viewbox etc.).
-    const RectDip local = C(*this).ItemRect(Index());
-    if (local.isEmpty()) return {};
-    const RectDip owner = Owner().Bounds();
-    const RectDip mapped = Owner().BoundsInHostDip();
-    if (owner.w <= 0 || owner.h <= 0) return local;
-    const float sx = mapped.w / owner.w, sy = mapped.h / owner.h;
-    return {mapped.x + (local.x - owner.x) * sx, mapped.y + (local.y - owner.y) * sy,
-            local.w * sx, local.h * sy};
+    return OwnerRectToHost(C(*this).ItemRect(Index()));
+}
+bool SelectableItemPeer::IsEnabled() const {
+    return ItemPeer::IsEnabled() && C(*this).ItemEnabled(Index());
 }
 bool SelectableItemPeer::IsSelected() const { return C(*this).IsIndexSelected(Index()); }
 void SelectableItemPeer::Select() { C(*this).SelectItem(Index()); }

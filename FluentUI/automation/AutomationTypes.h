@@ -58,4 +58,8 @@ enum class ControlType : int32_t {
 // UIA ToggleState values.
 enum class ToggleState : int32_t { Off = 0, On = 1, Indeterminate = 2 };
 
+// UIA LiveSetting values: how a screen reader treats a LiveRegionChanged on this
+// element. Polite waits for the current speech; Assertive interrupts it.
+enum class LiveSetting : int32_t { Off = 0, Polite = 1, Assertive = 2 };
+
 }  // namespace fluent::automation

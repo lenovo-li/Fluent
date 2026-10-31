@@ -68,6 +68,9 @@ public:
     // Raised when the close affordance is clicked. RoutedEventArgs (rather than a bare
     // sender) to match Button::Click, so a handler written for one works for the other.
     Event<InfoBar, RoutedEventArgs>& Closed() { return closed_; }
+    // Raise Closed the way the close button does (click, Space/Enter). Ignored when
+    // not closable or disabled. UI Automation's Invoke on the close button uses it.
+    void PerformClose();
 
     // Geometry, public for the same reason TabControl::HeaderRect is: a headless test
     // has no other way to check the close button's hit region.
@@ -84,6 +87,10 @@ public:
 
     // Painted outside bounds_ when focused, like every other focusable control here.
     float VisualOverflowDip() const override;
+
+protected:
+    // UI Automation peer (automation/DataPeers.h).
+    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
 
 private:
     // Resolved fill + stroke for the current severity. One place, so Render and the

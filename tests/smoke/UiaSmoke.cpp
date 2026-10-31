@@ -13,7 +13,9 @@
 // Needs a desktop session and a GPU (or WARP), so it is not in the default run.
 // Exit code = number of failed checks.
 #include "../../FluentUI/FluentUI.h"
+#include "../../FluentUI/controls/DataGrid.h"
 #include "../../FluentUI/controls/Expander.h"
+#include "../../FluentUI/controls/InfoBar.h"
 #include "../../FluentUI/controls/ListBox.h"
 #include "../../FluentUI/controls/Slider.h"
 
@@ -33,6 +35,8 @@ std::atomic<int> g_clicks{0};
 std::atomic<int> g_textChanges{0};
 std::atomic<bool> g_doomedGone{false};
 std::atomic<int> g_listSelected{-1};
+std::atomic<int> g_infoClosed{0};
+std::atomic<int> g_gridSelected{-1};
 int g_failures = 0;
 
 void Check(bool ok, const char* what) {
@@ -102,6 +106,25 @@ protected:
         lst->SetHeight(70);
         lst->SetItems({L"Alpha", L"Beta", L"Gamma", L"Delta"});
         list_ = lst;
+
+        // A grid with drawn rows and a closable live status bar.
+        auto* grid = root->Emplace<fluent::DataGrid>();
+        grid->SetAutomationId(L"grid");
+        grid->SetHeight(90);
+        grid->SetColumns({{L"Name", 120.0f}, {L"Size", 80.0f}});
+        grid->SetRowCount(50);
+        grid->SetCellProvider([](int r, int c) {
+            return c == 0 ? L"file" + std::to_wstring(r) : std::to_wstring(r * 10) + L" KB";
+        });
+        subs_.push_back(grid->SelectionChanged().Subscribe(
+            this, [](void*, fluent::DataGrid& g, fluent::RoutedEventArgs&) { g_gridSelected = g.SelectedRow(); }));
+        auto* info = root->Emplace<fluent::InfoBar>();
+        info->SetAutomationId(L"info");
+        info->SetTitle(L"Update ready");
+        info->SetMessage(L"Restart to apply.");
+        info->SetClosable(true);
+        subs_.push_back(info->Closed().Subscribe(
+            this, [](void*, fluent::InfoBar&, fluent::RoutedEventArgs&) { ++g_infoClosed; }));
 
         // Removes itself from its own Click handler: the posted-action and freeze
         // path under a real client.
@@ -394,6 +417,60 @@ void RunClient(HWND hwnd) {
         if (gamma) gamma->GetCurrentPatternAs(UIA_SelectionItemPatternId, IID_PPV_ARGS(&sip));
         Check(sip && SUCCEEDED(sip->Select()), "ListBox: Select() on Gamma");
         Check(WaitFor([&] { return g_listSelected.load() == 2; }), "ListBox: app sees index 2 selected");
+
+        // TextPattern: the edit's document range reads the text the client set.
+        {
+            ComPtr<IUIAutomationTextPattern> tp;
+            if (txt) txt->GetCurrentPatternAs(UIA_TextPatternId, IID_PPV_ARGS(&tp));
+            ComPtr<IUIAutomationTextRange> doc;
+            if (tp) tp->get_DocumentRange(&doc);
+            BSTR t = nullptr;
+            if (doc) doc->GetText(-1, &t);
+            const std::wstring text = t ? std::wstring(t, SysStringLen(t)) : L"<none>";
+            if (t) SysFreeString(t);
+            Check(tp && !text.empty() && text != L"<none>", "TextBox: TextPattern document range has text");
+        }
+
+        // DataGrid rows are DataItems named by their cells; Select reaches the app.
+        auto grid = FindById(uia.Get(), root.Get(), L"grid");
+        Check(grid && Type(grid.Get()) == UIA_DataGridControlTypeId, "DataGrid: DataGrid control type");
+        ComPtr<IUIAutomationElement> row3;
+        {
+            ComPtr<IUIAutomationTreeWalker> walker;
+            uia->get_RawViewWalker(&walker);
+            if (walker && grid) {
+                walker->GetFirstChildElement(grid.Get(), &row3);
+                for (int k = 0; k < 3 && row3; ++k) {
+                    ComPtr<IUIAutomationElement> next;
+                    walker->GetNextSiblingElement(row3.Get(), &next);
+                    row3 = next;
+                }
+            }
+        }
+        Check(row3 && Type(row3.Get()) == UIA_DataItemControlTypeId && Name(row3.Get()) == L"file3, 30 KB",
+              "DataGrid: fourth row is a DataItem named by its cells");
+        ComPtr<IUIAutomationSelectionItemPattern> rsi;
+        if (row3) row3->GetCurrentPatternAs(UIA_SelectionItemPatternId, IID_PPV_ARGS(&rsi));
+        Check(rsi && SUCCEEDED(rsi->Select()), "DataGrid: Select() on row 3");
+        Check(WaitFor([] { return g_gridSelected.load() == 3; }), "DataGrid: app's SelectionChanged sees row 3");
+
+        // InfoBar: a polite live region whose close button closes through the app.
+        auto info = FindById(uia.Get(), root.Get(), L"info");
+        VARIANT live;
+        VariantInit(&live);
+        if (info) info->GetCurrentPropertyValue(UIA_LiveSettingPropertyId, &live);
+        Check(info && Type(info.Get()) == UIA_StatusBarControlTypeId && live.vt == VT_I4 && live.lVal == Polite,
+              "InfoBar: StatusBar with LiveSetting Polite");
+        ComPtr<IUIAutomationElement> infoClose;
+        {
+            ComPtr<IUIAutomationTreeWalker> walker;
+            uia->get_RawViewWalker(&walker);
+            if (walker && info) walker->GetFirstChildElement(info.Get(), &infoClose);
+        }
+        ComPtr<IUIAutomationInvokePattern> icInv;
+        if (infoClose) infoClose->GetCurrentPatternAs(UIA_InvokePatternId, IID_PPV_ARGS(&icInv));
+        Check(icInv && SUCCEEDED(icInv->Invoke()), "InfoBar: Invoke() on its close button");
+        Check(WaitFor([] { return g_infoClosed.load() == 1; }), "InfoBar: app's Closed raised once");
 
         // Caption buttons: Minimize/Maximize/Close are real buttons under the window.
         ComPtr<IUIAutomationElement> closeBtn;

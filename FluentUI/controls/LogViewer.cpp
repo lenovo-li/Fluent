@@ -101,6 +101,7 @@ void LogViewer::AppendLine(std::vector<TextSpan> spans) {
 }
 
 void LogViewer::Clear() {
+    firstLineSerial_ += lines_.size();
     lines_.clear();
     lineY_.clear();
     yOrigin_ = 0.0;
@@ -135,6 +136,7 @@ void LogViewer::TrimToMaxLines() {
     // stay untouched and the origin moves to the new first line instead, which gives
     // every one of them the same "shifted up by droppedHeight" in one assignment.
     yOrigin_ = lineY_[toRemove];
+    firstLineSerial_ += toRemove;
     lines_.erase(lines_.begin(), lines_.begin() + static_cast<ptrdiff_t>(toRemove));
     lineY_.erase(lineY_.begin(), lineY_.begin() + static_cast<ptrdiff_t>(toRemove));
 
@@ -178,6 +180,41 @@ float LogViewer::PredictLineHeight(const LogLine& line) const {
 float LogViewer::GetContentExtent() const {
     if (lines_.empty()) return 0.0f;
     return LineTop(lines_.size() - 1) + lines_.back().height;
+}
+
+RectDip LogViewer::LineRect(size_t index) const {
+    if (index >= lines_.size()) return {};
+    const float top = bounds_.y + LineTop(index) - scroll_.Offset();
+    const float bottom = top + lines_[index].height;
+    const float y0 = std::max(top, bounds_.y), y1 = std::min(bottom, bounds_.bottom());
+    if (y1 <= y0) return {};
+    return RectDip{bounds_.x, y0, bounds_.w, y1 - y0};
+}
+
+size_t LogViewer::LineIndexAt(float dipY) const {
+    if (lines_.empty() || dipY < bounds_.y || dipY >= bounds_.bottom()) return SIZE_MAX;
+    const size_t i = LineAtContentY(dipY - bounds_.y + scroll_.Offset());
+    return LineRect(i).isEmpty() ? SIZE_MAX : i;
+}
+
+void LogViewer::ScrollLineIntoView(size_t index) {
+    if (index >= lines_.size()) return;
+    const float top = LineTop(index), h = lines_[index].height;
+    float target = scroll_.Offset();
+    if (top < target) target = top;
+    else if (top + h > target + bounds_.h) target = top + h - bounds_.h;
+    if (target == scroll_.Offset()) return;
+    SetVerticalOffset(target);
+}
+
+float LogViewer::VerticalOffset() const { return scroll_.Offset(); }
+float LogViewer::MaxVerticalOffset() const { return scroll_.MaxOffset(); }
+
+void LogViewer::SetVerticalOffset(float dip) {
+    scroll_.SetOffset(dip);
+    // Same rule as the wheel: scrolled off the end stops following the tail.
+    autoScrollToTail_ = scroll_.Offset() >= scroll_.MaxOffset() - 1.0f;
+    Invalidate();
 }
 
 size_t LogViewer::LineAtContentY(float y) const {

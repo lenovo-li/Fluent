@@ -120,6 +120,22 @@ public:
     int MaxLines() const { return maxLines_; }
 
     size_t LineCount() const { return lines_.size(); }
+    // --- For UI Automation: lines as items, keyed by a serial that survives the
+    // front trim (line i's serial is FirstLineSerial() + i; it never repeats).
+    uint64_t FirstLineSerial() const { return firstLineSerial_; }
+    // The line's text (its spans concatenated), or empty.
+    std::wstring LineText(size_t index) const {
+        return index < lines_.size() ? lines_[index].PlainText() : std::wstring();
+    }
+    // Line rect in control space, clipped to the viewport; empty when scrolled out.
+    RectDip LineRect(size_t index) const;
+    // The line under a control-space y, or SIZE_MAX.
+    size_t LineIndexAt(float dipY) const;
+    // Minimal scroll that shows the line (turns tail-following off when it scrolls up).
+    void ScrollLineIntoView(size_t index);
+    float VerticalOffset() const;
+    float MaxVerticalOffset() const;
+    void SetVerticalOffset(float dip);
 
     // Total document height in DIPs: the last line's top plus its height. Before a
     // line has been painted its height is the estimate (largest font size in the
@@ -230,8 +246,11 @@ public:
 protected:
     void OnAttachedToTree() override;
     void OnDetachedFromTree() override;
+    // UI Automation peer (automation/DataPeers.h).
+    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
 
 private:
+    uint64_t firstLineSerial_ = 0;  // see FirstLineSerial
     // Render a single line at the given Y coordinate (relative to content top).
     // On first render, measures and caches the line height.
     void RenderLine(const DrawingContext& dc, size_t lineIndex, float y);
