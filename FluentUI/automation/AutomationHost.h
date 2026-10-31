@@ -115,6 +115,7 @@ private:
     Ref root_;
     bool torn_down_ = false;
     bool flushPosted_ = false;
+    unsigned disconnected_ = 0, disconnectFailures_ = 0;  // traced at window teardown
     std::vector<Action> actions_;
     std::vector<Ref> disconnects_;
     std::vector<Ref> changed_, invoked_, selected_;

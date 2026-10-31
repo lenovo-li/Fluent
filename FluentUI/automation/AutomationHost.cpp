@@ -135,7 +135,14 @@ void AutomationHost::FlushDisconnects() {
     if (disconnects_.empty() || core_->InSendMessage()) return;
     std::vector<Ref> batch;
     batch.swap(disconnects_);
-    for (const Ref& d : batch) core_->DisconnectProvider(d.Get());
+    for (const Ref& d : batch) {
+        const HRESULT hr = core_->DisconnectProvider(d.Get());
+        ++disconnected_;
+        if (FAILED(hr)) {
+            ++disconnectFailures_;
+            Trace("Uia", "UiaDisconnectProvider(element) FAILED", hr);
+        }
+    }
 }
 
 void AutomationHost::RaiseEvents() {
@@ -194,6 +201,10 @@ void AutomationHost::OnWindowDestroyed(HWND hwnd) {
         FlushDisconnects();
     }
     if (!root_) return;  // no client ever asked: nothing was handed out
+    // One summary line per window that had a client: proves element disconnects
+    // happened and succeeded without a trace per element (a large tree has hundreds).
+    TraceFmt("Uia", "element providers disconnected=%u failed=%u (window lifetime)",
+             disconnected_, disconnectFailures_);
     // ReleaseWindowProvider disconnects first and detaches after (see its comment).
     if (hwnd) ReleaseWindowProvider(*core_, hwnd, root_.Get());
     else DetachProvider(root_.Get());
