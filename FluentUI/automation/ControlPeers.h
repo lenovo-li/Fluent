@@ -10,6 +10,7 @@
 #pragma once
 
 #include "AutomationPeer.h"
+#include "../core/Subscription.h"
 
 namespace fluent {
 class ButtonBase;
@@ -72,7 +73,7 @@ public:
 
 // TextBox / TextArea / PasswordBox: Edit + Value. A password reports no value
 // and IsPassword = true; read from the TextBox each time (SetPassword can change it).
-class TextEditPeer : public AutomationPeer, public IValuePeer {
+class TextEditPeer : public AutomationPeer, public IValuePeer, public ITextPeer {
 public:
     // `textBox` is the owner when it is a TextBox (password-capable), else null.
     TextEditPeer(TextEditBase& owner, const TextBox* textBox);
@@ -86,8 +87,21 @@ public:
     // TextArea (no TextBox owner) is a document: no ValueChanged.
     bool ReportsValueChanges() const override { return textBox_ != nullptr; }
 
+    // Text pattern. A password exposes no text (and no TextPattern at all).
+    ITextPeer* AsText() override { return IsPassword() ? nullptr : this; }
+    const std::wstring& Text() const override;
+    size_t SelectionStart() const override;
+    size_t SelectionLength() const override;
+    void SelectText(size_t start, size_t length) override;
+    size_t OffsetAtPoint(float x, float y) const override;
+    bool IsTextReadOnly() const override { return IsReadOnly(); }
+
 private:
     const TextBox* textBox_;
+    // Text_TextChanged / Text_TextSelectionChanged come straight from the control's
+    // events (queued, coalesced, listener-gated): no diff, so a keystroke in a
+    // multi-MB TextArea never copies or compares the document.
+    Subscription textSub_, selSub_;
 };
 
 // GroupBox: Group, Name = Header().

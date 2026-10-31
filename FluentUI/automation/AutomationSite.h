@@ -27,7 +27,8 @@ class AutomationPeer;
 // the COM call has returned, keeps that off UIA core's stack.
 enum class PeerAction {
     Invoke, Toggle, Select, SetValue, SetFocus,
-    SetRangeValue, Expand, Collapse, SetScroll, AddToSelection, RemoveFromSelection, ScrollIntoView
+    SetRangeValue, Expand, Collapse, SetScroll, AddToSelection, RemoveFromSelection, ScrollIntoView,
+    SelectText  // a = start, b = length (code units)
 };
 
 class IAutomationSite {
@@ -67,6 +68,9 @@ public:
     // An items container's cache went over budget: re-check it (which trims) from
     // the next flush. Not gated on a listener: it frees memory.
     virtual void QueueTrim(IUnknown* containerProvider) = 0;
+    // A plain UIA event (UiaRaiseAutomationEvent) on `provider`, coalesced per
+    // (provider, event) per flush, raised only while a client listens.
+    virtual void QueueEvent(IUnknown* provider, int eventId) = 0;
 
     // --- The window's caption buttons (window/NativeWindowHost draws them) -------
     // Slot 0..2 = minimize, maximize, close; the window root lists them FIRST (they

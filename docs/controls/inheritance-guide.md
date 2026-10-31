@@ -533,6 +533,9 @@ More patterns are available to a peer: `IRangeValuePeer` (Slider, NumericUpDown,
 
 `NavRail` (`extensions/NavigationControls/NavRailPeer.cpp`) is the worked example of all of this written from outside the core library.
 
+**Text.** A peer that returns an `ITextPeer` from `AsText()` gets the UIA TextPattern (`automation/UiaTextPattern.cpp`): `Text()`, `SelectionStart()/SelectionLength()`, `SelectText(start, len)` (called from the flush, never inside the client's call), `OffsetAtPoint(x, y)` (host DIPs) and `IsTextReadOnly()`. Ranges are plain offset pairs that are clamped to the current text on every use, so a client holding a range across an edit reads the shortened text instead of reading out of bounds. Units: Character, Word (whitespace-separated; Format behaves as Word, since no formatting is exposed), Line (`
+`; Paragraph behaves as Line), Document (Page behaves as Document). `TextEditPeer` raises `Text_TextChanged` / `Text_TextSelectionChanged` from the control's own `TextChanged` / `SelectionChanged` events through `IAutomationSite::QueueEvent`, which coalesces per flush and sends nothing without a listener. Password mode returns `nullptr` from `AsText()`: the text must not be readable. Known limit: `GetBoundingRectangles` returns the control's rectangle, not one per line, so a screen magnifier following the caret line does not move within a multi-line TextArea.
+
 Programmatic entry points added for UIA, all public: `Hyperlink::PerformActivate()`, `ComboBox::IsDropDownOpen()`/`SetDropDownOpen()`, `ListBox::ItemRect()`/`ItemIndexAt()`/`ScrollItemIntoView()`/`Scroller()`, `TreeView::VisibleRowCount()`/`RowIndexAtVisible()`/`VisibleIndexOfId()`/`VisibleRowRect()`/`VisibleRowAt()`/`ScrollVisibleRowIntoView()`/`Scroller()`, `TextEditBase::ReplaceAllAsUserEdit()`. Expander's peer is a Group (Name = `Header()`) with ExpandCollapse that animates like a header click.
 
 ## Common Patterns

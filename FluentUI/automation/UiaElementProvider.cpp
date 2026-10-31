@@ -37,7 +37,8 @@ ElementProvider::ElementProvider(AutomationPeer& peer)
       hasExpand_(peer.AsExpandCollapse() != nullptr),
       hasScroll_(peer.AsScroll() != nullptr),
       hasSelection_(peer.AsSelection() != nullptr),
-      hasScrollItem_(peer.CanScrollIntoView()) {}
+      hasScrollItem_(peer.CanScrollIntoView()),
+      hasText_(peer.AsText() != nullptr) {}
 
 ULONG ElementProvider::Release() {
     const ULONG left = --refs_;
@@ -70,6 +71,8 @@ HRESULT ElementProvider::QueryInterface(REFIID riid, void** out) {
         *out = static_cast<ISelectionProvider*>(this);
     else if (riid == __uuidof(IScrollItemProvider) && hasScrollItem_)
         *out = static_cast<IScrollItemProvider*>(this);
+    else if (riid == __uuidof(ITextProvider) && hasText_)
+        *out = static_cast<ITextProvider*>(this);
     else
         return E_NOINTERFACE;
     AddRef();
@@ -122,6 +125,7 @@ HRESULT ElementProvider::GetPatternProvider(PATTERNID id, IUnknown** ret) {
     else if (id == UIA_ScrollPatternId) QueryInterface(__uuidof(IScrollProvider), &p);
     else if (id == UIA_SelectionPatternId) QueryInterface(__uuidof(ISelectionProvider), &p);
     else if (id == UIA_ScrollItemPatternId) QueryInterface(__uuidof(IScrollItemProvider), &p);
+    else if (id == UIA_TextPatternId) QueryInterface(__uuidof(ITextProvider), &p);
     *ret = static_cast<IUnknown*>(p);  // null (S_OK) = pattern not supported
     return S_OK;
 }
@@ -457,6 +461,10 @@ void RunPeerAction(IUnknown* provider, PeerAction action, const std::wstring& va
             break;
         case PeerAction::ScrollIntoView:
             if (peer->CanScrollIntoView()) peer->ScrollIntoView();
+            break;
+        case PeerAction::SelectText:
+            if (ITextPeer* t = peer->AsText())
+                t->SelectText(static_cast<size_t>(a), static_cast<size_t>(b));
             break;
     }
 }

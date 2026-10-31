@@ -112,6 +112,7 @@ public:
     void QueueSelected(IUnknown* provider) override;
     void QueueChildrenChanged(IUnknown* parentProviderOrNull) override;
     void QueueTrim(IUnknown* containerProvider) override;
+    void QueueEvent(IUnknown* provider, int eventId) override;
     RectDip CaptionRect(int hit) const override;
     void PostCaptionInvoke(int hit) override;
     IUnknown* CaptionProvider(int slot) override;
@@ -140,6 +141,7 @@ private:
     Ref captions_[3];  // min, max, close providers (created on first navigation)
     std::vector<Ref> disconnects_;
     std::vector<Ref> changed_, invoked_, selected_, structure_, trims_;
+    std::vector<std::pair<Ref, int>> events_;  // QueueEvent
     Ref focus_;
     bool focusRoot_ = false;      // focus event for the window root itself
     bool structureRoot_ = false;  // the root's children changed

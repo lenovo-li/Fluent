@@ -308,6 +308,7 @@
     <ClCompile Include="automation\RangeAndContainerPeers.cpp" />
     <ClCompile Include="automation\SelectorPeers.cpp" />
     <ClCompile Include="automation\UiaCaptionButtons.cpp" />
+    <ClCompile Include="automation\UiaTextPattern.cpp" />
     <ClCompile Include="window\ThemeHost.cpp" />
     <ClCompile Include="window\DiagnosticsHost.cpp" />
     <ClCompile Include="window\Window.cpp" />

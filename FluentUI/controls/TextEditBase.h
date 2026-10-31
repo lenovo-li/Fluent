@@ -123,6 +123,9 @@ public:
     // Programmatic selection API (public, not test-only). WinForms TextBox-style: start
     // + length, not anchor/caret. Clamped to the actual text length.
     void Select(UINT32 start, UINT32 length);
+    // The text offset under a point in host-client DIPs (UI Automation's
+    // RangeFromPoint). Same hit-test the context menu and the pointer use.
+    UINT32 OffsetAtPoint(float dipX, float dipY) const { return IndexAtPoint(dipX, dipY); }
     UINT32 SelectionStart() const;
     UINT32 SelectionLength() const;
 

@@ -116,6 +116,20 @@ public:
     virtual AutomationPeer* ItemAt(size_t i) = 0;   // created on demand, owned by the peer
 };
 
+// Text pattern source (TextBox, TextArea). Offsets are UTF-16 code units, the same
+// units the control's caret uses. A password peer exposes no text at all.
+class ITextPeer {
+public:
+    virtual ~ITextPeer() = default;
+    virtual const std::wstring& Text() const = 0;
+    virtual size_t SelectionStart() const = 0;
+    virtual size_t SelectionLength() const = 0;
+    virtual void SelectText(size_t start, size_t length) = 0;  // posted action
+    // The offset under a host-DIP point (clamped into the text).
+    virtual size_t OffsetAtPoint(float x, float y) const = 0;
+    virtual bool IsTextReadOnly() const = 0;
+};
+
 class AutomationPeer;
 
 // Per-element automation storage behind UIElement::automation_ (lazily allocated).
@@ -154,6 +168,7 @@ public:
     virtual IScrollPeer* AsScroll() { return nullptr; }
     virtual IItemsPeer* AsItems() { return nullptr; }
     virtual ISelectionPeer* AsSelection() { return nullptr; }
+    virtual ITextPeer* AsText() { return nullptr; }
     // ScrollItem pattern: brings the element/item into view (posted action).
     virtual bool CanScrollIntoView() const { return false; }
     virtual void ScrollIntoView() {}

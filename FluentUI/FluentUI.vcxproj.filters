@@ -259,6 +259,7 @@
     <ClCompile Include="automation\RangeAndContainerPeers.cpp"><Filter>automation</Filter></ClCompile>
     <ClCompile Include="automation\SelectorPeers.cpp"><Filter>automation</Filter></ClCompile>
     <ClCompile Include="automation\UiaCaptionButtons.cpp"><Filter>automation</Filter></ClCompile>
+    <ClCompile Include="automation\UiaTextPattern.cpp"><Filter>automation</Filter></ClCompile>
     <ClCompile Include="window\ThemeHost.cpp"><Filter>window</Filter></ClCompile>
     <ClCompile Include="window\DiagnosticsHost.cpp"><Filter>window</Filter></ClCompile>
     <ClCompile Include="window\Window.cpp"><Filter>window</Filter></ClCompile>

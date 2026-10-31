@@ -135,6 +135,8 @@ HRESULT ElementProvider::GetSelection(SAFEARRAY** ret) {
     CheckThread("GetSelection");
     if (!ret) return E_POINTER;
     *ret = nullptr;
+    // Shared by ISelectionProvider and ITextProvider (identical signatures).
+    if (LiveSite() && !peer_->AsSelection() && peer_->AsText()) return TextSelection(ret);
     ISelectionPeer* sel = LiveSite() ? peer_->AsSelection() : nullptr;
     IItemsPeer* items = peer_ ? peer_->AsItems() : nullptr;
     if (!sel || !items) return UIA_E_ELEMENTNOTAVAILABLE;

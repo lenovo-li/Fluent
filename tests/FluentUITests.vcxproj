@@ -117,6 +117,7 @@
     <ClCompile Include="unit\AutomationReviewFixTests.cpp" />
     <ClCompile Include="unit\AutomationControlPeerTests.cpp" />
     <ClCompile Include="unit\AutomationSelectorPeerTests.cpp" />
+    <ClCompile Include="unit\AutomationTextPatternTests.cpp" />
     <ClCompile Include="unit\FrameWaiterTests.cpp" />
     <ClCompile Include="unit\AnimatedValueTests.cpp" />
     <ClCompile Include="unit\ButtonBaseTests.cpp" />

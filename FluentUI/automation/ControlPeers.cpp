@@ -3,6 +3,8 @@
 #include "ControlPeers.h"
 
 #include "AutomationSite.h"
+
+#include <algorithm>
 #include "UiaProvider.h"
 
 #include "../controls/primitives/ButtonBase.h"
@@ -68,8 +70,39 @@ std::wstring TextBlockPeer::GetName() const {
     return n.empty() ? As<TextBlock>(*this).Text() : n;
 }
 
+namespace {
+constexpr int kTextChangedEventId = 20015;           // UIA_Text_TextChangedEventId
+constexpr int kTextSelectionChangedEventId = 20014;  // UIA_Text_TextSelectionChangedEventId
+void QueueOn(TextEditBase& e, int eventId) {
+    AutomationPeer* p = e.AutomationPeerIfAny();
+    IAutomationSite* site = e.AutomationSite();
+    if (p && site && p->HasProvider()) site->QueueEvent(p->Provider(), eventId);
+}
+}  // namespace
+
 TextEditPeer::TextEditPeer(TextEditBase& owner, const TextBox* textBox)
-    : AutomationPeer(owner), textBox_(textBox) {}
+    : AutomationPeer(owner), textBox_(textBox) {
+    textSub_ = owner.TextChanged().Subscribe(&owner, [](void* o, TextEditBase&, std::wstring&) {
+        QueueOn(*static_cast<TextEditBase*>(o), kTextChangedEventId);
+    });
+    selSub_ = owner.SelectionChanged().Subscribe(
+        &owner, [](void* o, TextEditBase&, TextEditBase::SelectionChangedArgs&) {
+            QueueOn(*static_cast<TextEditBase*>(o), kTextSelectionChangedEventId);
+        });
+}
+const std::wstring& TextEditPeer::Text() const { return As<TextEditBase>(*this).Text(); }
+size_t TextEditPeer::SelectionStart() const { return As<TextEditBase>(*this).SelectionStart(); }
+size_t TextEditPeer::SelectionLength() const { return As<TextEditBase>(*this).SelectionLength(); }
+void TextEditPeer::SelectText(size_t start, size_t length) {
+    auto& t = As<TextEditBase>(*this);
+    const size_t n = t.Text().size();
+    start = std::min(start, n);
+    length = std::min(length, n - start);
+    t.Select(static_cast<UINT32>(start), static_cast<UINT32>(length));
+}
+size_t TextEditPeer::OffsetAtPoint(float x, float y) const {
+    return std::min<size_t>(As<TextEditBase>(*this).OffsetAtPoint(x, y), Text().size());
+}
 bool TextEditPeer::IsPassword() const { return textBox_ && textBox_->IsPassword(); }
 std::wstring TextEditPeer::GetValue() const {
     return IsPassword() ? std::wstring() : As<TextEditBase>(*this).Text();

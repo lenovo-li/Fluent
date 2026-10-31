@@ -71,6 +71,7 @@
     <ClCompile Include="unit\AutomationReviewFixTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\AutomationControlPeerTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\AutomationSelectorPeerTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\AutomationTextPatternTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\FrameWaiterTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\PerformanceCountersTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\FrameRingTests.cpp"><Filter>unit</Filter></ClCompile>

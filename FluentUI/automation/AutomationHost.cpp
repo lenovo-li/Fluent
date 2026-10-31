@@ -112,6 +112,14 @@ void AutomationHost::QueueChanged(IUnknown* p) {
 void AutomationHost::QueueInvoked(IUnknown* p) { if (p && !torn_down_) { PushUnique(invoked_, p); RequestFlush(); } }
 void AutomationHost::QueueSelected(IUnknown* p) { if (p && !torn_down_) { PushUnique(selected_, p); RequestFlush(); } }
 
+void AutomationHost::QueueEvent(IUnknown* p, int eventId) {
+    if (!p || torn_down_ || !root_ || !core_->ClientsAreListening()) return;
+    for (const auto& e : events_)
+        if (e.first.Get() == p && e.second == eventId) return;
+    events_.emplace_back(Ref(p), eventId);
+    RequestFlush();
+}
+
 void AutomationHost::QueueTrim(IUnknown* p) {
     if (!p || torn_down_) return;
     PushUnique(trims_, p);
@@ -184,6 +192,8 @@ void AutomationHost::RaiseEvents() {
     Ref focus = std::move(focus_);
     std::vector<Ref> structure;
     structure.swap(structure_);
+    std::vector<std::pair<Ref, int>> events;
+    events.swap(events_);
     const bool structureRoot = structureRoot_, focusRoot = focusRoot_;
     structureRoot_ = focusRoot_ = false;
     // The client stopped listening since these were queued: drop them unread.
@@ -197,6 +207,8 @@ void AutomationHost::RaiseEvents() {
     }
     for (const Ref& i : invoked)
         if (PeerFromProvider(i.Get())) core_->RaiseEvent(i.Get(), kInvokedEventId);
+    for (const auto& e : events)
+        if (PeerFromProvider(e.first.Get())) core_->RaiseEvent(e.first.Get(), e.second);
     for (const Ref& sel : selected)
         if (PeerFromProvider(sel.Get())) core_->RaiseEvent(sel.Get(), kElementSelectedEventId);
     // Structure before focus: a client must be able to find the newly focused node.
@@ -248,6 +260,7 @@ void AutomationHost::OnWindowDestroying() {
     selected_.clear();
     structure_.clear();
     trims_.clear();
+    events_.clear();
     focus_.Reset();
     focusRoot_ = structureRoot_ = false;
 }

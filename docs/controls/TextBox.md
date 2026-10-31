@@ -142,6 +142,8 @@ TextBox / TextArea 的 peer（`automation/ControlPeers.h`）：
 
 验证：`tests/unit/AutomationPeerTests.cpp`、`AutomationPeerLifetimeTests.cpp`（无头，用记录调用的假 UIA core），10 处变异全部被测试抓到；真实客户端下的表现需在真机用 Inspect.exe 检查。
 
+TextPattern（`automation/UiaTextPattern.cpp`）：讲述人按字符/单词/行/整篇朗读与移动，`Select` 经投递消息在下一次 flush 时执行，`RangeFromPoint` 用 `TextEditBase::OffsetAtPoint`。客户端持有的范围在文本变短后自动截断。`TextChanged` / `SelectionChanged` 转成 UIA 的 Text_TextChanged / Text_TextSelectionChanged，每次 flush 合并一次，没有客户端监听时不发送。限制：`GetBoundingRectangles` 返回整个控件的矩形，不按行给出；不支持格式属性（字体、颜色），只回答 IsReadOnly。密码模式没有 TextPattern。验证：`tests/unit/AutomationTextPatternTests.cpp`，6 处变异（不截断、密码暴露文本、按行移动不前进、Select 不执行、不发 TextChanged、GetText 忽略 maxLength）全部被测试抓到。
+
 ## 备注
 
 ### 性能特征

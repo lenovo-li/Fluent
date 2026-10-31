@@ -29,7 +29,8 @@ class ElementProvider final : public IRawElementProviderSimple,
                               public IExpandCollapseProvider,
                               public IScrollProvider,
                               public ISelectionProvider,
-                              public IScrollItemProvider {
+                              public IScrollItemProvider,
+                              public ITextProvider {
 public:
     explicit ElementProvider(AutomationPeer& peer);
 
@@ -106,6 +107,17 @@ public:
     IFACEMETHODIMP get_IsSelectionRequired(BOOL* ret) override;
     // IScrollItemProvider
     IFACEMETHODIMP ScrollIntoView() override;
+    // ITextProvider (UiaTextPattern.cpp). GetSelection is shared with
+    // ISelectionProvider (same signature): the element answers whichever it has.
+    IFACEMETHODIMP GetVisibleRanges(SAFEARRAY** ret) override;
+    IFACEMETHODIMP RangeFromChild(IRawElementProviderSimple* child, ITextRangeProvider** ret) override;
+    IFACEMETHODIMP RangeFromPoint(UiaPoint pt, ITextRangeProvider** ret) override;
+    IFACEMETHODIMP get_DocumentRange(ITextRangeProvider** ret) override;
+    IFACEMETHODIMP get_SupportedTextSelection(SupportedTextSelection* ret) override;
+    HRESULT TextSelection(SAFEARRAY** ret);  // ITextProvider::GetSelection body
+    HRESULT PostSelectText(size_t start, size_t length) {
+        return Post(PeerAction::SelectText, nullptr, static_cast<double>(start), static_cast<double>(length));
+    }
 
 private:
     ~ElementProvider() = default;
@@ -127,7 +139,7 @@ private:
     // stay constant, so QueryInterface answers from these even after freeze (the
     // pattern methods themselves then return UIA_E_ELEMENTNOTAVAILABLE).
     const bool hasInvoke_, hasToggle_, hasValue_, hasSelectionItem_;
-    const bool hasRange_, hasExpand_, hasScroll_, hasSelection_, hasScrollItem_;
+    const bool hasRange_, hasExpand_, hasScroll_, hasSelection_, hasScrollItem_, hasText_;
 };
 
 }  // namespace fluent::automation
