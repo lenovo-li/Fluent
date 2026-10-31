@@ -35,6 +35,7 @@
 #include "ModalFrameHeartbeat.h"
 #include "../diagnostics/PerformanceCounters.h"
 #include "../input/DragDrop.h"
+#include "../automation/AutomationHost.h"
 #include <vector>
 #include <functional>
 #include <string>
@@ -873,6 +874,11 @@ private:
     // input message; the input message's trailing work (HitTest / OnClientClick /
     // UpdateAnimationTimer) must then bail rather than touch the torn-down window.
     bool destroying_ = false;
+
+    // UI Automation entry point (automation/AutomationHost.h). One null pointer until
+    // a UIA client sends WM_GETOBJECT; torn down in WM_DESTROY (and the destructor
+    // safety net) while hwnd_ is still valid, as UiaReturnRawElementProvider needs it.
+    automation::AutomationHost automation_;
 
     // Per-frame animation subsystem. FrameHost encapsulates the
     // frame scheduler (clock: running/dt state, arm/disarm logic) and animation

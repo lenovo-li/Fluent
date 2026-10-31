@@ -63,6 +63,7 @@
     <ClCompile Include="unit\BorderTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ButtonTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ApplicationTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\AutomationProviderTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\FrameWaiterTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\PerformanceCountersTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\FrameRingTests.cpp"><Filter>unit</Filter></ClCompile>

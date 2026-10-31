@@ -92,6 +92,12 @@ NativeWindowHost::~NativeWindowHost() {
             // dereferenced. Just drop them; each element cleared its own context in
             // ~UIElement (or is gone with the tree).
             elements_.clear();
+            // Disconnect the UIA root while hwnd_ is still valid, and only AFTER
+            // elements_ is empty: with a client attached, UiaDisconnectProvider makes
+            // outgoing COM calls and UIA core calls back into us, and while this STA
+            // waits on them a cross-thread SendMessage can be dispatched to a handler
+            // that walks elements_ without a destroying_ guard.
+            automation_.OnWindowDestroying(hwnd_);
             if (application_) application_->DetachWindow(*this);
         }
         HWND doomed = hwnd_;
@@ -1250,6 +1256,16 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
         return appResult;
 
     switch (msg) {
+        case WM_GETOBJECT: {
+            // UI Automation asks for our provider with UiaRootObjectId; every other
+            // object id (MSAA OBJID_CLIENT etc.) falls through to DefWindowProc and
+            // the system proxy. Nothing UIA-related exists before this message.
+            LRESULT uiaResult = 0;
+            if (automation_.OnGetObject(hwnd_, wp, lp, destroying_, uiaResult))
+                return uiaResult;
+            break;
+        }
+
         case WM_NCCALCSIZE:
             if (wp == TRUE) {
                 auto* params = reinterpret_cast<NCCALCSIZE_PARAMS*>(lp);
@@ -1965,6 +1981,11 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
             // the HWND is valid, so a control never tears down mid-dismiss
             // (single deterministic shutdown path).
             CloseActivePopups();
+            // UIA teardown first among the element-facing steps: destroying_ is already
+            // set, so a re-entrant WM_GETOBJECT from here on goes to DefWindowProc
+            // instead of handing out the provider being disconnected. hwnd_ must still
+            // be valid for UiaReturnRawElementProvider(hwnd, 0, 0, nullptr).
+            automation_.OnWindowDestroying(hwnd_);
             OnDestroying();
             // Detach every registered root while it is still alive and the window
             // members (anim registry, device) are valid. This

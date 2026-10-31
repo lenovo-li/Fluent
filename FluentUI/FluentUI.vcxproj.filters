@@ -16,6 +16,7 @@
     <Filter Include="composition"><UniqueIdentifier>{dddddddd-dddd-4ddd-8ddd-dddddddddddd}</UniqueIdentifier></Filter>
     <Filter Include="text"><UniqueIdentifier>{eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee}</UniqueIdentifier></Filter>
     <Filter Include="dialogs"><UniqueIdentifier>{ffffffff-ffff-4fff-8fff-ffffffffffff}</UniqueIdentifier></Filter>
+    <Filter Include="automation"><UniqueIdentifier>{a17d0c3e-5b2f-4e61-9c8a-0f3d6b7e2a14}</UniqueIdentifier></Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="fl_common.h" />
@@ -139,6 +140,9 @@
     <ClInclude Include="window\FrameWaiter.h"><Filter>window</Filter></ClInclude>
     <ClInclude Include="window\ModalFrameHeartbeat.h"><Filter>window</Filter></ClInclude>
     <ClInclude Include="window\HudOverlay.h"><Filter>window</Filter></ClInclude>
+    <ClInclude Include="automation\AutomationHost.h"><Filter>automation</Filter></ClInclude>
+    <ClInclude Include="automation\UiaProvider.h"><Filter>automation</Filter></ClInclude>
+    <ClInclude Include="automation\UiaCore.h"><Filter>automation</Filter></ClInclude>
     <ClInclude Include="WindowRegistry.h" />
     <ClInclude Include="services\PopupState.h"><Filter>services</Filter></ClInclude>
     <ClInclude Include="services\TooltipService.h"><Filter>services</Filter></ClInclude>
@@ -233,6 +237,8 @@
     <ClCompile Include="window\InputHost.cpp"><Filter>window</Filter></ClCompile>
     <ClCompile Include="window\FrameHost.cpp"><Filter>window</Filter></ClCompile>
     <ClCompile Include="window\HudOverlay.cpp"><Filter>window</Filter></ClCompile>
+    <ClCompile Include="automation\AutomationHost.cpp"><Filter>automation</Filter></ClCompile>
+    <ClCompile Include="automation\UiaProvider.cpp"><Filter>automation</Filter></ClCompile>
     <ClCompile Include="window\ThemeHost.cpp"><Filter>window</Filter></ClCompile>
     <ClCompile Include="window\DiagnosticsHost.cpp"><Filter>window</Filter></ClCompile>
     <ClCompile Include="window\Window.cpp"><Filter>window</Filter></ClCompile>

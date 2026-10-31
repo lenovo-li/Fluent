@@ -187,6 +187,9 @@
     <ClInclude Include="window\FrameWaiter.h" />
     <ClInclude Include="window\ModalFrameHeartbeat.h" />
     <ClInclude Include="window\HudOverlay.h" />
+    <ClInclude Include="automation\AutomationHost.h" />
+    <ClInclude Include="automation\UiaProvider.h" />
+    <ClInclude Include="automation\UiaCore.h" />
     <ClInclude Include="WindowRegistry.h" />
     <ClInclude Include="services\PopupState.h" />
     <ClInclude Include="services\TooltipService.h" />
@@ -283,6 +286,8 @@
     <ClCompile Include="window\InputHost.cpp" />
     <ClCompile Include="window\FrameHost.cpp" />
     <ClCompile Include="window\HudOverlay.cpp" />
+    <ClCompile Include="automation\AutomationHost.cpp" />
+    <ClCompile Include="automation\UiaProvider.cpp" />
     <ClCompile Include="window\ThemeHost.cpp" />
     <ClCompile Include="window\DiagnosticsHost.cpp" />
     <ClCompile Include="window\Window.cpp" />
