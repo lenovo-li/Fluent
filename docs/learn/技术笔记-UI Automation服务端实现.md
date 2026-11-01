@@ -82,7 +82,18 @@ peer 在客户端离开后仍然存在（Inspect 遍历一次就关了）。如�
 客户端离开后，项缓存在下一次变化时整体丢弃，之后行数再变化也不投递任何消息。
 基准 `FluentUIBench --gate` 的 UiaNoClient / UiaListening 场景验证：没有客户端时 0 次投递、0 次调用。
 
-### 7. popup 窗口
+### 7. 虚拟化列表只暴露视口附近的行
+
+第一版把 5 万行的 DataGrid 的每一行都作为兄弟节点暴露。实测（真实 `IUIAutomation` 客户端，Release）：
+沿 NextSibling 走一行约 0.45 ms，5 万行约 22 秒。Inspect 收到焦点事件后会列出焦点元素的全部兄弟节点，
+所以点一下表格它就卡死了。peer 本身是按需创建的，这里慢的是跨线程的客户端调用次数。
+
+改为只暴露可见行加上下各一页（最多 256 行）后，同样的遍历是 6 行、1 ms。窗口外的行仍可通过选中、焦点、
+ScrollItem 到达；滚动使窗口移动时发 ChildrenInvalidated，客户端重新读取。WPF 和 WinUI 的虚拟化列表在
+UIA 树里也是这样（只有已实现的项是子节点）。没有实现 ItemContainer / VirtualizedItem 模式，
+客户端不能不滚动就按名字找到窗口外的行。
+
+### 8. popup 窗口
 
 `PopupHost` 是独立的 `WS_POPUP` + `WS_EX_NOACTIVATE` 顶层窗口，不在所属窗口的 UIA 树里。
 菜单（MenuFlyout）的每一级 popup 自己响应 `WM_GETOBJECT`，内容 peer 是它的子节点。
@@ -117,6 +128,7 @@ PowerShell UIA 客户端都试过）没有收到。元素级订阅能收到同�
 - DataGrid 暴露行和单元格（单元格 Name = 文本，HelpText = 列标题），但没有 Grid/Table 模式，
   客户端不能按 (行, 列) 直接取单元格，也没有列标题节点。
 - TreeView 的行 id 必须唯一：UIA 节点按 id 作 key。
+- 长列表只暴露视口附近的行，没有 ItemContainer / VirtualizedItem 模式：客户端要先滚动才能遍历到远处的行。
 
 ## 五、自测方法
 

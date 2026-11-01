@@ -72,6 +72,22 @@ public:
     // IItemsPeer: ItemAt creates or returns the cached item for index i.
     AutomationPeer* ItemAt(size_t i) override;
 
+    // The exposed window (IItemsPeer): the visible rows plus one page on each side,
+    // at most kMaxExposedItems. A container whose items can be many overrides
+    // VisibleItemRange; the default (false) exposes every item, right for a handful
+    // (tab headers, menu rows, calendar days).
+    size_t ExposedBegin() const override;
+    size_t ExposedEnd() const override;
+    // First and last item at least partly in the viewport, O(1). False = no window
+    // (expose everything). A virtualized control returns true always, with
+    // first = SIZE_MAX when nothing is visible yet (a first page is exposed).
+    virtual bool VisibleItemRange(size_t& first, size_t& last) const {
+        UNREFERENCED_PARAMETER(first);
+        UNREFERENCED_PARAMETER(last);
+        return false;
+    }
+    static constexpr size_t kMaxExposedItems = 256;
+
     // Supplied by the control's peer.
     virtual size_t KeyAt(size_t i) const { return i; }
     virtual size_t IndexOfKey(size_t key) const { return key; }  // >= ItemCount() = gone
@@ -122,6 +138,10 @@ private:
     // line limit drops one line and adds one per append, so the count never changes
     // while every child shifts.
     size_t lastFirstKey_ = SIZE_MAX;
+    // The exposed window at the last re-check: scrolling moves it, which is a
+    // structure change for the client (the walk now yields other rows).
+    size_t lastBegin_ = SIZE_MAX, lastEnd_ = SIZE_MAX;
+    void ExposedWindow(size_t& begin, size_t& end) const;
     uint64_t useClock_ = 0;
 };
 

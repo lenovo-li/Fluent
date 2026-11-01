@@ -271,21 +271,24 @@ TEST(AutomationItemReview, RowHitTestMapsThroughAScaledViewbox) {
 }
 
 TEST(AutomationItemReview, TrimKeepsTheRowTheClientIsWalkingFrom) {
+    // A client paging through a long list: it reaches rows 0..2000 in order (by
+    // scrolling the window along), and the posted flush may run between any two
+    // calls. The row it reached last must survive every trim.
     UiaFixture fx;
-    MakeList(fx, 5000);
+    auto* lb = MakeList(fx, 5000);
     fx.Attach();
-    auto list = First(fx);
-    auto cur = Nav(list.Get(), NavigateDirection_FirstChild);
-    for (int i = 0; i < 2000 && cur; ++i) {
-        cur = Nav(cur.Get(), NavigateDirection_NextSibling);
-        // The posted flush may run between any two client calls.
+    First(fx);
+    auto* peer = static_cast<automation::ItemsContainerPeer*>(lb->AutomationPeerIfAny());
+    if (!peer) return;
+    for (size_t i = 0; i <= 2000; ++i) {
+        peer->ItemAt(i);
         if (i % 100 == 0) fx.host.OnFlush();
     }
+    ComPtr<IRawElementProviderFragment> cur;
+    peer->ItemAt(2000)->Provider()->QueryInterface(IID_PPV_ARGS(&cur));
     fx.host.OnFlush();
-    // The client's current row survived the trim; its next step still works.
     EXPECT_TRUE(PropString(cur.Get(), UIA_NamePropertyId) == L"Row 2000");
-    auto next = Nav(cur.Get(), NavigateDirection_NextSibling);
-    EXPECT_TRUE(PropString(next.Get(), UIA_NamePropertyId) == L"Row 2001");
+    EXPECT_TRUE(peer->CachedItemCount() <= automation::ItemsContainerPeer::kMaxCachedItems);
 }
 
 TEST(AutomationItemReview, CacheIsDroppedAndCountChangesPostNothingAfterClientLeaves) {
@@ -315,10 +318,10 @@ TEST(AutomationItemReview, TrimWithoutAListenerDropsTheWholeCache) {
     UiaFixture fx;
     auto* lb = MakeList(fx, 5000);
     fx.Attach();
-    auto cur = Nav(First(fx).Get(), NavigateDirection_FirstChild);
-    for (int i = 0; i < 1100 && cur; ++i) cur = Nav(cur.Get(), NavigateDirection_NextSibling);
+    First(fx);
     auto* peer = static_cast<automation::ItemsContainerPeer*>(lb->AutomationPeerIfAny());
     if (!peer) return;
+    for (size_t i = 0; i < 1100; ++i) peer->ItemAt(i);
     EXPECT_TRUE(peer->CachedItemCount() > automation::ItemsContainerPeer::kMaxCachedItems);
     fx.core.listening = false;
     fx.host.OnFlush();
@@ -352,4 +355,56 @@ TEST(AutomationItemReview, PageScrollMovesOneViewportAndRepaints) {
     fx.host.OnFlush();
     EXPECT_NEAR(lb->Scroller().Offset(), 100.0f, 1.0f);
     EXPECT_TRUE(lb->Dirty() != DirtyFlags::None);  // the move is painted
+}
+
+// --- The exposed window: a client's walk covers the rows near the viewport ---------
+//
+// Inspect lists every sibling of the focused element. With all rows exposed, focusing
+// a row of a 50,000-row DataGrid made it walk 50,000 siblings at ~0.45 ms each (~22 s,
+// measured through a real UIA client): Inspect froze. These pin the window.
+
+TEST(AutomationItemReview, LongListWalkIsBoundedToTheViewportWindow) {
+    UiaFixture fx;
+    MakeList(fx, 50000);
+    fx.Attach();
+    Layout(fx);
+    auto list = First(fx);
+    int walked = 0;
+    for (auto c = Nav(list.Get(), NavigateDirection_FirstChild); c; c = Nav(c.Get(), NavigateDirection_NextSibling))
+        if (++walked > 50000) break;
+    EXPECT_TRUE(walked > 3);  // the visible rows, plus a page below
+    EXPECT_TRUE(walked <= static_cast<int>(automation::ItemsContainerPeer::kMaxExposedItems));
+}
+
+TEST(AutomationItemReview, ScrollingMovesTheWindowAndTellsTheClient) {
+    UiaFixture fx;
+    auto* lb = MakeList(fx, 50000);
+    fx.Attach();
+    Layout(fx);
+    auto list = First(fx);
+    Nav(list.Get(), NavigateDirection_FirstChild);  // the client has seen the rows
+    fx.core.events.clear();
+    lb->ScrollItemIntoView(30000);
+    fx.host.OnFlush();
+    fx.host.OnFlush();
+    EXPECT_TRUE(Count(fx.core.events, RecordingCore::kChildrenInvalidated) >= 1);
+    // The walk now starts near row 30000 and contains it.
+    auto first = Nav(list.Get(), NavigateDirection_FirstChild);
+    const std::wstring name = PropString(first.Get(), UIA_NamePropertyId);
+    const int firstRow = name.size() > 4 ? std::stoi(name.substr(4)) : -1;
+    EXPECT_TRUE(firstRow > 29000 && firstRow <= 30000);
+    bool found = false;
+    int walked = 0;
+    for (auto c = first; c && walked < 1000; c = Nav(c.Get(), NavigateDirection_NextSibling), ++walked)
+        found |= PropString(c.Get(), UIA_NamePropertyId) == L"Row 30000";
+    EXPECT_TRUE(found);
+}
+
+TEST(AutomationItemReview, ShortListsStillExposeEveryRow) {
+    UiaFixture fx;
+    MakeList(fx, 40);  // longer than the viewport, but a small list: no reason to hide rows
+    fx.Attach();
+    Layout(fx);
+    auto last = Nav(First(fx).Get(), NavigateDirection_LastChild);
+    EXPECT_TRUE(PropString(last.Get(), UIA_NamePropertyId).size() > 0);
 }

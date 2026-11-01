@@ -98,6 +98,7 @@ public:
     void SetScrollPercent(double h, double v) override;
     // O(1): row arithmetic, not a scan (a virtualized list may hold 1M rows).
     AutomationPeer* ItemAtPoint(float x, float y) override;
+    bool VisibleItemRange(size_t& first, size_t& last) const override;
 };
 
 class TabControlPeer final : public SelectableContainerPeer {
@@ -174,6 +175,7 @@ public:
     bool IsIndexSelected(size_t i) const override;
     AutomationPeer* ItemAtPoint(float x, float y) override;
     bool KeysAreStable() const override { return true; }  // row ids
+    bool VisibleItemRange(size_t& first, size_t& last) const override;
     ExpandState RowExpandState(size_t i) const;
     void SetRowExpanded(size_t i, bool expanded);
     IScrollPeer* AsScroll() override { return this; }

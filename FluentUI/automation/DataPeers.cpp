@@ -209,6 +209,18 @@ private:
 };
 }  // namespace
 
+bool DataGridPeer::VisibleItemRange(size_t& first, size_t& last) const {
+    int f = 0, l = -1;
+    Ctl<DataGrid>(*this).VisibleRowRange(f, l);
+    if (l < f) {  // nothing visible: the base exposes a first page
+        first = SIZE_MAX;
+        return true;
+    }
+    first = static_cast<size_t>(f);
+    last = static_cast<size_t>(l);
+    return true;
+}
+
 std::unique_ptr<ItemPeer> DataGridPeer::MakeItem(size_t key) {
     return std::make_unique<DataGridRowPeer>(*this, key);
 }
@@ -341,6 +353,20 @@ AutomationPeer* LogViewerPeer::ItemAtPoint(float x, float y) {
     const size_t i = Ctl<LogViewer>(*this).LineIndexAt(y);
     return i < ItemCount() ? ItemAt(i) : nullptr;
 }
+bool LogViewerPeer::VisibleItemRange(size_t& first, size_t& last) const {
+    const LogViewer& l = Ctl<LogViewer>(*this);
+    const RectDip b = l.Bounds();
+    first = SIZE_MAX;  // always a window; SIZE_MAX = nothing visible, first page
+    last = 0;
+    if (b.h <= 0 || l.LineCount() == 0) return true;
+    const size_t top = l.LineIndexAt(b.y);
+    if (top == SIZE_MAX) return true;
+    const size_t bottom = l.LineIndexAt(b.bottom() - 0.5f);
+    first = top;
+    last = bottom == SIZE_MAX ? l.LineCount() - 1 : bottom;  // short log: empty space below
+    return true;
+}
+
 double LogViewerPeer::VerticalPercent() const {
     const LogViewer& l = Ctl<LogViewer>(*this);
     return Percent(l.VerticalOffset(), l.MaxVerticalOffset());

@@ -40,9 +40,10 @@ RectDip OwnerRectToHostDip(const UIElement& o, const RectDip& local) {
 AutomationPeer* ItemsContainerPeer::ItemAt(size_t i) {
     if (i >= ItemCount()) return nullptr;
     const size_t key = KeyAt(i);
-    if (lastCount_ == SIZE_MAX) {  // a client now knows the count and the first key
+    if (lastCount_ == SIZE_MAX) {  // a client now knows the count, first key and window
         lastCount_ = ItemCount();
         lastFirstKey_ = lastCount_ ? KeyAt(0) : SIZE_MAX;
+        ExposedWindow(lastBegin_, lastEnd_);
     }
     auto it = items_.find(key);
     if (it != items_.end()) {
@@ -64,6 +65,38 @@ AutomationPeer* ItemsContainerPeer::ItemAt(size_t i) {
     AutomationPeer* raw = item.get();
     items_.emplace(key, std::move(item));
     return raw;
+}
+
+void ItemsContainerPeer::ExposedWindow(size_t& begin, size_t& end) const {
+    const size_t n = ItemCount();
+    size_t first = 0, last = 0;
+    if (!VisibleItemRange(first, last) || n == 0) {
+        begin = 0;
+        end = n;
+        return;
+    }
+    if (first >= n || last < first) {
+        // Not laid out yet, or nothing visible: a first page, so the list is not empty.
+        begin = 0;
+        end = std::min(n, size_t{64});
+        return;
+    }
+    last = std::min(last, n - 1);
+    const size_t page = last - first + 1;
+    const size_t margin = std::min(page, (kMaxExposedItems - std::min(page, kMaxExposedItems)) / 2);
+    begin = first > margin ? first - margin : 0;
+    end = std::min(n, last + 1 + margin);
+    if (end - begin > kMaxExposedItems) end = begin + kMaxExposedItems;
+}
+size_t ItemsContainerPeer::ExposedBegin() const {
+    size_t b = 0, e = 0;
+    ExposedWindow(b, e);
+    return b;
+}
+size_t ItemsContainerPeer::ExposedEnd() const {
+    size_t b = 0, e = 0;
+    ExposedWindow(b, e);
+    return e;
 }
 
 AutomationPeer* ItemsContainerPeer::FocusedItem() {
@@ -90,17 +123,24 @@ void ItemsContainerPeer::OnFlushRecheck() {
     const size_t firstKey = count ? KeyAt(0) : SIZE_MAX;
     const bool countChanged = lastCount_ != SIZE_MAX && count != lastCount_;
     const bool firstMoved = lastCount_ != SIZE_MAX && firstKey != lastFirstKey_;
+    size_t wBegin = 0, wEnd = 0;
+    ExposedWindow(wBegin, wEnd);
+    const bool windowMoved = lastCount_ != SIZE_MAX && lastBegin_ != SIZE_MAX &&
+                             (wBegin != lastBegin_ || wEnd != lastEnd_);
     bool removed = false;
     if (!site || !site->ClientsAreListening()) {
         // Nobody left to use the cache: drop it, and stop watching the count.
         ReleaseAll();
         lastCount_ = SIZE_MAX;
         lastFirstKey_ = SIZE_MAX;
+        lastBegin_ = lastEnd_ = SIZE_MAX;
         trimRequested_ = false;
         return;
     }
     lastCount_ = count;
     lastFirstKey_ = firstKey;
+    lastBegin_ = wBegin;
+    lastEnd_ = wEnd;
     if (countChanged && !KeysAreStable()) {
         // Index keys may all have shifted; no cached item is known to be right.
         removed = ReleaseAll();
@@ -122,7 +162,8 @@ void ItemsContainerPeer::OnFlushRecheck() {
     }
     // Rows added (an append, a TreeView expand) release nothing but change the
     // children just as much.
-    if ((removed || countChanged || firstMoved) && HasProvider()) site->QueueChildrenChanged(Provider());
+    if ((removed || countChanged || firstMoved || windowMoved) && HasProvider())
+        site->QueueChildrenChanged(Provider());
     QueueItemRechecks(*site);
 }
 

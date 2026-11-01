@@ -204,18 +204,19 @@ HRESULT ElementProvider::Navigate(NavigateDirection dir, IRawElementProviderFrag
         case NavigateDirection_FirstChild:
             // An item's children are only its own items (a grid row's cells); the
             // owner element's children belong to the container that lists the item.
-            if (items && items->ItemCount() > 0) return FragmentForPeer(items->ItemAt(0), ret);
+            if (items && items->ExposedEnd() > items->ExposedBegin())
+                return FragmentForPeer(items->ItemAt(items->ExposedBegin()), ret);
             if (container) return S_OK;
             return FragmentForElement(FirstExposedChild(e), ret);
         case NavigateDirection_LastChild:
             if (container) {
-                return items && items->ItemCount() > 0
-                           ? FragmentForPeer(items->ItemAt(items->ItemCount() - 1), ret)
+                return items && items->ExposedEnd() > items->ExposedBegin()
+                           ? FragmentForPeer(items->ItemAt(items->ExposedEnd() - 1), ret)
                            : S_OK;
             }
             if (UIElement* last = LastExposedChild(e)) return FragmentForElement(last, ret);
-            if (items && items->ItemCount() > 0)
-                return FragmentForPeer(items->ItemAt(items->ItemCount() - 1), ret);
+            if (items && items->ExposedEnd() > items->ExposedBegin())
+                return FragmentForPeer(items->ItemAt(items->ExposedEnd() - 1), ret);
             return S_OK;
         case NavigateDirection_NextSibling:
         case NavigateDirection_PreviousSibling: {
@@ -225,14 +226,15 @@ HRESULT ElementProvider::Navigate(NavigateDirection dir, IRawElementProviderFrag
                 IItemsPeer* list = container->AsItems();
                 const size_t i = peer.IndexInContainer();
                 if (next) {
-                    if (i + 1 < list->ItemCount()) return FragmentForPeer(list->ItemAt(i + 1), ret);
+                    if (i + 1 < list->ExposedEnd()) return FragmentForPeer(list->ItemAt(i + 1), ret);
                     // Element children follow a top-level container's items; a nested
                     // item list (a row's cells) has none after it.
                     if (container->ItemContainer()) return S_OK;
                     return FragmentForElement(FirstExposedChild(container->Owner()), ret);
                 }
-                return (i > 0 && i < list->ItemCount()) ? FragmentForPeer(list->ItemAt(i - 1), ret)
-                                                        : S_OK;
+                return (i > list->ExposedBegin() && i < list->ItemCount())
+                           ? FragmentForPeer(list->ItemAt(i - 1), ret)
+                           : S_OK;
             }
             size_t at = 0;
             UIElement* s = ExposedSibling(*site, e, next ? +1 : -1, siblingHint_, &at);
@@ -248,7 +250,8 @@ HRESULT ElementProvider::Navigate(NavigateDirection dir, IRawElementProviderFrag
                 UIElement* p = ExposedParent(e);
                 AutomationPeer* pp = p ? p->AutomationPeerIfAny() : nullptr;
                 IItemsPeer* pl = pp ? pp->AsItems() : nullptr;
-                if (pl && pl->ItemCount() > 0) return FragmentForPeer(pl->ItemAt(pl->ItemCount() - 1), ret);
+                if (pl && pl->ExposedEnd() > pl->ExposedBegin())
+                    return FragmentForPeer(pl->ItemAt(pl->ExposedEnd() - 1), ret);
             }
             const HRESULT hr = FragmentForElement(s, ret);
             // Seed the sibling's own hint so the walk's next step starts there.

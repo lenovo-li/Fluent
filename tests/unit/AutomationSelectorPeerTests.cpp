@@ -48,9 +48,13 @@ TEST(AutomationSelector, ListRowsAreListItemsReachedWithoutElements) {
     list->get_BoundingRectangle(&lr);
     row1->get_BoundingRectangle(&rr);
     EXPECT_TRUE(rr.height > 0 && rr.top >= lr.top && rr.top + rr.height <= lr.top + lr.height + 0.5);
-    // Last row exists and is offscreen (scrolled out), with an empty rect.
+    // The walk covers the rows near the viewport, not a million: the last child is
+    // the end of the exposed window, offscreen (below the viewport) with an empty rect.
+    auto* lpeer = static_cast<automation::ItemsContainerPeer*>(lb->AutomationPeerIfAny());
+    const size_t end = lpeer ? lpeer->ExposedEnd() : 0;
+    EXPECT_TRUE(end > 3 && end <= automation::ItemsContainerPeer::kMaxExposedItems);
     auto last = Nav(list.Get(), NavigateDirection_LastChild);
-    EXPECT_TRUE(PropString(last.Get(), UIA_NamePropertyId) == L"Row 999999");
+    EXPECT_TRUE(PropString(last.Get(), UIA_NamePropertyId) == L"Row " + std::to_wstring(end - 1));
     EXPECT_EQ(PropBool(last.Get(), UIA_IsOffscreenPropertyId), 1);
     // Only the rows a client touched have peers.
     auto* peer = static_cast<automation::ItemsContainerPeer*>(lb->AutomationPeerIfAny());
@@ -120,21 +124,19 @@ TEST(AutomationSelector, ItemCacheIsBoundedAndShrinkReleasesVanishedRows) {
     auto* lb = MakeList(fx, 5000);
     fx.Attach();
     auto list = First(fx);
-    // Enumerate everything, as a client walking all rows would.
-    auto cur = Nav(list.Get(), NavigateDirection_FirstChild);
-    int walked = 0;
-    while (cur && walked < 5000) {
-        cur = Nav(cur.Get(), NavigateDirection_NextSibling);
-        ++walked;
-    }
+    // Reach every row through the peer (a client reaches far rows by scrolling,
+    // selection or focus; the walk itself only covers the exposed window).
     auto* peer = static_cast<automation::ItemsContainerPeer*>(lb->AutomationPeerIfAny());
-    // The walk itself never evicts (a client call may be running on the evicted
+    if (!peer) return;
+    for (size_t i = 0; i < 5000; ++i) peer->ItemAt(i);
+    // Reaching rows never evicts (a client call may be running on the evicted
     // item); the trim it requested runs in the next flush.
     EXPECT_TRUE(fx.core.flushPosts > 0);
     fx.host.OnFlush();
     EXPECT_TRUE(peer->CachedItemCount() <= automation::ItemsContainerPeer::kMaxCachedItems);
     // Shrink: rows past the new count vanish and their providers are disconnected.
-    auto row4999 = Nav(list.Get(), NavigateDirection_LastChild);
+    ComPtr<IRawElementProviderFragment> row4999;
+    peer->ItemAt(4999)->Provider()->QueryInterface(IID_PPV_ARGS(&row4999));
     lb->SetItemCount(10);
     fx.host.OnFlush();
     EXPECT_TRUE(PropString(row4999.Get(), UIA_NamePropertyId) == L"<error>");

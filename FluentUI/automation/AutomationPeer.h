@@ -114,6 +114,13 @@ public:
     virtual ~IItemsPeer() = default;
     virtual size_t ItemCount() const = 0;
     virtual AutomationPeer* ItemAt(size_t i) = 0;   // created on demand, owned by the peer
+    // The items child navigation walks: [ExposedBegin, ExposedEnd). A virtualized
+    // control exposes the rows near the viewport, not all of them: Inspect lists
+    // every sibling of the focused element, and a real client pays ~0.45 ms per row,
+    // so a 50,000-row grid froze it for ~22 s. Items outside the window still exist
+    // (selection, focus, ScrollItem reach them); they are just not in the walk.
+    virtual size_t ExposedBegin() const { return 0; }
+    virtual size_t ExposedEnd() const { return ItemCount(); }
 };
 
 // Text pattern source (TextBox, TextArea). Offsets are UTF-16 code units, the same

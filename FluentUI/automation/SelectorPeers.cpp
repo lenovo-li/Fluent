@@ -76,6 +76,27 @@ AutomationPeer* ListBoxPeer::ItemAtPoint(float x, float y) {
     const int i = LB(*this).ItemIndexAt(y);
     return i >= 0 ? ItemAt(static_cast<size_t>(i)) : nullptr;
 }
+namespace {
+// Rows at the viewport's top and bottom edges from a "row at y" function.
+template <class F>
+bool RangeFromEdges(const RectDip& b, F rowAt, size_t& first, size_t& last) {
+    // Always true: a virtualized list must never fall back to exposing every row.
+    // Nothing visible (not laid out, zero height) = first SIZE_MAX: the base then
+    // exposes a first page.
+    first = SIZE_MAX;
+    last = 0;
+    if (b.h <= 0) return true;
+    const int top = rowAt(b.y), bottom = rowAt(b.bottom() - 0.5f);
+    if (top < 0) return true;
+    first = static_cast<size_t>(top);
+    last = bottom >= top ? static_cast<size_t>(bottom) : SIZE_MAX;  // past the end: clamp later
+    return true;
+}
+}  // namespace
+bool ListBoxPeer::VisibleItemRange(size_t& first, size_t& last) const {
+    const ListBox& lb = LB(*this);
+    return RangeFromEdges(lb.Bounds(), [&](float y) { return lb.ItemIndexAt(y); }, first, last);
+}
 void ListBoxPeer::ScrollItemIntoView(size_t i) { LB(*this).ScrollItemIntoView(static_cast<int>(i)); }
 bool ListBoxPeer::CanSelectMultiple() const { return LB(*this).GetSelectionMode() == SelectionMode::Multiple; }
 size_t ListBoxPeer::SelectedIndex() const {
@@ -197,6 +218,10 @@ AutomationPeer* TreeViewPeer::ItemAtPoint(float x, float y) {
     HostToOwner(x, y);
     const int v = TV(*this).VisibleRowAt(y);
     return v >= 0 ? ItemAt(static_cast<size_t>(v)) : nullptr;
+}
+bool TreeViewPeer::VisibleItemRange(size_t& first, size_t& last) const {
+    const TreeView& t = TV(*this);
+    return RangeFromEdges(t.Bounds(), [&](float y) { return t.VisibleRowAt(y); }, first, last);
 }
 ExpandState TreeViewPeer::RowExpandState(size_t i) const {
     const TreeViewRow* r = RowAt(TV(*this), i);

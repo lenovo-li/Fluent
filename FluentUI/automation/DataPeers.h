@@ -74,6 +74,7 @@ public:
     bool IsIndexSelected(size_t i) const override;
     AutomationPeer* ItemAtPoint(float x, float y) override;  // O(1)
     std::unique_ptr<ItemPeer> MakeItem(size_t key) override;  // a row that lists its cells
+    bool VisibleItemRange(size_t& first, size_t& last) const override;
     IScrollPeer* AsScroll() override { return this; }
     double HorizontalPercent() const override;
     double VerticalPercent() const override;
@@ -120,6 +121,7 @@ public:
     bool KeysAreStable() const override { return true; }
     std::unique_ptr<ItemPeer> MakeItem(size_t key) override;
     AutomationPeer* ItemAtPoint(float x, float y) override;  // O(log n)
+    bool VisibleItemRange(size_t& first, size_t& last) const override;
     IScrollPeer* AsScroll() override { return this; }
     double HorizontalPercent() const override { return -1; }
     double VerticalPercent() const override;
