@@ -1,5 +1,6 @@
 // WizardControl.cpp
 #include "WizardControl.h"
+#include "../../FluentUI/automation/AutomationPeer.h"
 #include "../../FluentUI/styling/ThemeTokens.h"
 #include "../../FluentUI/input/FocusManager.h"
 #include "../../FluentUI/core/UIContext.h"
@@ -8,6 +9,32 @@
 
 namespace fluent {
 namespace wizard {
+
+namespace {
+// The wizard is a Group named after where the user is ("Options, step 2 of 4"),
+// so a screen reader entering it hears the step; its children are the current page
+// (hidden pages are not in the tree) and the Back / Next / Cancel buttons, which
+// are real Buttons with their own peers. A page change invalidates the wizard, so
+// the Name change is raised by the ordinary re-check.
+class WizardPeer final : public automation::AutomationPeer {
+public:
+    explicit WizardPeer(WizardControl& w) : AutomationPeer(w) {}
+    automation::ControlType GetControlType() const override { return automation::ControlType::Group; }
+    bool IsControlElement() const override { return true; }
+    std::wstring GetName() const override {
+        const std::wstring& n = Owner().AutomationName();
+        if (!n.empty()) return n;
+        const auto& w = static_cast<const WizardControl&>(Owner());
+        const int cur = w.CurrentPage();
+        if (cur < 0) return {};
+        return w.PageTitle(cur) + L", " + std::to_wstring(cur + 1) + L"/" + std::to_wstring(w.PageCount());
+    }
+};
+}  // namespace
+
+std::unique_ptr<automation::AutomationPeer> WizardControl::CreateAutomationPeer() {
+    return std::make_unique<WizardPeer>(*this);
+}
 
 namespace {
 

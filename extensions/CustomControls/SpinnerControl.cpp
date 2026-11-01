@@ -1,5 +1,7 @@
 // SpinnerControl.cpp - Implementation
 #include "SpinnerControl.h"
+
+#include "../../FluentUI/automation/AutomationPeer.h"
 #include <cmath>
 
 namespace fluent::custom {
@@ -40,6 +42,28 @@ void SpinnerControl::OnAnimationTick(float dtSec) {
     pulse_.Approach(pulseTarget, dtSec, 0.15f);
     
     Invalidate();
+}
+
+namespace {
+// An indeterminate busy indicator, reported the way WinUI reports ProgressRing:
+// ProgressBar, no RangeValue (there is no value to report). In the control view
+// only while running: a stopped spinner shows nothing worth reading.
+class SpinnerPeer final : public automation::AutomationPeer {
+public:
+    explicit SpinnerPeer(SpinnerControl& s) : AutomationPeer(s) {}
+    automation::ControlType GetControlType() const override { return automation::ControlType::ProgressBar; }
+    bool IsControlElement() const override {
+        return static_cast<const SpinnerControl&>(Owner()).IsRunning();
+    }
+    std::wstring GetName() const override {
+        const std::wstring& n = Owner().AutomationName();
+        return n.empty() ? std::wstring(L"Busy") : n;
+    }
+};
+}  // namespace
+
+std::unique_ptr<automation::AutomationPeer> SpinnerControl::CreateAutomationPeer() {
+    return std::make_unique<SpinnerPeer>(*this);
 }
 
 void SpinnerControl::Render(const DrawingContext& dc) {

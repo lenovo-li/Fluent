@@ -1,6 +1,8 @@
 // LunarCalendar.cpp — Implementation
 #include "CustomControls.h"
 
+#include "../../FluentUI/automation/DataPeers.h"
+
 namespace fluent::custom {
 
 void LunarCalendar::RenderCell(const DrawingContext& dc, const CellInfo& cell) {
@@ -32,6 +34,26 @@ void LunarCalendar::RenderCell(const DrawingContext& dc, const CellInfo& cell) {
         dc.DrawText(lunar.c_str(), static_cast<UINT32>(lunar.size()),
                     fmt, lunarRect, lunarColor);
     }
+}
+
+namespace {
+// Day cells name the Gregorian date AND the lunar text drawn under it.
+class LunarCalendarPeer final : public automation::CalendarPeer {
+public:
+    explicit LunarCalendarPeer(LunarCalendar& c) : CalendarPeer(c) {}
+    std::wstring ItemName(size_t i) const override {
+        std::wstring name = CalendarPeer::ItemName(i);
+        int y = 0, m = 0, d = 0;
+        static_cast<const LunarCalendar&>(Owner()).CellDate(static_cast<int>(i), y, m, d);
+        const std::wstring lunar = static_cast<const LunarCalendar&>(Owner()).LunarText(y, m, d);
+        if (!lunar.empty()) name += L"\uFF0C" + lunar;  // full-width comma
+        return name;
+    }
+};
+}  // namespace
+
+std::unique_ptr<automation::AutomationPeer> LunarCalendar::CreateAutomationPeer() {
+    return std::make_unique<LunarCalendarPeer>(*this);
 }
 
 std::wstring LunarCalendar::GetLunarDate(int year, int month, int day) const {

@@ -159,6 +159,15 @@ disabled rail item and confirm no fill appears; with pane mode expanded, move th
 pointer up and down the items with the F12 HUD open and confirm CPU Max does not grow
 with the number of items.
 
+## UI Automation (PageHost, OverlayHost)
+
+`PageHost` lists only the current page (pages are hidden with `SetVisible(false)`, and hidden
+elements are not in the tree); during a transition both pages are visible for its duration.
+`OverlayHost` is a Window with IsDialog = true while shown (WinUI's ContentDialog reports the
+same), Name = the title (or the message when there is no title), HelpText = the message; its
+children are the card's real TextBlocks, Buttons and ProgressBar. Hidden, it is not in the
+tree. Tested in `tests/unit/AutomationExtensionPeerTests.cpp`; a mutation of each peer (dropping the subtitle, the lunar text, the step name, the dialog flag, ...) fails a test.
+
 ## Building
 
 `Fluent.slnx` includes `extensions/NavigationControls/NavigationControls.vcxproj`

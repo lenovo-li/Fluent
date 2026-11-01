@@ -127,6 +127,9 @@ protected:
     SizeDip MeasureOverride(float availW, float availH) override;
     void ArrangeOverride(const RectDip& content) override;
     void OnPreviewKeyDown(KeyEventArgs& e) override;
+    // UI Automation peer (defined in this library's .cpp, on the public automation
+    // headers: the extension path for UIA, see inheritance-guide.md).
+    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
 
 private:
     // The children are the fixed card parts; hide the base's child API so a host

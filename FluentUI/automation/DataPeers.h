@@ -85,7 +85,9 @@ public:
 
 // Calendar: 42 day cells (DataItem, Name = the long date in the user's locale),
 // keyed by date; disabled dates (min/max, blackout) are not enabled.
-class CalendarPeer final : public SelectableContainerPeer {
+// Not final: a calendar subclass that draws extra text in a cell (LunarCalendar)
+// derives from it and appends that text to ItemName.
+class CalendarPeer : public SelectableContainerPeer {
 public:
     explicit CalendarPeer(Calendar& o);
     ControlType GetControlType() const override { return ControlType::Calendar; }

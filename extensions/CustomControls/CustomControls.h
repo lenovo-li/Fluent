@@ -28,8 +28,16 @@ namespace fluent::custom {
 // Use case: Chinese lunar calendar, Islamic calendar, holiday markers, etc.
 
 class LunarCalendar : public Calendar {
+public:
+    // The extra text drawn under a day number (public: the UIA peer appends it to
+    // the cell's name, so Narrator reads what the cell shows).
+    std::wstring LunarText(int year, int month, int day) const { return GetLunarDate(year, month, day); }
+
 protected:
     void RenderCell(const DrawingContext& dc, const CellInfo& cell) override;
+    // UI Automation peer (defined in this library's .cpp, on the public automation
+    // headers: the extension path for UIA, see inheritance-guide.md).
+    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
 
 private:
     // Stub: returns "初一", "初二", etc. Real implementation would use a proper
@@ -93,6 +101,9 @@ public:
 protected:
     void Measure(float availW, float availH) override;
     void RenderContent(const DrawingContext& dc) override;
+    // UI Automation peer (defined in this library's .cpp, on the public automation
+    // headers: the extension path for UIA, see inheritance-guide.md).
+    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
 
 private:
     std::wstring subtitle_;

@@ -187,6 +187,9 @@ protected:
 
     SizeDip MeasureOverride(float availW, float availH) override;
     void ArrangeOverride(const RectDip& content) override;
+    // UI Automation peer (defined in this library's .cpp, on the public automation
+    // headers: the extension path for UIA, see inheritance-guide.md).
+    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
 
 private:
     // Hide the base's child API: pages must go through AddPage so pages_ and

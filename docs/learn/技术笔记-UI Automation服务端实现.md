@@ -108,6 +108,14 @@ ComboBox 的下拉列表不这样做：它的项属于 ComboBox 的 peer，再�
 PowerShell UIA 客户端都试过）没有收到。元素级订阅能收到同一个 popup 发出的 Invoked 事件。
 原因未查明；Learn 提到 WS_POPUP 窗口应实现 Window 模式，popup 根目前没有实现，可能与此有关。
 
+### 9. 扩展库里的控件
+
+扩展库（`extensions/`）的控件在自己的 .cpp 里重写 `CreateAutomationPeer()`，只用公开的
+`FluentUI/automation/*.h`，不碰 COM。检查扩展控件时要看的是它“画了什么基类不知道的东西”：
+BigButton 的副标题、LunarCalendar 格子里的农历、WizardControl 当前在第几步。只继承基类 peer 时，
+这些文字和状态客户端读不到。不可交互但有意义的控件（转圈的 SpinnerControl、模态的 OverlayHost）
+默认 peer 是无名的 Pane，要给出 ControlType 和名字。
+
 ## 三、否决的方案
 
 - **不用 UseComThreading、自己把调用转到 UI 线程**：见二.1，前提不成立。

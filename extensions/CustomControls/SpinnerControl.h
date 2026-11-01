@@ -23,6 +23,11 @@ public:
     bool WantsAnimationTick() const override { return running_; }
     void OnAnimationTick(float dtSec) override;
 
+protected:
+    // UI Automation peer (defined in this library's .cpp, on the public automation
+    // headers: the extension path for UIA, see inheritance-guide.md).
+    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
+
 private:
     bool running_ = true;
     float speed_ = 1.0f;

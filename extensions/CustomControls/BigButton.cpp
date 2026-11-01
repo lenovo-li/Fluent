@@ -1,7 +1,26 @@
 // BigButton.cpp — icon + title + subtitle on top of Button's own chrome.
 #include "CustomControls.h"
 
+#include "../../FluentUI/automation/ControlPeers.h"
+
 namespace fluent::custom {
+
+namespace {
+// A Button whose subtitle is part of what it shows: HelpText = the subtitle (unless
+// the app set a tooltip), so "Install — 1.2 GB required" reads as name + help.
+class BigButtonPeer final : public automation::ButtonPeer {
+public:
+    explicit BigButtonPeer(BigButton& b) : ButtonPeer(b) {}
+    std::wstring GetHelpText() const override {
+        const std::wstring tip = ButtonPeer::GetHelpText();
+        return tip.empty() ? static_cast<const BigButton&>(Owner()).Subtitle() : tip;
+    }
+};
+}  // namespace
+
+std::unique_ptr<automation::AutomationPeer> BigButton::CreateAutomationPeer() {
+    return std::make_unique<BigButtonPeer>(*this);
+}
 
 void BigButton::Measure(float availW, float availH) {
     (void)availH;

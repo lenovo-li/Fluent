@@ -205,6 +205,9 @@ public:
     // A live region (InfoBar) announces its changes; the peer raises
     // LiveRegionChanged itself (IAutomationSite::QueueEvent) when its text changes.
     virtual LiveSetting GetLiveSetting() const { return LiveSetting::Off; }
+    // A modal surface inside the window (an overlay card): screen readers then treat
+    // its content as a dialog (UIA_IsDialogPropertyId).
+    virtual bool IsDialog() const { return false; }
     // The root content of a popup window (a menu level) raises these when the popup
     // is shown / hidden (UIA_MenuOpenedEventId / UIA_MenuClosedEventId for a menu).
     // 0 = none. Read by AutomationHost::OnPopupShown / OnPopupHidden.

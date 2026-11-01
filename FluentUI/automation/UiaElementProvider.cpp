@@ -175,6 +175,10 @@ HRESULT ElementProvider::GetPropertyValue(PROPERTYID id, VARIANT* ret) {
         case UIA_IsOffscreenPropertyId:
             ReturnBool(peer.IsOffscreen(), ret);
             return S_OK;
+        case UIA_IsDialogPropertyId:
+            if (!peer.IsDialog()) return S_OK;  // UIA default: false
+            ReturnBool(true, ret);
+            return S_OK;
         case UIA_LiveSettingPropertyId:
             if (peer.GetLiveSetting() == LiveSetting::Off) return S_OK;  // UIA default: Off
             ret->vt = VT_I4;

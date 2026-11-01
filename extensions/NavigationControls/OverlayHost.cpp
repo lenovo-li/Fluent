@@ -1,5 +1,6 @@
 // OverlayHost.cpp
 #include "OverlayHost.h"
+#include "../../FluentUI/automation/AutomationPeer.h"
 #include "NavTrace.h"
 #include "../../FluentUI/styling/ThemeTokens.h"
 #include "../../FluentUI/input/FocusManager.h"
@@ -9,6 +10,34 @@
 #include <cstdio>
 
 namespace fluent {
+
+namespace {
+// The overlay card is a modal surface inside the window: a Window that reports
+// IsDialog (WinUI's ContentDialog does the same), Name = its title (or message),
+// HelpText = the message. Its children are the card's real TextBlocks, Buttons and
+// ProgressBar. While hidden the overlay is not visible, so it is not in the tree.
+class OverlayPeer final : public automation::AutomationPeer {
+public:
+    explicit OverlayPeer(OverlayHost& o) : AutomationPeer(o) {}
+    automation::ControlType GetControlType() const override { return automation::ControlType::Window; }
+    bool IsControlElement() const override { return true; }
+    bool IsDialog() const override { return true; }
+    std::wstring GetName() const override {
+        const std::wstring& n = Owner().AutomationName();
+        if (!n.empty()) return n;
+        const OverlaySpec& s = static_cast<const OverlayHost&>(Owner()).CurrentSpec();
+        return s.title.empty() ? s.message : s.title;
+    }
+    std::wstring GetHelpText() const override {
+        const OverlaySpec& s = static_cast<const OverlayHost&>(Owner()).CurrentSpec();
+        return s.title.empty() ? std::wstring() : s.message;
+    }
+};
+}  // namespace
+
+std::unique_ptr<automation::AutomationPeer> OverlayHost::CreateAutomationPeer() {
+    return std::make_unique<OverlayPeer>(*this);
+}
 
 namespace {
 constexpr float kGlyphStroke = 2.0f;

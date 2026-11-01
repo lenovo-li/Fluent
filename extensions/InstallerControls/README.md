@@ -96,6 +96,14 @@ private:
 - **Step format tokens are literal text**, not printf: `{current}`, `{total}`, `{title}`.
   A page title containing `{current}` or `%s` is shown as-is.
 
+## UI Automation
+
+`WizardControl` is a Group named after the step the user is on (`"Options, 2/4"`, or
+`SetAutomationName` when set); a page change raises the Name change. Its children are the
+current page only (hidden pages are not in the tree) and the Back / Next / Cancel Buttons,
+which are real Buttons with Invoke. `FolderPicker` shows the Windows folder dialog, which has
+its own UI Automation. Tested in `tests/unit/AutomationExtensionPeerTests.cpp`; a mutation of each peer (dropping the subtitle, the lunar text, the step name, the dialog flag, ...) fails a test.
+
 ## Building
 
 `Fluent.slnx` includes `extensions/InstallerControls/InstallerControls.vcxproj`.

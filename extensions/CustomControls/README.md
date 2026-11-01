@@ -70,6 +70,23 @@ Derives `Control` directly: a fully custom animated control (`Start` / `Stop`, `
 
 ---
 
+## UI Automation
+
+Each control adds its peer from this library (`CreateAutomationPeer()` on the public
+`FluentUI/automation/*.h` headers), the way an app's own control library does:
+
+- **BigButton** is a Button (Invoke goes through the click path). Its subtitle, which it
+  draws but a plain Button peer does not know about, is the HelpText unless a tooltip is set.
+- **LunarCalendar** derives from `CalendarPeer`: a day cell's name is the long Gregorian date
+  followed by the lunar text drawn under it (`LunarText()`), so a reader hears what the cell shows.
+- **LogSlider** needs nothing: Slider's RangeValue peer reads and sets the value, and
+  `CoerceValue` snaps a UIA SetValue to a decade like a drag.
+- **SpinnerControl** is a ProgressBar with no value (indeterminate, as WinUI reports
+  ProgressRing), named by `SetAutomationName` (default "Busy"). It is in the control view only
+  while running.
+
+Tested in `tests/unit/AutomationExtensionPeerTests.cpp`; a mutation of each peer (dropping the subtitle, the lunar text, the step name, the dialog flag, ...) fails a test.
+
 ## Tests
 
 Headless, in `FluentUITests.exe` (`CustomControls`, `InheritanceExamples`). Only what is
