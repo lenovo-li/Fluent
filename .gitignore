@@ -379,3 +379,6 @@ CMakeUserPresets.json
 CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
+
+# Local screenshots for debugging sessions; never committed.
+pictures/
