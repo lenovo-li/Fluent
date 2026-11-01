@@ -419,6 +419,8 @@ MenuBar 用借用来复用同一份菜单（每次打开都是同一个向量）
 
 没有客户端时：每个 popup 多一个空的 AutomationHost 对象，不创建 provider、peer，不投递消息。
 
+菜单关闭（或在同一级重新打开了新的列表）后，旧一级的菜单项节点在被回收前仍可能被客户端持有：它们报告 IsEnabled = false，Invoke/Expand 不执行，不会误触发新菜单里同位置的项。
+
 生命周期约定：popup 的内容必须先于 PopupHost 解除挂接或销毁（内容的 peer 要通过 popup 的 host 排队断开）。`MenuFlyout::Level` 先声明 popup 再声明列表，所以列表先销毁。
 
 验证：真实 UIA 客户端自测 `FluentUITests.exe --uia-smoke` 打开菜单，在 popup 窗口里找到 Menu 和 MenuItem “Copy”，Invoke 后应用的 `Invoked` 恰好触发一次、菜单关闭，元素级订阅收到 Invoked 事件。已知问题：MenuOpened 已发出（`UiaRaiseAutomationEvent` 返回 S_OK），但在本进程和另一个进程（PowerShell 的 UIA 客户端）里，订阅整个桌面的监听者都没有收到；元素级订阅能收到同一个 popup 发出的事件。讲述人是否播报“菜单”需要在真机上确认。

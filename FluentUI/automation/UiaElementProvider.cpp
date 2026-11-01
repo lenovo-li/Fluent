@@ -38,7 +38,10 @@ ElementProvider::ElementProvider(AutomationPeer& peer)
       hasScroll_(peer.AsScroll() != nullptr),
       hasSelection_(peer.AsSelection() != nullptr),
       hasScrollItem_(peer.CanScrollIntoView()),
-      hasText_(peer.AsText() != nullptr) {}
+      hasText_(peer.AsText() != nullptr),
+      hasItemContainer_(peer.AsItems() && !peer.ItemContainer() && peer.AsItems()->VirtualizesItems()),
+      hasVirtualized_(peer.ItemContainer() && peer.ItemContainer()->AsItems() &&
+                      peer.ItemContainer()->AsItems()->VirtualizesItems() && peer.CanScrollIntoView()) {}
 
 ULONG ElementProvider::Release() {
     const ULONG left = --refs_;
@@ -73,6 +76,10 @@ HRESULT ElementProvider::QueryInterface(REFIID riid, void** out) {
         *out = static_cast<IScrollItemProvider*>(this);
     else if (riid == __uuidof(ITextProvider) && hasText_)
         *out = static_cast<ITextProvider*>(this);
+    else if (riid == __uuidof(IItemContainerProvider) && hasItemContainer_)
+        *out = static_cast<IItemContainerProvider*>(this);
+    else if (riid == __uuidof(IVirtualizedItemProvider) && hasVirtualized_)
+        *out = static_cast<IVirtualizedItemProvider*>(this);
     else
         return E_NOINTERFACE;
     AddRef();
@@ -126,6 +133,8 @@ HRESULT ElementProvider::GetPatternProvider(PATTERNID id, IUnknown** ret) {
     else if (id == UIA_SelectionPatternId) QueryInterface(__uuidof(ISelectionProvider), &p);
     else if (id == UIA_ScrollItemPatternId) QueryInterface(__uuidof(IScrollItemProvider), &p);
     else if (id == UIA_TextPatternId) QueryInterface(__uuidof(ITextProvider), &p);
+    else if (id == UIA_ItemContainerPatternId) QueryInterface(__uuidof(IItemContainerProvider), &p);
+    else if (id == UIA_VirtualizedItemPatternId) QueryInterface(__uuidof(IVirtualizedItemProvider), &p);
     *ret = static_cast<IUnknown*>(p);  // null (S_OK) = pattern not supported
     return S_OK;
 }

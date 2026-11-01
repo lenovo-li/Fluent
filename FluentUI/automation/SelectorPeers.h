@@ -60,6 +60,8 @@ public:
     virtual void SelectItem(size_t i) = 0;
     virtual void SetItemInSelection(size_t i, bool on) { if (on) SelectItem(i); }
     virtual void ScrollItemIntoView(size_t i) { UNREFERENCED_PARAMETER(i); }
+    std::wstring ItemNameAt(size_t i) const override { return ItemName(i); }
+    bool ItemSelectedAt(size_t i) const override { return IsIndexSelected(i); }
     virtual bool ItemEnabled(size_t i) const {
         UNREFERENCED_PARAMETER(i);
         return true;

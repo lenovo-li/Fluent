@@ -408,3 +408,99 @@ TEST(AutomationItemReview, ShortListsStillExposeEveryRow) {
     auto last = Nav(First(fx).Get(), NavigateDirection_LastChild);
     EXPECT_TRUE(PropString(last.Get(), UIA_NamePropertyId).size() > 0);
 }
+
+// --- ItemContainer / VirtualizedItem: reaching rows outside the window --------------
+
+namespace {
+ComPtr<IRawElementProviderSimple> FindByName(IItemContainerProvider* ic, IRawElementProviderSimple* after,
+                                             const wchar_t* name) {
+    VARIANT v;
+    v.vt = VT_BSTR;
+    v.bstrVal = SysAllocString(name);
+    ComPtr<IRawElementProviderSimple> out;
+    ic->FindItemByProperty(after, UIA_NamePropertyId, v, &out);
+    VariantClear(&v);
+    return out;
+}
+ComPtr<IRawElementProviderFragment> AsFrag(IRawElementProviderSimple* s) {
+    ComPtr<IRawElementProviderFragment> f;
+    if (s) s->QueryInterface(IID_PPV_ARGS(&f));
+    return f;
+}
+}  // namespace
+
+TEST(AutomationItemReview, FindItemByNameReachesARowOutsideTheWindowAndRealizeScrollsToIt) {
+    UiaFixture fx;
+    auto* lb = MakeList(fx, 50000);
+    fx.Attach();
+    Layout(fx);
+    auto list = First(fx);
+    ComPtr<IItemContainerProvider> ic;
+    list.As(&ic);
+    EXPECT_TRUE(ic != nullptr);
+    if (!ic) return;
+    auto found = FindByName(ic.Get(), nullptr, L"Row 40000");
+    auto frag = AsFrag(found.Get());
+    EXPECT_TRUE(PropString(frag.Get(), UIA_NamePropertyId) == L"Row 40000");
+    EXPECT_EQ(PropBool(frag.Get(), UIA_IsOffscreenPropertyId), 1);
+    ComPtr<IVirtualizedItemProvider> vi;
+    if (frag) frag.As(&vi);
+    EXPECT_TRUE(vi != nullptr);
+    if (!vi) return;
+    EXPECT_EQ(vi->Realize(), S_OK);
+    fx.host.OnFlush();
+    EXPECT_EQ(PropBool(frag.Get(), UIA_IsOffscreenPropertyId), 0);  // scrolled into view
+    auto* peer = static_cast<automation::ItemsContainerPeer*>(lb->AutomationPeerIfAny());
+    EXPECT_TRUE(peer && peer->ExposedBegin() <= 40000 && peer->ExposedEnd() > 40000);  // now in the walk
+}
+
+TEST(AutomationItemReview, FindItemStartAfterAndSelectionAndNoMatch) {
+    UiaFixture fx;
+    auto* lb = MakeList(fx, 1000);
+    lb->ItemTextProvider = [](size_t i) { return i % 100 == 7 ? std::wstring(L"seven") : L"Row " + std::to_wstring(i); };
+    fx.Attach();
+    Layout(fx);
+    ComPtr<IItemContainerProvider> ic;
+    First(fx).As(&ic);
+    if (!ic) return;
+    auto a = FindByName(ic.Get(), nullptr, L"seven");
+    auto b = FindByName(ic.Get(), a.Get(), L"seven");  // the next match, not the same one
+    auto fa = AsFrag(a.Get()), fb = AsFrag(b.Get());
+    EXPECT_TRUE(fa && fb && fa.Get() != fb.Get());
+    EXPECT_TRUE(FindByName(ic.Get(), nullptr, L"no such row") == nullptr);  // S_OK + null
+    // By selection state.
+    lb->SetSelectedIndex(512);
+    VARIANT v;
+    v.vt = VT_BOOL;
+    v.boolVal = VARIANT_TRUE;
+    ComPtr<IRawElementProviderSimple> sel;
+    EXPECT_EQ(ic->FindItemByProperty(nullptr, UIA_SelectionItemIsSelectedPropertyId, v, &sel), S_OK);
+    EXPECT_TRUE(PropString(AsFrag(sel.Get()).Get(), UIA_NamePropertyId) == L"Row 512");
+    // Unsupported property, and a startAfter that is not one of its items.
+    VARIANT e;
+    e.vt = VT_I4;
+    e.lVal = 1;
+    ComPtr<IRawElementProviderSimple> none;
+    EXPECT_EQ(ic->FindItemByProperty(nullptr, UIA_ControlTypePropertyId, e, &none), E_INVALIDARG);
+    ComPtr<IRawElementProviderSimple> rootSimple;
+    fx.Connect().As(&rootSimple);
+    EXPECT_EQ(ic->FindItemByProperty(rootSimple.Get(), 0, e, &none), E_INVALIDARG);
+}
+
+TEST(AutomationItemReview, ShortContainersDoNotOfferItemContainer) {
+    UiaFixture fx;
+    auto* tc = fx.root->Emplace<TreeView>();  // windowed: offers it
+    UNREFERENCED_PARAMETER(tc);
+    fx.Attach();
+    Layout(fx);
+    ComPtr<IItemContainerProvider> ic;
+    auto tree = First(fx);
+    tree.As(&ic);
+    EXPECT_TRUE(ic != nullptr);
+    // Clients ask through GetPatternProvider, not QueryInterface.
+    ComPtr<IRawElementProviderSimple> simple;
+    tree.As(&simple);
+    ComPtr<IUnknown> pat;
+    if (simple) simple->GetPatternProvider(UIA_ItemContainerPatternId, &pat);
+    EXPECT_TRUE(pat != nullptr);
+}

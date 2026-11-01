@@ -121,6 +121,18 @@ public:
     // (selection, focus, ScrollItem reach them); they are just not in the walk.
     virtual size_t ExposedBegin() const { return 0; }
     virtual size_t ExposedEnd() const { return ItemCount(); }
+    // ItemContainer pattern (FindItemByProperty): the first index after `after`
+    // (SIZE_MAX = from the start) whose item matches, or SIZE_MAX. `name` null =
+    // any name; `selected` -1 = either. A scan over indices: it reads names, it does
+    // not create a peer per row. Only containers that window their items offer the
+    // pattern (VirtualizesItems); a short list's items are all in the walk already.
+    virtual bool VirtualizesItems() const { return false; }
+    virtual size_t FindItem(size_t after, const std::wstring* name, int selected) const {
+        UNREFERENCED_PARAMETER(after);
+        UNREFERENCED_PARAMETER(name);
+        UNREFERENCED_PARAMETER(selected);
+        return SIZE_MAX;
+    }
 };
 
 // Text pattern source (TextBox, TextArea). Offsets are UTF-16 code units, the same

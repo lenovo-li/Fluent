@@ -34,6 +34,7 @@ struct MenuListCallbacks {
     std::function<void(bool)> onLeftRight; // Right(true)/Left(false) navigation
     std::function<void()> onCloseSub;     // close this level's open submenu (UIA Collapse)
     std::function<bool(int)> isSubOpen;   // is item idx's submenu the open next level
+    std::function<bool()> isLive;         // is this list still the open level it was made for
 };
 
 } // namespace
@@ -105,7 +106,12 @@ public:
     int ItemAtY(float y) const { return HitItem(y); }
     // The click's path: a parent item opens its submenu, a leaf is invoked (the
     // flyout closes, then MenuItem::Invoked is raised). Refuses non-selectable rows.
+    // A retired level (menu closed, or reopened with a new list at the same level
+    // index) keeps its peer until the flyout reaps it; acting through it would
+    // invoke an item of whatever is open at that index now.
+    bool IsLiveLevel() const { return !cb_.isLive || cb_.isLive(); }
     void ActivateIndex(int idx) {
+        if (!IsLiveLevel()) return;
         const MenuItem* it = Item(idx);
         if (!it || !it->Selectable()) return;
         if (it->HasSubmenu()) {
@@ -114,7 +120,7 @@ public:
             cb_.onInvoke(idx);
         }
     }
-    void CloseSubmenu() { if (cb_.onCloseSub) cb_.onCloseSub(); }
+    void CloseSubmenu() { if (IsLiveLevel() && cb_.onCloseSub) cb_.onCloseSub(); }
     bool IsSubmenuOpen(int idx) const { return cb_.isSubOpen && cb_.isSubOpen(idx); }
 
     // DIP Y of the top of item `idx` within the popup window (includes the
@@ -418,6 +424,11 @@ std::unique_ptr<Control> MenuFlyout::MakeListView(const std::vector<MenuItem>* i
     cb.onCloseAll = [this]() { Close(); };
     cb.onLeftRight = [this, levelIndex](bool right) { OnLeftRight(levelIndex, right); };
     cb.onCloseSub = [this, levelIndex]() { CloseFrom(levelIndex + 1); };
+    MenuListView* self = view.get();
+    cb.isLive = [this, levelIndex, self]() {
+        const size_t l = static_cast<size_t>(levelIndex);
+        return l < levels_.size() && levels_[l].list.get() == self;
+    };
     cb.isSubOpen = [this, levelIndex](int idx) {
         const size_t next = static_cast<size_t>(levelIndex) + 1;
         return next < levels_.size() && levels_[next].parentIndex == idx;
@@ -503,7 +514,7 @@ public:
     }
     bool IsEnabled() const override {
         const MenuItem* it = Row();
-        return ItemPeer::IsEnabled() && it && it->Selectable();
+        return ItemPeer::IsEnabled() && it && it->Selectable() && List().IsLiveLevel();
     }
     RectDip BoundsInHostDip() const override {
         const MenuListView& l = List();

@@ -190,6 +190,56 @@ HRESULT ElementProvider::get_IsSelectionRequired(BOOL* ret) {
 
 // --- ScrollItem ------------------------------------------------------------------
 
+// --- ItemContainer / VirtualizedItem -----------------------------------------------
+
+HRESULT ElementProvider::FindItemByProperty(IRawElementProviderSimple* startAfter, PROPERTYID id,
+                                            VARIANT value, IRawElementProviderSimple** ret) {
+    CheckThread("FindItemByProperty");
+    if (!ret) return E_POINTER;
+    *ret = nullptr;
+    IItemsPeer* items = LiveSite() ? peer_->AsItems() : nullptr;
+    if (!items) return UIA_E_ELEMENTNOTAVAILABLE;
+    // Where to start: after an item of THIS container, or from the beginning.
+    size_t after = SIZE_MAX;
+    if (startAfter) {
+        // A client may pass any provider; only an element provider may be cast as one
+        // (a caption button or the window root would read garbage).
+        ComPtr<IRawElementProviderFragmentRoot> asRoot;
+        if (IsCaptionProvider(startAfter) || SUCCEEDED(startAfter->QueryInterface(IID_PPV_ARGS(&asRoot))))
+            return E_INVALIDARG;
+        AutomationPeer* sp = PeerFromProvider(startAfter);
+        if (!sp || sp->ItemContainer() != peer_) return E_INVALIDARG;
+        after = sp->IndexInContainer();
+    }
+    // Supported properties: none (= the next item), Name, SelectionItem.IsSelected.
+    std::wstring name;
+    const std::wstring* namePtr = nullptr;
+    int selected = -1;
+    if (id == 0) {
+    } else if (id == UIA_NamePropertyId) {
+        if (value.vt != VT_BSTR) return E_INVALIDARG;
+        name.assign(value.bstrVal ? value.bstrVal : L"", value.bstrVal ? SysStringLen(value.bstrVal) : 0);
+        namePtr = &name;
+    } else if (id == UIA_SelectionItemIsSelectedPropertyId) {
+        if (value.vt != VT_BOOL) return E_INVALIDARG;
+        selected = value.boolVal ? 1 : 0;
+    } else {
+        return E_INVALIDARG;
+    }
+    const size_t found = items->FindItem(after, namePtr, selected);
+    if (found == SIZE_MAX) return S_OK;  // no match: null, not an error
+    AutomationPeer* item = items->ItemAt(found);
+    IUnknown* prov = item ? item->Provider() : nullptr;
+    return prov ? prov->QueryInterface(IID_PPV_ARGS(ret)) : S_OK;
+}
+
+HRESULT ElementProvider::Realize() {
+    CheckThread("Realize");
+    if (!LiveSite() || !peer_->CanScrollIntoView()) return UIA_E_ELEMENTNOTAVAILABLE;
+    if (!peer_->IsEnabled()) return UIA_E_ELEMENTNOTENABLED;  // a gone item: nothing to realize
+    return Post(PeerAction::ScrollIntoView);
+}
+
 HRESULT ElementProvider::ScrollIntoView() {
     CheckThread("ScrollIntoView");
     if (!LiveSite() || !peer_->CanScrollIntoView()) return UIA_E_ELEMENTNOTAVAILABLE;

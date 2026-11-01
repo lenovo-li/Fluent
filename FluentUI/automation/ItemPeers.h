@@ -88,6 +88,20 @@ public:
     }
     static constexpr size_t kMaxExposedItems = 256;
 
+    // ItemContainer pattern support (IItemsPeer). Offered exactly when the container
+    // windows its items. ItemNameAt reads an item's name without creating its peer;
+    // the default creates it (fine for the few-item containers that do not override).
+    bool VirtualizesItems() const override {
+        size_t f = 0, l = 0;
+        return VisibleItemRange(f, l);
+    }
+    size_t FindItem(size_t after, const std::wstring* name, int selected) const override;
+    virtual std::wstring ItemNameAt(size_t i) const;
+    virtual bool ItemSelectedAt(size_t i) const {
+        UNREFERENCED_PARAMETER(i);
+        return false;
+    }
+
     // Supplied by the control's peer.
     virtual size_t KeyAt(size_t i) const { return i; }
     virtual size_t IndexOfKey(size_t key) const { return key; }  // >= ItemCount() = gone

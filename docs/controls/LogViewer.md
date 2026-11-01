@@ -149,7 +149,7 @@ LogViewer 的 peer（`automation/DataPeers.h`）：
 
 行按序号作 key（新的公开 `FirstLineSerial()` + 下标），`SetMaxLines` 从前面裁掉旧行时序号继续增长：客户端停在第 900 行时，前面的行掉出去不影响它的节点，被裁掉的行的节点被释放。新的公开 `LineText` / `LineRect` / `VerticalOffset` / `MaxVerticalOffset` / `SetVerticalOffset`（滚离底部会停止跟随尾部，与滚轮相同）。
 
-**只暴露视口附近的行。** 客户端遍历子节点时，得到的是可见行加上下各一页（最多 256 行），不是全部。原因（实测）：Inspect 会列出焦点元素的全部兄弟节点，真实客户端每行约 0.45 ms，5 万行要约 22 秒，Inspect 卡死；改为窗口后同样的遍历是 6 行、1 ms。窗口外的行仍然存在：选中、焦点、ScrollItem 都能到达；滚动后窗口移动并发 ChildrenInvalidated。这与 WPF/WinUI 虚拟化列表在 UIA 树中的表现相同。
+**只暴露视口附近的行。** 客户端遍历子节点时，得到的是可见行加上下各一页（最多 256 行），不是全部。原因（实测）：Inspect 会列出焦点元素的全部兄弟节点，真实客户端每行约 0.45 ms，5 万行要约 22 秒，Inspect 卡死；改为窗口后同样的遍历是 6 行、1 ms。窗口外的行仍然存在：选中、焦点、ScrollItem 都能到达；滚动后窗口移动并发 ChildrenInvalidated。这与 WPF/WinUI 虚拟化列表在 UIA 树中的表现相同。窗口外的行可以用 ItemContainer 模式（`FindItemByProperty`，支持按 Name、按 SelectionItem.IsSelected、或取下一项，逐个下标比对名字、不为每行建节点）直接找到，再用该行的 VirtualizedItem 模式 `Realize()` 滚动到可见（投递执行，同 ScrollItem）。
 
 代价：正在追加的日志每帧都在改变子节点：行数变化，或者到了 `SetMaxLines` 上限后行数不变但第一行的序号前进。有客户端监听时，两种情况都在每帧为它发一次 ChildrenInvalidated（合并后），每次检查最多 64 个可见行的名字；客户端离开后什么都不发，缓存在下一次行数变化时丢弃。新行不作为 live region 朗读（每秒上千行会让讲述人无法使用）。
 

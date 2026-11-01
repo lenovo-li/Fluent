@@ -30,7 +30,9 @@ class ElementProvider final : public IRawElementProviderSimple,
                               public IScrollProvider,
                               public ISelectionProvider,
                               public IScrollItemProvider,
-                              public ITextProvider {
+                              public ITextProvider,
+                              public IItemContainerProvider,
+                              public IVirtualizedItemProvider {
 public:
     explicit ElementProvider(AutomationPeer& peer);
 
@@ -126,6 +128,16 @@ private:
     // Live = not frozen and the element still attached to a site.
     IAutomationSite* LiveSite() const;
     HRESULT Post(PeerAction action, const wchar_t* value = nullptr, double a = 0, double b = 0);
+
+public:
+    // IItemContainerProvider: find an item that may be outside the exposed window.
+    IFACEMETHODIMP FindItemByProperty(IRawElementProviderSimple* startAfter, PROPERTYID id,
+                                      VARIANT value, IRawElementProviderSimple** ret) override;
+    // IVirtualizedItemProvider: bring an item found that way into the window
+    // (posted ScrollIntoView, the same action ScrollItem runs).
+    IFACEMETHODIMP Realize() override;
+
+private:
     friend class PatternAccess;
 
     std::atomic<ULONG> refs_{1};
@@ -141,6 +153,7 @@ private:
     // pattern methods themselves then return UIA_E_ELEMENTNOTAVAILABLE).
     const bool hasInvoke_, hasToggle_, hasValue_, hasSelectionItem_;
     const bool hasRange_, hasExpand_, hasScroll_, hasSelection_, hasScrollItem_, hasText_;
+    const bool hasItemContainer_, hasVirtualized_;
 };
 
 }  // namespace fluent::automation

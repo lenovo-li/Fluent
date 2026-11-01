@@ -353,6 +353,12 @@ AutomationPeer* LogViewerPeer::ItemAtPoint(float x, float y) {
     const size_t i = Ctl<LogViewer>(*this).LineIndexAt(y);
     return i < ItemCount() ? ItemAt(i) : nullptr;
 }
+std::wstring LogViewerPeer::ItemNameAt(size_t i) const {
+    std::wstring t = Ctl<LogViewer>(*this).LineText(i);
+    if (t.size() > kMaxLineName) t.resize(kMaxLineName);
+    return t;
+}
+
 bool LogViewerPeer::VisibleItemRange(size_t& first, size_t& last) const {
     const LogViewer& l = Ctl<LogViewer>(*this);
     const RectDip b = l.Bounds();

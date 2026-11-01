@@ -88,6 +88,22 @@ void ItemsContainerPeer::ExposedWindow(size_t& begin, size_t& end) const {
     end = std::min(n, last + 1 + margin);
     if (end - begin > kMaxExposedItems) end = begin + kMaxExposedItems;
 }
+std::wstring ItemsContainerPeer::ItemNameAt(size_t i) const {
+    // Creates the peer: only for containers that do not override (few items).
+    AutomationPeer* p = const_cast<ItemsContainerPeer*>(this)->ItemAt(i);
+    return p ? p->GetName() : std::wstring();
+}
+
+size_t ItemsContainerPeer::FindItem(size_t after, const std::wstring* name, int selected) const {
+    const size_t n = ItemCount();
+    for (size_t i = after == SIZE_MAX ? 0 : after + 1; i < n; ++i) {
+        if (selected >= 0 && ItemSelectedAt(i) != (selected == 1)) continue;
+        if (name && ItemNameAt(i) != *name) continue;
+        return i;
+    }
+    return SIZE_MAX;
+}
+
 size_t ItemsContainerPeer::ExposedBegin() const {
     size_t b = 0, e = 0;
     ExposedWindow(b, e);

@@ -148,7 +148,7 @@ ListBox 的 peer：
 
 行（项）的事件：行数变化（追加、删除、TreeView 展开/折叠）时容器发 ChildrenInvalidated；按下标作 key 的列表（ListBox、ComboBox、NavRail）在行数变化后释放全部缓存的行节点，因为下标可能已经指向别的行。行自身的属性变化（IsSelected、TreeItem 的 ExpandCollapseState）在容器失效后的下一次 flush 检查，每次最多检查 64 个（焦点行优先，其次是可见行）。缓存超过 1024 时保留焦点行和最近用过的 64 行，所以客户端遍历几千行时，它正站着的那一行不会失效。客户端离开（不再监听）后，下一次行数变化会丢弃整个缓存，之后行数再变化也不投递任何消息。命中测试先把点按 Viewbox 缩放反算回控件坐标，与边界矩形一致。验证：`tests/unit/AutomationItemReviewTests.cpp`。
 
-**只暴露视口附近的行。** 客户端遍历子节点时，得到的是可见行加上下各一页（最多 256 行），不是全部。原因（实测）：Inspect 会列出焦点元素的全部兄弟节点，真实客户端每行约 0.45 ms，5 万行要约 22 秒，Inspect 卡死；改为窗口后同样的遍历是 6 行、1 ms。窗口外的行仍然存在：选中、焦点、ScrollItem 都能到达；滚动后窗口移动并发 ChildrenInvalidated。这与 WPF/WinUI 虚拟化列表在 UIA 树中的表现相同。
+**只暴露视口附近的行。** 客户端遍历子节点时，得到的是可见行加上下各一页（最多 256 行），不是全部。原因（实测）：Inspect 会列出焦点元素的全部兄弟节点，真实客户端每行约 0.45 ms，5 万行要约 22 秒，Inspect 卡死；改为窗口后同样的遍历是 6 行、1 ms。窗口外的行仍然存在：选中、焦点、ScrollItem 都能到达；滚动后窗口移动并发 ChildrenInvalidated。这与 WPF/WinUI 虚拟化列表在 UIA 树中的表现相同。窗口外的行可以用 ItemContainer 模式（`FindItemByProperty`，支持按 Name、按 SelectionItem.IsSelected、或取下一项，逐个下标比对名字、不为每行建节点）直接找到，再用该行的 VirtualizedItem 模式 `Realize()` 滚动到可见（投递执行，同 ScrollItem）。
 
 `SetScrollOffset` 现在会重绘（Scroll 模式经它滚动；`scroll_` 是成员不是元素，自己不能安排帧）。Scroll 模式的翻页移动一个视口高度；对不能滚动的方向（横向）请求滚动返回 `UIA_E_INVALIDOPERATION`。
 

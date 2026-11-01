@@ -506,6 +506,26 @@ void RunClient(HWND hwnd) {
             Check(cell0 && Name(cell0.Get()) == L"file3" && cell1 && Name(cell1.Get()) == L"30 KB",
                   "DataGrid: row 3 lists its cells (file3, 30 KB)");
         }
+        // A row outside the exposed window, found by name and realized (scrolled in).
+        {
+            ComPtr<IUIAutomationItemContainerPattern> icp;
+            if (grid) grid->GetCurrentPatternAs(UIA_ItemContainerPatternId, IID_PPV_ARGS(&icp));
+            VARIANT nv;
+            nv.vt = VT_BSTR;
+            nv.bstrVal = SysAllocString(L"file40, 400 KB");
+            ComPtr<IUIAutomationElement> farRow;
+            if (icp) icp->FindItemByProperty(nullptr, UIA_NamePropertyId, nv, &farRow);
+            VariantClear(&nv);
+            Check(farRow != nullptr, "DataGrid: ItemContainer finds row 40 outside the window");
+            ComPtr<IUIAutomationVirtualizedItemPattern> vip;
+            if (farRow) farRow->GetCurrentPatternAs(UIA_VirtualizedItemPatternId, IID_PPV_ARGS(&vip));
+            Check(vip && SUCCEEDED(vip->Realize()), "DataGrid: VirtualizedItem.Realize() on row 40");
+            Check(WaitFor([&] {
+                      BOOL off = TRUE;
+                      return farRow && SUCCEEDED(farRow->get_CurrentIsOffscreen(&off)) && !off;
+                  }),
+                  "DataGrid: row 40 is on screen after Realize");
+        }
         ComPtr<IUIAutomationSelectionItemPattern> rsi;
         if (row3) row3->GetCurrentPatternAs(UIA_SelectionItemPatternId, IID_PPV_ARGS(&rsi));
         Check(rsi && SUCCEEDED(rsi->Select()), "DataGrid: Select() on row 3");

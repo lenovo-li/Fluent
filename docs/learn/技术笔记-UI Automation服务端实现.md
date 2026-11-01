@@ -90,8 +90,9 @@ peer 在客户端离开后仍然存在（Inspect 遍历一次就关了）。如�
 
 改为只暴露可见行加上下各一页（最多 256 行）后，同样的遍历是 6 行、1 ms。窗口外的行仍可通过选中、焦点、
 ScrollItem 到达；滚动使窗口移动时发 ChildrenInvalidated，客户端重新读取。WPF 和 WinUI 的虚拟化列表在
-UIA 树里也是这样（只有已实现的项是子节点）。没有实现 ItemContainer / VirtualizedItem 模式，
-客户端不能不滚动就按名字找到窗口外的行。
+UIA 树里也是这样（只有已实现的项是子节点）。窗口外的行用 ItemContainer 模式（`FindItemByProperty`）
+按名字或选中状态找到，再用该行的 VirtualizedItem 模式 `Realize()` 滚动进窗口：查找按下标逐个比对名字，
+不为每行建节点；Realize 与 ScrollItem 一样投递执行。
 
 ### 8. popup 窗口
 
@@ -128,7 +129,7 @@ PowerShell UIA 客户端都试过）没有收到。元素级订阅能收到同�
 - DataGrid 暴露行和单元格（单元格 Name = 文本，HelpText = 列标题），但没有 Grid/Table 模式，
   客户端不能按 (行, 列) 直接取单元格，也没有列标题节点。
 - TreeView 的行 id 必须唯一：UIA 节点按 id 作 key。
-- 长列表只暴露视口附近的行，没有 ItemContainer / VirtualizedItem 模式：客户端要先滚动才能遍历到远处的行。
+- `FindItemByProperty` 只支持 Name、SelectionItem.IsSelected 和“下一项”，其他属性返回 E_INVALIDARG；按名字查找是线性扫描（5 万行一次约几十毫秒，只在客户端主动查找时发生）。
 
 ## 五、自测方法
 
