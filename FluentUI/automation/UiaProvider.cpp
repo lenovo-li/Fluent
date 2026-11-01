@@ -201,7 +201,15 @@ public:
         UIElement* e = ExposedElementAt(*site_, pt.x, pt.y);
         // A container that draws its own items answers which item is there.
         if (AutomationPeer* p = e ? e->GetOrCreateAutomationPeer() : nullptr) {
-            if (AutomationPeer* item = p->ItemAtPoint(pt.x, pt.y)) return FragmentForPeer(item, ret);
+            if (AutomationPeer* item = p->ItemAtPoint(pt.x, pt.y)) {
+                // Nested items (a grid row's cells): keep descending while one answers.
+                for (int depth = 0; depth < 4; ++depth) {
+                    AutomationPeer* inner = item->ItemAtPoint(pt.x, pt.y);
+                    if (!inner) break;
+                    item = inner;
+                }
+                return FragmentForPeer(item, ret);
+            }
         }
         return FragmentForElement(e, ret);
     }

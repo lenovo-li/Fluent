@@ -25,10 +25,10 @@ bool ItemPeer::IsOffscreen() const {
     return container_.IsOffscreen() || BoundsInHostDip().isEmpty();
 }
 void ItemPeer::SetFocusFromAutomation() { container_.SetFocusFromAutomation(); }
-RectDip ItemPeer::OwnerRectToHost(const RectDip& local) const {
+RectDip OwnerRectToHostDip(const UIElement& o, const RectDip& local) {
     if (local.isEmpty()) return {};
-    const RectDip owner = Owner().Bounds();
-    const RectDip mapped = Owner().BoundsInHostDip();
+    const RectDip owner = o.Bounds();
+    const RectDip mapped = o.BoundsInHostDip();
     if (owner.w <= 0 || owner.h <= 0) return local;
     const float sx = mapped.w / owner.w, sy = mapped.h / owner.h;
     return {mapped.x + (local.x - owner.x) * sx, mapped.y + (local.y - owner.y) * sy,

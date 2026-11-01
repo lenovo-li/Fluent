@@ -410,6 +410,35 @@ void DataGrid::PerformScrollRowIntoView(int row) {
     ScrollRowIntoView(row);
 }
 
+RectDip DataGrid::VisibleCellRect(int row, int col) const {
+    if (row < 0 || row >= rowCount_) return {};
+    const RectDip c = CellRect(row, col);
+    if (c.isEmpty()) return {};
+    const RectDip vp = ViewportRect();
+    float x0 = std::max(c.x, vp.x);
+    if (!columns_[static_cast<size_t>(col)].frozen) x0 = std::max(x0, vp.x + FrozenWidth());
+    const float x1 = std::min(c.right(), vp.right());
+    const float y0 = std::max(c.y, vp.y), y1 = std::min(c.bottom(), vp.bottom());
+    if (x1 <= x0 || y1 <= y0) return {};
+    return RectDip{x0, y0, x1 - x0, y1 - y0};
+}
+
+int DataGrid::ColumnIndexAt(float dipX) const {
+    const RectDip vp = ViewportRect();
+    if (dipX < vp.x || dipX >= vp.right()) return -1;
+    const float band = vp.x + FrozenWidth();
+    for (int pass = 0; pass < 2; ++pass) {  // frozen columns, then scrolling ones
+        for (int c = 0; c < static_cast<int>(columns_.size()); ++c) {
+            const bool frozen = columns_[static_cast<size_t>(c)].frozen;
+            if (frozen != (pass == 0)) continue;
+            if (!frozen && dipX < band) continue;  // under the frozen band
+            const float l = ColumnLeft(c);
+            if (dipX >= l && dipX < l + columns_[static_cast<size_t>(c)].width) return c;
+        }
+    }
+    return -1;
+}
+
 float DataGrid::ScrollableViewportWidth() const {
     return std::max(0.0f, ViewportRect().w - FrozenWidth());
 }

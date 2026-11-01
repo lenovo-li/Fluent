@@ -272,6 +272,12 @@ public:
     void PerformScrollRowIntoView(int row);
     // The horizontally scrolling band: the viewport minus the frozen columns.
     float ScrollableViewportWidth() const;
+    // A cell as painted: CellRect clipped to the viewport (and, for a scrolling
+    // column, to the band right of the frozen columns). Empty when scrolled out.
+    RectDip VisibleCellRect(int row, int col) const;
+    // The column under a control-space x on the body, or -1 (frozen columns first,
+    // as they paint on top).
+    int ColumnIndexAt(float dipX) const;
 
     // --- Element contract -------------------------------------------------
     void Measure(float availW, float availH) override;

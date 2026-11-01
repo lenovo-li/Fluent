@@ -202,11 +202,17 @@ HRESULT ElementProvider::Navigate(NavigateDirection dir, IRawElementProviderFrag
                 return root->QueryInterface(IID_PPV_ARGS(ret));
             return S_OK;
         case NavigateDirection_FirstChild:
-            if (container) return S_OK;  // items are leaves
+            // An item's children are only its own items (a grid row's cells); the
+            // owner element's children belong to the container that lists the item.
             if (items && items->ItemCount() > 0) return FragmentForPeer(items->ItemAt(0), ret);
+            if (container) return S_OK;
             return FragmentForElement(FirstExposedChild(e), ret);
         case NavigateDirection_LastChild:
-            if (container) return S_OK;
+            if (container) {
+                return items && items->ItemCount() > 0
+                           ? FragmentForPeer(items->ItemAt(items->ItemCount() - 1), ret)
+                           : S_OK;
+            }
             if (UIElement* last = LastExposedChild(e)) return FragmentForElement(last, ret);
             if (items && items->ItemCount() > 0)
                 return FragmentForPeer(items->ItemAt(items->ItemCount() - 1), ret);
@@ -217,9 +223,12 @@ HRESULT ElementProvider::Navigate(NavigateDirection dir, IRawElementProviderFrag
             if (container) {
                 // Within the container's items, then on into its element children.
                 IItemsPeer* list = container->AsItems();
-                const size_t i = static_cast<ItemPeer&>(peer).Index();
+                const size_t i = peer.IndexInContainer();
                 if (next) {
                     if (i + 1 < list->ItemCount()) return FragmentForPeer(list->ItemAt(i + 1), ret);
+                    // Element children follow a top-level container's items; a nested
+                    // item list (a row's cells) has none after it.
+                    if (container->ItemContainer()) return S_OK;
                     return FragmentForElement(FirstExposedChild(container->Owner()), ret);
                 }
                 return (i > 0 && i < list->ItemCount()) ? FragmentForPeer(list->ItemAt(i - 1), ret)

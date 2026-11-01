@@ -73,6 +73,7 @@ public:
     size_t SelectedCount() const override;
     bool IsIndexSelected(size_t i) const override;
     AutomationPeer* ItemAtPoint(float x, float y) override;  // O(1)
+    std::unique_ptr<ItemPeer> MakeItem(size_t key) override;  // a row that lists its cells
     IScrollPeer* AsScroll() override { return this; }
     double HorizontalPercent() const override;
     double VerticalPercent() const override;

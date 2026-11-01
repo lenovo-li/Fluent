@@ -11,6 +11,10 @@ accompanying tests exercise only the pure helper extracted alongside
 (example: the off-thread HUD change tested `diagnostics/HudFeed.h` only; removing
 `hudVisible_` from `forceFull` and the per-frame `RequestFrame` had no test, and
 `SetHudVisible` has zero callers in `tests/`).
+The same holds for WM_DESTROY / destructor-safety-net teardown order: the UIA root
+change (`FluentUI/automation/UiaProvider.cpp` `ReleaseWindowProvider`, disconnect
+before detach) was tested only through the pure `ShouldServeUiaRoot` and a null-HWND
+`AutomationHost`; reordering or deleting the WM_DESTROY call fails no test.
 
 **Why:** NativeWindowHost needs an HWND and device, so tests stay headless around it.
 The repo's CLAUDE.md notes bugs shipped past green suites for this reason.

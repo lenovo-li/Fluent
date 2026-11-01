@@ -245,7 +245,9 @@ DataGrid 的 peer（`automation/DataPeers.h`）：
 | 行 | DataItem，Name = 各单元格文本用 “, ” 连接（最多 16 列，新的公开 `CellText`）；SelectionItem：Select 走新的公开 `PerformSelectRow`（与点击相同：先提交另一行上正在进行的编辑，再 `SetSelectedRow`），多选的 Add/Remove 走新的公开 `PerformToggleRowSelection`（与 Ctrl+点击相同），都触发 `SelectionChanged`；ScrollItem 走新的公开 `PerformScrollRowIntoView`（视图需要移动时先提交编辑，同 `SetVerticalOffset` 的规则）；横向 ViewSize 用新的公开 `ScrollableViewportWidth`（去掉冻结列） |
 | 命中测试 | 新的公开 `RowIndexAt`（点击用的同一算式），O(1) |
 
-行按下标作 key：重新排序后行名会在下一次检查时更新，行数变化时全部释放并发 ChildrenInvalidated。尚未提供：列标题节点、单元格节点、Grid/Table 模式（讲述人可以按行读，不能按单元格导航）。新的公开 `MaxVerticalOffset` / `MaxHorizontalOffset`。
+每一行的子节点是它的单元格（按需创建，随行释放）：ControlType Custom（与 WPF 的 DataGridCell 相同），Name = 单元格文本，HelpText = 列标题，矩形是画出来的单元格（裁到视口，滚动列不压在冻结列上）；命中测试会一直落到单元格（新的公开 `VisibleCellRect` / `ColumnIndexAt`）。
+
+行按下标作 key：重新排序后行名会在下一次检查时更新，行数变化时全部释放并发 ChildrenInvalidated。尚未提供：列标题节点、Grid/Table 模式（客户端可以逐行逐格读，但不能按 (行, 列) 直接取单元格）。新的公开 `MaxVerticalOffset` / `MaxHorizontalOffset`。
 
 惰性创建：只有 UIA 客户端访问到这个控件时才创建 peer，没有客户端时零开销。行（项）不是元素，客户端访问到才创建节点。模式操作经投递消息执行，执行前重新检查控件仍在树上且已启用。自定义方式见 inheritance-guide.md 的“UI Automation”一节。
 

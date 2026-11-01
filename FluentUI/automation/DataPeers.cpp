@@ -139,6 +139,80 @@ size_t DataGridPeer::SelectedCount() const { return Ctl<DataGrid>(*this).Selecte
 bool DataGridPeer::IsIndexSelected(size_t i) const {
     return Ctl<DataGrid>(*this).IsRowSelected(static_cast<int>(i));
 }
+namespace {
+// A grid cell: Custom (what WPF's DataGridCell reports), Name = the cell text,
+// HelpText = the column header, so "上海南京路店, 门店" reads as value + column.
+// Cells are created on demand per row and released with their row.
+class DataGridCellPeer final : public AutomationPeer {
+public:
+    DataGridCellPeer(AutomationPeer& row, size_t col) : AutomationPeer(row.Owner()), row_(row), col_(col) {}
+    ControlType GetControlType() const override { return ControlType::Custom; }
+    bool IsControlElement() const override { return true; }
+    std::wstring GetName() const override {
+        const size_t r = row_.IndexInContainer();
+        return Ctl<DataGrid>(*this).CellText(static_cast<int>(r), static_cast<int>(col_));
+    }
+    std::wstring GetHelpText() const override {
+        const auto& cols = Ctl<DataGrid>(*this).Columns();
+        return col_ < cols.size() ? cols[col_].header : std::wstring();
+    }
+    std::wstring GetAutomationId() const override { return {}; }
+    bool IsEnabled() const override {
+        return row_.IsEnabled() && col_ < Ctl<DataGrid>(*this).Columns().size();
+    }
+    bool IsKeyboardFocusable() const override { return false; }
+    bool HasFocusWithin() const override { return false; }
+    RectDip BoundsInHostDip() const override {
+        const DataGrid& g = Ctl<DataGrid>(*this);
+        return OwnerRectToHostDip(g, g.VisibleCellRect(static_cast<int>(row_.IndexInContainer()),
+                                                       static_cast<int>(col_)));
+    }
+    bool IsOffscreen() const override { return BoundsInHostDip().isEmpty(); }
+    AutomationPeer* ItemContainer() const override { return &row_; }
+    size_t IndexInContainer() const override { return col_; }
+    void SetFocusFromAutomation() override { row_.SetFocusFromAutomation(); }
+
+private:
+    AutomationPeer& row_;
+    const size_t col_;
+};
+
+class DataGridRowPeer final : public SelectableItemPeer, public IItemsPeer {
+public:
+    DataGridRowPeer(DataGridPeer& c, size_t key) : SelectableItemPeer(c, key, ControlType::DataItem) {}
+    IItemsPeer* AsItems() override { return this; }
+    size_t ItemCount() const override { return Ctl<DataGrid>(*this).Columns().size(); }
+    AutomationPeer* ItemAt(size_t i) override {
+        if (i >= ItemCount()) return nullptr;
+        if (cells_.size() <= i) cells_.resize(i + 1);
+        if (!cells_[i]) cells_[i] = std::make_unique<DataGridCellPeer>(*this, i);
+        return cells_[i].get();
+    }
+    AutomationPeer* ItemAtPoint(float x, float y) override {
+        const DataGrid& g = Ctl<DataGrid>(*this);
+        const RectDip owner = g.Bounds(), mapped = g.BoundsInHostDip();
+        if (owner.w > 0 && mapped.w > 0) x = owner.x + (x - mapped.x) * owner.w / mapped.w;
+        UNREFERENCED_PARAMETER(y);
+        const int c = g.ColumnIndexAt(x);
+        return c >= 0 ? ItemAt(static_cast<size_t>(c)) : nullptr;
+    }
+
+protected:
+    void ReleaseOwned(IAutomationSite* site) override {
+        for (auto& c : cells_)
+            if (c) ReleasePeer(*c, site);
+        cells_.clear();
+    }
+
+private:
+    std::vector<std::unique_ptr<DataGridCellPeer>> cells_;  // indexed by column, on demand
+};
+}  // namespace
+
+std::unique_ptr<ItemPeer> DataGridPeer::MakeItem(size_t key) {
+    return std::make_unique<DataGridRowPeer>(*this, key);
+}
+
 AutomationPeer* DataGridPeer::ItemAtPoint(float x, float y) {
     HostToOwner(x, y);
     const int r = Ctl<DataGrid>(*this).RowIndexAt(y);

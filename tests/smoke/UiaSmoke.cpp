@@ -497,6 +497,15 @@ void RunClient(HWND hwnd) {
         }
         Check(row3 && Type(row3.Get()) == UIA_DataItemControlTypeId && Name(row3.Get()) == L"file3, 30 KB",
               "DataGrid: fourth row is a DataItem named by its cells");
+        {
+            ComPtr<IUIAutomationTreeWalker> walker;
+            uia->get_RawViewWalker(&walker);
+            ComPtr<IUIAutomationElement> cell0, cell1;
+            if (walker && row3) walker->GetFirstChildElement(row3.Get(), &cell0);
+            if (walker && cell0) walker->GetNextSiblingElement(cell0.Get(), &cell1);
+            Check(cell0 && Name(cell0.Get()) == L"file3" && cell1 && Name(cell1.Get()) == L"30 KB",
+                  "DataGrid: row 3 lists its cells (file3, 30 KB)");
+        }
         ComPtr<IUIAutomationSelectionItemPattern> rsi;
         if (row3) row3->GetCurrentPatternAs(UIA_SelectionItemPatternId, IID_PPV_ARGS(&rsi));
         Check(rsi && SUCCEEDED(rsi->Select()), "DataGrid: Select() on row 3");

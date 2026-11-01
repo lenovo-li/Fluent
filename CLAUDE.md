@@ -227,7 +227,7 @@ What actually exists under `docs/`:
   deleted once the work lands.
 - `docs/dual-repo-workflow.md` — workflow for syncing between internal and public repos.
 - `docs/learn/` — Chinese technical notes (compositor clipping, borderless-window
-  resize, DirectWrite font fallback).
+  resize, DirectWrite font fallback, UI Automation server-side provider).
 
 **Documentation lifetime rule.** Only knowledge, learning notes, and architecture
 docs are permanent (`CLAUDE.md`, `.claude/rules/`, `.claude/skills/`, `.claude/agents/`, `docs/api-surface.md`, `docs/BUILD_OPTIMIZATION.md`,

@@ -166,7 +166,7 @@ TEST(AutomationData, DataGridHitTestAndScroll) {
     const RectDip vp = g->ViewportRect();
     ComPtr<IRawElementProviderFragment> hit;
     EXPECT_EQ(fr->ElementProviderFromPoint(vp.x + 10, vp.y + 28 * 1 + 5, &hit), S_OK);
-    EXPECT_TRUE(PropString(hit.Get(), UIA_NamePropertyId) == L"r1c0, r1c1, r1c2");
+    EXPECT_TRUE(PropString(hit.Get(), UIA_NamePropertyId) == L"r1c0");  // descends to the cell
 
     ComPtr<IScrollProvider> sc;
     First(fx).As(&sc);
@@ -349,4 +349,35 @@ TEST(AutomationData, InfoBarAnnouncementGoesOutInTheSameFlush) {
     bar->SetMessage(L"b");
     fx.host.OnFlush();  // one flush, not two
     EXPECT_EQ(Count(fx.core.events, kLiveRegionChanged), 1);
+}
+
+TEST(AutomationData, DataGridRowsListTheirCells) {
+    UiaFixture fx;
+    MakeGrid(fx, 10);
+    fx.Attach();
+    Layout(fx);
+    auto rootFrag = fx.Connect();
+    auto grid = First(fx);
+    auto row2 = Child(grid.Get(), 2);
+    auto c0 = Nav(row2.Get(), NavigateDirection_FirstChild);
+    auto c1 = Nav(c0.Get(), NavigateDirection_NextSibling);
+    auto last = Nav(row2.Get(), NavigateDirection_LastChild);
+    EXPECT_TRUE(PropString(c0.Get(), UIA_NamePropertyId) == L"r2c0");
+    EXPECT_TRUE(PropString(c1.Get(), UIA_NamePropertyId) == L"r2c1");
+    EXPECT_TRUE(PropString(c1.Get(), UIA_HelpTextPropertyId) == L"C1");  // column header
+    EXPECT_TRUE(PropString(last.Get(), UIA_NamePropertyId) == L"r2c2");
+    EXPECT_TRUE(Nav(last.Get(), NavigateDirection_NextSibling) == nullptr);  // no element after cells
+    EXPECT_TRUE(Nav(c1.Get(), NavigateDirection_Parent).Get() == row2.Get());
+    // A row's next sibling is still the next row (cells did not leak into the row list).
+    EXPECT_TRUE(PropString(Nav(row2.Get(), NavigateDirection_NextSibling).Get(), UIA_NamePropertyId) ==
+                L"r3c0, r3c1, r3c2");
+    // Hit-test descends to the cell.
+    UiaRect r{};
+    if (c1) c1->get_BoundingRectangle(&r);
+    EXPECT_TRUE(r.width > 0);
+    ComPtr<IRawElementProviderFragmentRoot> fr;
+    rootFrag.As(&fr);
+    ComPtr<IRawElementProviderFragment> hit;
+    fr->ElementProviderFromPoint(r.left + r.width / 2, r.top + r.height / 2, &hit);
+    EXPECT_TRUE(PropString(hit.Get(), UIA_NamePropertyId) == L"r2c1");
 }

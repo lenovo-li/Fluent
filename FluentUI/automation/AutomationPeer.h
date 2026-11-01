@@ -191,8 +191,12 @@ public:
     // 0 = none. Read by AutomationHost::OnPopupShown / OnPopupHidden.
     virtual int PopupOpenedEventId() const { return 0; }
     virtual int PopupClosedEventId() const { return 0; }
-    // Non-null only for an ItemPeer: the container peer that lists it.
+    // Non-null only for an item (a row, a tab header, a grid cell): the peer that
+    // lists it through AsItems(). IndexInContainer is its position there, which the
+    // provider uses for sibling navigation. An item may itself list items (a grid
+    // row lists its cells).
     virtual AutomationPeer* ItemContainer() const { return nullptr; }
+    virtual size_t IndexInContainer() const { return SIZE_MAX; }
     // Containers: the item under a host-DIP point / the keyboard-focused item, or
     // null (then the container itself answers).
     virtual AutomationPeer* ItemAtPoint(float x, float y) {

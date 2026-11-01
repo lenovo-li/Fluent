@@ -23,6 +23,10 @@ namespace fluent::automation {
 
 class ItemsContainerPeer;
 
+// Free form of ItemPeer::OwnerRectToHost, for item kinds that are not ItemPeers
+// (grid cells).
+RectDip OwnerRectToHostDip(const UIElement& owner, const RectDip& local);
+
 class ItemPeer : public AutomationPeer {
 public:
     ItemPeer(ItemsContainerPeer& container, size_t key);
@@ -37,6 +41,7 @@ public:
     bool IsEnabled() const override { return IsLive() && AutomationPeer::IsEnabled(); }
 
     AutomationPeer* ItemContainer() const override;
+    size_t IndexInContainer() const override { return Index(); }
     bool IsControlElement() const override { return true; }
     // An item is focusable with its container; it has focus when the container has
     // and the container reports it as its focused item.
@@ -50,7 +55,7 @@ public:
 
     // A rect in the owner control's own space mapped to host DIPs through the
     // owner's ancestors (Viewbox scaling), the way the owner's own bounds are.
-    RectDip OwnerRectToHost(const RectDip& local) const;
+    RectDip OwnerRectToHost(const RectDip& local) const { return OwnerRectToHostDip(Owner(), local); }
 
 private:
     friend class ItemsContainerPeer;
