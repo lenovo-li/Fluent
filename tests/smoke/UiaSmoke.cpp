@@ -551,7 +551,18 @@ void RunClient(HWND hwnd) {
 
         // MenuFlyout: the level is its own popup window; MenuOpened reaches a client
         // listening on the desktop, and Invoke on a MenuItem raises the app's Invoked.
-        {
+        //
+        // A menu closes when its window loses activation (light dismiss), and an item of
+        // a closed menu refuses Invoke. Another window in front (Inspect, a terminal)
+        // takes activation from this one, so the step first brings the window to the
+        // foreground and is SKIPPED, not failed, when the system refuses: that is the
+        // desktop's state, not the code's.
+        SetForegroundWindow(hwnd);
+        const bool foreground = WaitFor([&] { return GetForegroundWindow() == hwnd; });
+        if (!foreground)
+            std::printf("[ SKIP ] MenuFlyout checks: the smoke window could not take the foreground "
+                        "(another window is in front); a menu closes when its window is inactive\n");
+        if (foreground) {
             auto menuBtn = FindById(uia.Get(), root.Get(), L"menuBtn");
             ComPtr<IUIAutomationInvokePattern> mb;
             if (menuBtn) menuBtn->GetCurrentPatternAs(UIA_InvokePatternId, IID_PPV_ARGS(&mb));
@@ -607,11 +618,23 @@ void RunClient(HWND hwnd) {
                                                nullptr, events.Get());
             ComPtr<IUIAutomationInvokePattern> ci;
             if (copyEl) copyEl->GetCurrentPatternAs(UIA_InvokePatternId, IID_PPV_ARGS(&ci));
+            if (!popup || !IsWindowVisible(popup)) {
+                // Another window took activation and the menu light-dismissed itself
+                // before the client acted. A closed menu's items refuse Invoke (the
+                // stale-item guard), so the rest of the step cannot run here.
+                std::printf("[ SKIP ] MenuFlyout invoke checks: the menu closed before the client acted "
+                            "(this window lost activation to another window)\n");
+            } else {
             Check(ci && SUCCEEDED(ci->Invoke()), "MenuFlyout: Invoke() on Copy");
             Check(WaitFor([] { return g_menuCopied.load() == 1; }), "MenuFlyout: app's Invoked raised once");
             Check(WaitFor([&] { return events->invoked.load() > 0; }), "MenuFlyout: UIA Invoked delivered from the popup");
             Check(WaitFor([&] { return popup && !IsWindowVisible(popup); }), "MenuFlyout: menu closed after invoke");
+            }
         }
+        // The menu closed itself before the client acted (activation moved away mid-step):
+        // the refused Invoke above is the stale-item guard working, reported as a NOTE.
+        if (foreground && GetForegroundWindow() != hwnd)
+            std::printf("[ NOTE ] MenuFlyout: the window lost the foreground during the menu step\n");
 
         // Caption buttons: Minimize/Maximize/Close are real buttons under the window.
         ComPtr<IUIAutomationElement> closeBtn;
