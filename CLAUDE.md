@@ -37,14 +37,19 @@ those mental models transfer.
 ## Build and test
 
 The solution is `Fluent.slnx` at the repo root. Toolset v145, C++20, x64,
-static-lib core + console/GUI apps. Build commands are in the global
-`~/.claude/CLAUDE.md`; the short form (from the repo root):
+static-lib core + console/GUI apps. Build from the repo root through
+`scripts/build.ps1`:
 
 ```bash
-MSBUILD="C:/Program Files/Microsoft Visual Studio/18/Community/MSBuild/Current/Bin/MSBuild.exe"
-"$MSBUILD" Fluent.slnx -p:Configuration=Debug   -p:Platform=x64 -verbosity:minimal
-"$MSBUILD" Fluent.slnx -p:Configuration=Release -p:Platform=x64 -verbosity:minimal
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1 -Configuration Debug
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1 -Configuration Release
 ```
+
+The script finds MSBuild with `vswhere.exe` instead of a hard-coded path, because
+this repo is copied between machines whose Visual Studio install paths differ.
+The v145 toolset needs Visual Studio 18 (VS 2022 ships v143 and fails with
+MSB8020). Keep `build.ps1` ASCII-only: Windows PowerShell 5.1 reads a BOM-less
+script in the system code page, and a Chinese comment corrupts the next line.
 
 Both configurations must build clean before reporting a change complete.
 

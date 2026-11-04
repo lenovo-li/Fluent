@@ -24,14 +24,16 @@ fixes code.
 
 ```bash
 python scripts/check_all.py
-"C:/Program Files/Microsoft Visual Studio/18/Community/MSBuild/Current/Bin/MSBuild.exe" Fluent.slnx -p:Configuration=Debug -p:Platform=x64 -verbosity:minimal
-"C:/Program Files/Microsoft Visual Studio/18/Community/MSBuild/Current/Bin/MSBuild.exe" Fluent.slnx -p:Configuration=Release -p:Platform=x64 -verbosity:minimal
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1 -Configuration Debug
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1 -Configuration Release
 ./x64/Debug/FluentUITests.exe            # or with a substring filter: ./x64/Debug/FluentUITests.exe Opacity
 ```
 
-Run each line as its own Bash call, written exactly as above (full MSBuild path,
-no `MSBUILD=` variable, no `cd`, no `&&` chaining): `.claude/settings.json`
-pre-approves these literal forms, and any other spelling prompts the user.
+Run each line as its own Bash call, written exactly as above (no `cd`, no `&&`
+chaining, no direct MSBuild path): `.claude/settings.json` pre-approves these
+literal forms, and any other spelling prompts the user. `scripts/build.ps1`
+finds MSBuild through `vswhere.exe`, so the same command works on every machine
+this repo is copied to.
 
 The caller may ask for a subset (only Debug, only a test filter). Do exactly that.
 Never run two MSBuild invocations at once: they share the `x64/` output tree.

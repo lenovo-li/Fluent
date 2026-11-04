@@ -4,7 +4,8 @@
     "allow": [
       "Bash(python scripts/check_all.py)",
       "Bash(python scripts/check_all.py *)",
-      "Bash(\"C:/Program Files/Microsoft Visual Studio/18/Community/MSBuild/Current/Bin/MSBuild.exe\" Fluent.slnx *)",
+      "Bash(powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1 *)",
+      "PowerShell(./scripts/build.ps1 *)",
       "Bash(./x64/Debug/FluentUITests.exe)",
       "Bash(./x64/Debug/FluentUITests.exe *)",
       "Bash(./x64/Release/FluentUITests.exe)",
