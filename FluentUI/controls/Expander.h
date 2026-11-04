@@ -104,6 +104,13 @@ public:
     // guarantee a ticking host should ask for Instant. (Detached is not a problem for
     // correctness: the state is already correct, only the interpolation is missing.)
     void SetExpanded(bool expanded, Transition transition = Transition::Instant);
+    // Set the state the way a header click does: the user transition, and
+    // ExpandedChanged raised when it changed (SetExpanded raises nothing). UI
+    // Automation's Expand/Collapse use this, so an app that lazy-loads content in
+    // ExpandedChanged sees a screen-reader expansion too. Ignored when disabled.
+    void PerformSetExpanded(bool expanded) {
+        if (IsEnabled() && expanded != IsExpanded()) ToggleFromUser();
+    }
     bool IsExpanded() const { return expanded_; }
 
     // Whether a HEADER CLICK (or Space/Enter on the header) animates. Programmatic
@@ -124,6 +131,12 @@ public:
     // Whether the content is attached to the live tree. Exposed because
     // "collapsed means detached" is the design and a test has no other way to see it.
     bool IsContentAttached() const;
+    // UI Automation: the content only while expanded (attached); collapsed
+    // content is not in the UIA tree, as in WPF.
+    size_t LogicalChildCount() const override { return IsContentAttached() ? 1 : 0; }
+    UIElement* LogicalChildAt(size_t i) const override {
+        return i == 0 && IsContentAttached() ? content_.get() : nullptr;
+    }
 
     // The header row's rect in window DIPs. Public so a headless test can check
     // hit-testing without a device, matching TabControl::HeaderRect.
@@ -136,7 +149,6 @@ public:
     UIElement* HitTestDeep(float dipX, float dipY) override;
     UIElement* HitTestDropTarget(float dipX, float dipY) override;
     void CollectFocusables(std::vector<UIElement*>& out) override;
-    void CollectDirtyBounds(std::vector<RectDip>& out) override;
     void CollectAnimations(std::vector<UIElement*>& out) override;
     void OnVisibilityChanged(bool visible) override;
     void OnAncestorVisibilityChanged() override;
@@ -144,8 +156,6 @@ public:
     void OnDpiChanged(float dpiScale) override;
     void OnDeviceLost() override;
     void OnDeviceRestored() override;
-    bool AnyDirtyInSubtree(DirtyFlags flags) const override;
-    void ClearDirtySubtree() override;
     bool NeedsRemeasure() const override { return AnyDirtyInSubtree(DirtyFlags::Measure); }
 
     void OnPointerPressed(PointerEventArgs& e) override;
@@ -182,6 +192,15 @@ public:
     }
 
 protected:
+    // UI Automation peer (automation/RangeAndContainerPeers.h).
+    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
+    // Dirty-walk hooks: self, then the single content child through its PUBLIC
+    // entry point (CollectDirtyBounds / AnyDirtyInSubtree / ClearDirtySubtree),
+    // which is where the subtree-mark pruning happens.
+    void CollectDirtyBoundsOverride(std::vector<RectDip>& out) override;
+    bool AnyDirtyInSubtreeOverride(DirtyFlags flags) const override;
+    void ClearDirtySubtreeOverride() override;
+
     // Propagate the tree context to the content — but only while expanded. A
     // collapsed Expander's content must stay detached even when the Expander itself
     // attaches, which is why this filters rather than forwarding unconditionally

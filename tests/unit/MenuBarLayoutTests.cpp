@@ -1,5 +1,4 @@
-// MenuBarLayoutTests.cpp — MenuBar title clamping when the bar is too narrow
-// (WP-07 §S4 follow-up).
+// MenuBarLayoutTests.cpp — MenuBar title clamping when the bar is too narrow.
 //
 // MenuBar::Measure takes min(availW, sum-of-title-widths), so a window too narrow for
 // every title leaves the bar shorter than its content — while Render laid titles out
@@ -87,4 +86,15 @@ TEST(MenuBarLayout, WideBarLeavesEveryTitleIntact) {
         EXPECT_NEAR(r.w, 50.0f, 0.001f);   // untouched
         x += 50.0f;
     }
+}
+
+// AddMenu grows the bar's desired width (the sum of the titles), so it must ask for
+// a re-measure. A Render-only invalidation left bounds_ at the old width once the bar
+// was laid out, and VisibleTitleRect then clamped the new title away: not drawn, not
+// clickable.
+TEST(MenuBarLayout, AddMenuRequestsMeasure) {
+    MenuBar bar;
+    bar.ClearDirty();
+    bar.AddMenu(L"Help", {});
+    EXPECT_TRUE(Has(bar.Dirty(), DirtyFlags::Measure));
 }

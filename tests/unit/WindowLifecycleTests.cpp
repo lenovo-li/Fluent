@@ -34,6 +34,9 @@ public:
     HRESULT CallPrepareContent() { return PrepareContent(nullptr); }
     void CallSetRoot(std::unique_ptr<UIElement> r) { SetRoot(std::move(r)); }
     UIElement* CallRoot() const { return Root(); }
+    // What OnCreated does on a live window, minus the HWND: register the root.
+    void CallRegisterRoot() { AddElement(Root()); }
+    bool CallRemoveElement(UIElement* e) { return RemoveElement(e); }
 
 protected:
     void OnClosing(WindowClosingArgs& a) override {
@@ -53,8 +56,32 @@ protected:
     }
 };
 
+// A root that reports, from its destructor, whether it was still attached and still
+// registered with its host when it died. Either one being true means the host was
+// left holding a raw pointer to a freed element.
+class DyingRoot : public TestLeaf {
+public:
+    struct Report {
+        bool destroyed = false;
+        bool attachedAtDeath = false;
+        bool registeredAtDeath = false;
+    };
+    DyingRoot(WindowProbe& host, Report& report) : host_(host), report_(report) {}
+    ~DyingRoot() override {
+        report_.destroyed = true;
+        report_.attachedAtDeath = IsAttached();
+        // RemoveElement returns true only if the pointer was still in the host's list.
+        report_.registeredAtDeath = host_.CallRemoveElement(this);
+    }
+
+private:
+    WindowProbe& host_;
+    Report& report_;
+};
+
 class DialogProbe : public DialogWindow {
 public:
+    using DialogWindow::PlanOwnerRestore;
     std::vector<std::string> log;
     bool vetoWindowChannel = false;
     bool vetoDialogChannel = false;
@@ -200,4 +227,62 @@ TEST(DialogLifecycle, DialogDefaultsDifferFromWindowDefaults) {
     EXPECT_NEAR(d.ClientHeight(), 260.0f, 0.001f);
     EXPECT_FALSE(d.IsDialogOpen());
     EXPECT_TRUE(d.Owner() == nullptr);
+}
+
+// --- SetRoot on a window whose root is already registered --------------------
+//
+// Replacing the root after creation used to drop the unique_ptr while the host's
+// elements_ still held the raw pointer (and the subtree was still attached), so the
+// next frame, hit test or WM_DESTROY walk touched freed memory. Headless: the host
+// has no HWND, so registration is done by hand the way OnCreated does it, and the
+// root is attached to an empty context the way AddElement would with graphics up.
+TEST(WindowLifecycle, SetRootUnregistersAndDetachesTheOldRoot) {
+    WindowProbe w;
+    DyingRoot::Report report;
+    w.CallSetRoot(std::make_unique<DyingRoot>(w, report));
+    w.CallRegisterRoot();
+    w.CallRoot()->AttachToContext(UIContext{});
+    EXPECT_TRUE(w.CallRoot()->IsAttached());
+
+    w.CallSetRoot(std::make_unique<TestLeaf>());
+
+    EXPECT_TRUE(report.destroyed);
+    EXPECT_FALSE(report.registeredAtDeath);
+    EXPECT_FALSE(report.attachedAtDeath);
+    EXPECT_TRUE(w.CallRoot() != nullptr);
+}
+
+// RemoveElement is a no-op for an element the host never registered, which is the
+// normal pre-creation SetRoot (OnInitialize) path.
+TEST(WindowLifecycle, RemoveElementIgnoresUnregisteredElements) {
+    WindowProbe w;
+    TestLeaf stray;
+    EXPECT_FALSE(w.CallRemoveElement(&stray));
+    EXPECT_FALSE(w.CallRemoveElement(nullptr));
+}
+
+// --- Owner restore on dialog close ------------------------------------------
+//
+// Only the dialog that disabled its owner may re-enable it. Closing used to call
+// EnableWindow(owner, TRUE) unconditionally, which unlocked an owner that an outer
+// modal dialog was still holding disabled.
+TEST(DialogLifecycle, ModalDialogThatDisabledOwnerRestoresIt) {
+    const auto plan = DialogProbe::PlanOwnerRestore(/*disabledByThisDialog*/ true,
+                                                    /*ownerEnabledNow*/ false);
+    EXPECT_TRUE(plan.enable);
+    EXPECT_TRUE(plan.activate);
+}
+
+TEST(DialogLifecycle, NestedModalLeavesOuterModalsOwnerDisabled) {
+    // ShowDialog found the owner already disabled (an outer modal dialog holds it).
+    const auto plan = DialogProbe::PlanOwnerRestore(false, false);
+    EXPECT_FALSE(plan.enable);
+    EXPECT_FALSE(plan.activate);
+}
+
+TEST(DialogLifecycle, NonModalDialogHandsForegroundBackWithoutTouchingEnable) {
+    // Show() never disabled the owner; the foreground hand-back (flicker fix) stays.
+    const auto plan = DialogProbe::PlanOwnerRestore(false, true);
+    EXPECT_FALSE(plan.enable);
+    EXPECT_TRUE(plan.activate);
 }

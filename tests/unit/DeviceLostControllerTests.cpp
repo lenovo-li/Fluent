@@ -1,8 +1,8 @@
 // DeviceLostControllerTests.cpp — pure-logic tests for the GPU device-loss state
-// machine and HRESULT classifier (roadmap §17, WP-04). No GPU is involved (and
+// machine and HRESULT classifier. No GPU is involved (and
 // none can be made to drop its device in this environment), so only the logic is
-// exercised here; the real device rebuild path is flagged unverifiable-headless
-// in the WP-04 report.
+// exercised here; the real device rebuild path cannot be verified headless and
+// needs a check on real hardware.
 
 #include "../framework/Test.h"
 #include "../../FluentUI/graphics/DeviceLostController.h"
@@ -102,4 +102,15 @@ TEST(DeviceLost, MultipleRecoveriesCounted) {
     }
     EXPECT_EQ(c.RecoveryCount(), 3u);
     EXPECT_TRUE(c.IsHealthy());
+}
+
+// Failed rebuilds back off 250 -> 500 -> 1000 -> 2000 -> 4000 ms and stay at 4000,
+// so a long driver reset is retried for good instead of abandoned or spun on.
+TEST(DeviceLost, RebuildRetryBacksOffAndCaps) {
+    EXPECT_EQ(DeviceRebuildRetryDelayMs(1), 250u);
+    EXPECT_EQ(DeviceRebuildRetryDelayMs(2), 500u);
+    EXPECT_EQ(DeviceRebuildRetryDelayMs(3), 1000u);
+    EXPECT_EQ(DeviceRebuildRetryDelayMs(4), 2000u);
+    EXPECT_EQ(DeviceRebuildRetryDelayMs(5), 4000u);
+    EXPECT_EQ(DeviceRebuildRetryDelayMs(50), 4000u);
 }

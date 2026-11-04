@@ -470,3 +470,206 @@ TEST(ScrollPanel, SetWheelStepZero_IsClamped) {
     panel.SetWheelStep(16.0f);  // Valid value accepted
     EXPECT_EQ(panel.WheelStep(), 16.0f);
 }
+
+// --- Measure / Arrange width agreement under the vertical rail ------------------
+//
+// A stand-in for wrapped text: 4000 DIP^2 of "text" laid out at whatever width it is
+// given, 20 DIP per line, so a narrower width means more lines. Records the widths it
+// was measured at.
+namespace {
+class WrapProbe : public FrameworkElement {
+public:
+    std::vector<float> measuredW;
+    void Measure(float availW, float availH) override {
+        UNREFERENCED_PARAMETER(availH);
+        measuredW.push_back(availW);
+        const float lines = std::ceil(4000.0f / std::max(1.0f, availW));
+        SetDesired({availW, lines * 20.0f});
+    }
+    void Render(const DrawingContext&) override {}
+    float HeightAt(float w) const { return std::ceil(4000.0f / w) * 20.0f; }
+    void Dirty() { InvalidateMeasure(); }
+};
+}  // namespace
+
+// Regression (LenovoDock firmware card): content overflows, so Arrange reserves the
+// 16 DIP rail. The children used to be measured at the full width and arranged at
+// the narrower one; wrapped text gained a line its height did not include, and that
+// line was clipped.
+TEST(ScrollPanel, OverflowMeasuresChildrenAtRailInsetWidth) {
+    ScrollPanel panel;
+    std::vector<WrapProbe*> probes;
+    for (int i = 0; i < 5; ++i) probes.push_back(panel.Emplace<WrapProbe>());
+
+    panel.Measure(400.0f, 300.0f);  // 5 x 200 = 1000 > 300: the rail will show
+    panel.Arrange(RectDip{0, 0, 400, 300});
+
+    for (WrapProbe* p : probes) {
+        EXPECT_NEAR(p->measuredW.back(), 384.0f, 0.01f);
+        EXPECT_NEAR(p->Bounds().w, 384.0f, 0.01f);           // arranged at the same width
+        EXPECT_NEAR(p->Bounds().h, p->HeightAt(384.0f), 0.01f);
+    }
+}
+
+TEST(ScrollPanel, NoOverflowMeasuresChildrenAtFullWidth) {
+    ScrollPanel panel;
+    auto* p = panel.Emplace<WrapProbe>();  // 4000 / 400 = 10 lines = 200 DIP
+
+    panel.Measure(400.0f, 300.0f);
+    panel.Arrange(RectDip{0, 0, 400, 300});
+
+    EXPECT_EQ(panel.MaxVerticalOffset(), 0.0f);
+    EXPECT_NEAR(p->measuredW.back(), 400.0f, 0.01f);
+    EXPECT_NEAR(p->Bounds().w, 400.0f, 0.01f);
+    EXPECT_NEAR(p->Bounds().h, 200.0f, 0.01f);
+}
+
+// The second identical Measure starts from the remembered rail decision: one pass.
+TEST(ScrollPanel, SteadyOverflowMeasuresOncePerPass) {
+    ScrollPanel panel;
+    auto* p = panel.Emplace<WrapProbe>();
+    for (int i = 0; i < 4; ++i) panel.Emplace<WrapProbe>();
+
+    panel.Measure(400.0f, 300.0f);
+    panel.Arrange(RectDip{0, 0, 400, 300});
+    p->Dirty();  // defeat the measure cache so every pass is counted
+    const size_t before = p->measuredW.size();
+    panel.Measure(400.0f, 300.0f);
+
+    EXPECT_EQ(p->measuredW.size(), before + 1);
+    EXPECT_NEAR(p->measuredW.back(), 384.0f, 0.01f);
+}
+
+// Arranged at another width than measured: the children are re-measured at the
+// arranged width rather than given a height computed for a different one.
+TEST(ScrollPanel, ArrangeAtOtherWidthRemeasuresChildren) {
+    ScrollPanel panel;
+    auto* p = panel.Emplace<WrapProbe>();
+
+    panel.Measure(400.0f, 300.0f);           // 200 DIP: fits, no rail
+    panel.Arrange(RectDip{0, 0, 250, 300});  // at 250: 16 lines = 320 > 300 → rail
+
+    EXPECT_TRUE(panel.MaxVerticalOffset() > 0.0f);
+    EXPECT_NEAR(p->Bounds().w, 234.0f, 0.01f);  // 250 minus the rail strip
+    EXPECT_NEAR(p->measuredW.back(), 234.0f, 0.01f);
+    EXPECT_NEAR(p->Bounds().h, p->HeightAt(234.0f), 0.01f);
+}
+
+// A pointer move over a panel whose content FITS must not start the scrollbar
+// wake cycle. There is no rail to draw (ScrollViewer::Render returns early), but an
+// unconditional Wake used to run ~1.5 s of fade-in / idle countdown / fade-out
+// ticks, each invalidating the whole panel, for nothing on screen.
+TEST(ScrollPanel, PointerMoveWithoutOverflowDoesNotWake) {
+    ScrollPanel panel;
+    panel.Emplace<Button>()->SetHeight(40.0f);
+    panel.Measure(400.0f, 300.0f);
+    panel.Arrange(RectDip{0, 0, 400, 300});
+    EXPECT_EQ(panel.MaxVerticalOffset(), 0.0f);
+
+    PointerEventArgs move;
+    move.position = Point{200.0f, 150.0f};
+    panel.OnPointerMoved(move);
+    EXPECT_FALSE(panel.WantsAnimationTick());
+}
+
+// With overflow the move does wake the bar, but a tick that only eases the fade
+// must report the RAIL strip as dirty, not the whole panel: reporting VisualBounds
+// repainted every visible child on every frame of the fade.
+TEST(ScrollPanel, FadeTickDirtiesOnlyTheRail) {
+    ScrollPanel panel;
+    for (int i = 0; i < 20; ++i) panel.Emplace<Button>()->SetHeight(40.0f);
+    panel.Measure(400.0f, 300.0f);
+    panel.Arrange(RectDip{0, 0, 400, 300});
+    EXPECT_TRUE(panel.MaxVerticalOffset() > 0.0f);
+
+    PointerEventArgs move;
+    move.position = Point{200.0f, 150.0f};   // mid-panel, nowhere near the rail
+    panel.OnPointerMoved(move);
+    EXPECT_TRUE(panel.WantsAnimationTick()); // the bar fades in
+
+    panel.ClearDirtySubtree();
+    panel.OnAnimationTick(1.0f / 60.0f);     // fade step, offset unchanged
+    EXPECT_FALSE(Any(panel.Dirty()));        // the panel itself is not dirty
+
+    std::vector<RectDip> dirty;
+    panel.CollectDirtyBounds(dirty);
+    EXPECT_EQ(dirty.size(), static_cast<size_t>(1));
+    if (!dirty.empty()) {
+        EXPECT_TRUE(dirty[0].w <= 16.0f);              // just the vertical strip
+        EXPECT_EQ(dirty[0].right(), 400.0f);
+        EXPECT_EQ(dirty[0].h, 300.0f);
+    }
+
+    // Once painted, the rail request is consumed.
+    panel.ClearDirtySubtree();
+    dirty.clear();
+    panel.CollectDirtyBounds(dirty);
+    EXPECT_TRUE(dirty.empty());
+}
+
+// The bar is awake (a pointer move over overflowing content) and then the content
+// stops overflowing: the viewport grew. The remaining fade/countdown used to keep
+// ticking for ~1.5 s with nothing to draw, and every tick requested a frame with no
+// dirty rect (InvalidateRails has no strip to report without overflow), which the
+// host turns into a full-window redraw. The first tick after the change must end the
+// cycle and repaint just the panel once.
+TEST(ScrollPanel, BarAwakeWhenContentStopsOverflowingStopsTicking) {
+    ScrollPanel panel;
+    for (int i = 0; i < 20; ++i) panel.Emplace<Button>()->SetHeight(40.0f);
+    panel.Measure(400.0f, 300.0f);
+    panel.Arrange(RectDip{0, 0, 400, 300});
+    EXPECT_TRUE(panel.MaxVerticalOffset() > 0.0f);
+
+    PointerEventArgs move;
+    move.position = Point{200.0f, 150.0f};
+    panel.OnPointerMoved(move);
+    panel.OnAnimationTick(1.0f / 60.0f);
+    EXPECT_TRUE(panel.WantsAnimationTick());           // premise: the bar is awake
+
+    panel.Measure(400.0f, 2000.0f);                     // now everything fits
+    panel.Arrange(RectDip{0, 0, 400, 2000});
+    EXPECT_EQ(panel.MaxVerticalOffset(), 0.0f);
+
+    panel.ClearDirtySubtree();
+    panel.OnAnimationTick(1.0f / 60.0f);
+    EXPECT_FALSE(panel.WantsAnimationTick());          // the cycle ended at once
+    EXPECT_TRUE(Has(panel.Dirty(), DirtyFlags::Render));  // one panel repaint, not an empty set
+}
+
+// A rail hover set while the content overflowed must be cleared by the next move once
+// the content fits. The early return for "no bar" used to skip the hover update too,
+// leaving the hover (which holds the idle countdown) set until the pointer left.
+TEST(ScrollPanel, PointerMoveAfterOverflowEndsClearsRailHover) {
+    ScrollPanel panel;
+    for (int i = 0; i < 20; ++i) panel.Emplace<Button>()->SetHeight(40.0f);
+    panel.Measure(400.0f, 300.0f);
+    panel.Arrange(RectDip{0, 0, 400, 300});
+
+    PointerEventArgs move;
+    move.position = Point{395.0f, 150.0f};              // on the vertical rail strip
+    panel.OnPointerMoved(move);
+    EXPECT_TRUE(panel.ScrollBarHovered());              // premise
+
+    panel.Measure(400.0f, 2000.0f);
+    panel.Arrange(RectDip{0, 0, 400, 2000});
+    EXPECT_EQ(panel.MaxVerticalOffset(), 0.0f);
+
+    move.position = Point{396.0f, 150.0f};              // still inside the panel
+    panel.OnPointerMoved(move);
+    EXPECT_FALSE(panel.ScrollBarHovered());
+}
+
+// A tick that MOVES the offset still dirties the whole panel: every child moved.
+TEST(ScrollPanel, ScrollTickDirtiesWholePanel) {
+    ScrollPanel panel;
+    for (int i = 0; i < 20; ++i) panel.Emplace<Button>()->SetHeight(40.0f);
+    panel.Measure(400.0f, 300.0f);
+    panel.Arrange(RectDip{0, 0, 400, 300});
+
+    PointerEventArgs wheel;
+    wheel.wheelDelta = -120;
+    panel.OnPointerWheelChanged(wheel);
+    panel.ClearDirtySubtree();
+    panel.OnAnimationTick(1.0f / 60.0f);
+    EXPECT_TRUE(Has(panel.Dirty(), DirtyFlags::Render));
+}

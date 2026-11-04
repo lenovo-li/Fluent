@@ -2,9 +2,10 @@
 //
 // A StatusBar sits at the bottom of a window and shows a left-aligned text
 // message plus optional right-aligned content (a progress bar, a spinner, a
-// button). It is a thin container: 32 DIP tall, cardFill background, a 1px
-// top separator, and a two-column Grid layout (left text star, right content
-// auto).
+// button). It is a thin container: 32 DIP tall, no fill of its own (it shows the
+// surface it sits on), a 1px top divider, caption-size secondary text inset 12 DIP,
+// and right content right-aligned with the same inset. Arranged by hand, not by a
+// Grid, so child Margins are not read.
 #pragma once
 
 #include "../layout/Panel.h"
@@ -28,6 +29,8 @@ public:
     void SetRightContent(std::unique_ptr<FrameworkElement> content);
 
 protected:
+    // UI Automation peer (automation/RangeAndContainerPeers.h).
+    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
     SizeDip MeasureOverride(float availW, float availH) override;
     void ArrangeOverride(const RectDip& content) override;
     void OnRenderBackground(const DrawingContext& dc) override;

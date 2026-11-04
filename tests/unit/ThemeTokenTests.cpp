@@ -1,5 +1,5 @@
-// ThemeTokenTests.cpp — unit tests for the Fluent token system (WP-05 Stage 0,
-// roadmap §11). Pure logic: no HWND, no D2D device, no DWrite — BuildSnapshot is
+// ThemeTokenTests.cpp — unit tests for the Fluent token system.
+// Pure logic: no HWND, no D2D device, no DWrite — BuildSnapshot is
 // a pure function of ThemeInputs, and NearlyEqual is a plain float compare.
 //
 // Coverage:

@@ -107,9 +107,15 @@ public:
     void OnPointerReleased(PointerEventArgs& e) override;
     void OnPointerLeft() override;
 
+    // Pointer on either scrollbar's hover strip. Public for tests: the hover holds
+    // the bar's idle countdown, and a stale one is invisible until the next overflow.
+    bool ScrollBarHovered() const { return scroll_.IsBarHovered(); }
+
     // Animation tick for smooth scrolling + scrollbar fade/expand.
     bool WantsAnimationTick() const override { return scroll_.NeedsTick(); }
     void OnAnimationTick(float dtSec) override {
+        const float oldY = scroll_.Offset();
+        const float oldX = scroll_.OffsetX();
         scroll_.Tick(dtSec);
         SyncScrollArrange();  // tween advanced the offset
         // scroll_ is a MEMBER, not a tree node: its Invalidate() (called inside Tick
@@ -120,7 +126,31 @@ public:
         // caret, a progress animation), which the user saw as the expand animation
         // "loading in segments". Report the repaint from here, where it does reach
         // the tree.
-        Invalidate();
+        //
+        // How much to report depends on what the tick moved. A moved offset moves
+        // every child, so the whole panel is dirty (SyncScrollArrange already
+        // requested the Arrange that repositions them). A tick that only eased the
+        // bar's fade/expand changed nothing but the rails, and reporting the whole
+        // panel for it repainted the entire page on every frame of the ~1.5 s
+        // wake / idle-countdown / fade-out cycle that any pointer move starts.
+        //
+        // A tick with no overflowing axis means the content stopped overflowing
+        // while the bar was awake (the window grew, an Expander collapsed, a child
+        // was removed). There is no rail left to draw, but NeedsTick does not look
+        // at overflow, so the remaining countdown and fade kept the panel ticking
+        // for up to ~1.5 s, and InvalidateRails could not report anything (no
+        // strip without overflow); the host still requested a frame per tick, and
+        // a frame with an empty dirty set is a FULL-WINDOW redraw. So end the cycle
+        // right here (NeedsTick goes false) and repaint the panel once to clear the
+        // rail pixels the last painted frame still shows.
+        if (scroll_.Offset() != oldY || scroll_.OffsetX() != oldX) {
+            Invalidate();
+        } else if (!AnyAxisScrollable()) {
+            scroll_.HideBarsNow();
+            Invalidate();
+        } else {
+            InvalidateRails();
+        }
     }
 
     void Render(const DrawingContext& dc) override;
@@ -170,12 +200,22 @@ public:
         return this;
     }
 
+protected:
+    // UI Automation peer (automation/RangeAndContainerPeers.h).
+    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
+    // Dirty-walk hooks (see Panel). railsDirty_ is the one piece of dirty state
+    // here that is NOT in dirty_, so it must be reached through the subtree mark:
+    // InvalidateRails raises it together with InvalidateDirty(None), and that call
+    // records Render in this panel's mark and its ancestors'. A pruned walk
+    // therefore still arrives here on a rail-only frame.
+
     // Children's dirty rects need no offset fixup (their bounds are already the
     // on-screen position), but they DO need clipping: Render clips to bounds_, so a
     // child scrolled halfway out must not advertise the part nobody paints — the
     // host would clear those pixels and never restore them.
-    void CollectDirtyBounds(std::vector<RectDip>& out) override {
+    void CollectDirtyBoundsOverride(std::vector<RectDip>& out) override {
         if (IsVisible() && Any(Dirty())) out.push_back(VisualBounds());
+        else if (IsVisible() && railsDirty_) AppendRailRects(out);
         std::vector<RectDip> childRects;
         for (auto& c : children_)
             if (c && c->IsVisible()) c->CollectDirtyBounds(childRects);
@@ -188,8 +228,13 @@ public:
             out.push_back(RectDip{left, top, right - left, bottom - top});
         }
     }
+    // The rail-only flag is cleared with the rest of the dirty state once the
+    // frame that reported it has painted.
+    void ClearDirtySubtreeOverride() override {
+        railsDirty_ = false;
+        Panel::ClearDirtySubtreeOverride();
+    }
 
-protected:
     SizeDip MeasureOverride(float availW, float availH) override;
     void ArrangeOverride(const RectDip& content) override;
     void OnBoundsChanged() override;
@@ -209,6 +254,10 @@ protected:
 private:
     // Update scroll content height based on measured children.
     void UpdateScrollExtent();
+
+    // Measure every child at `childAvailW` (minus its margin) x infinity, set
+    // contentHeight_ and both scroll extents. Returns the widest child + margin.
+    float MeasureChildren(float childAvailW);
 
     // Page step for PageUp/PageDown (viewport height minus one line).
     float PageStep() const;
@@ -243,7 +292,39 @@ private:
         return r;
     }
 
+    // Either axis overflows, i.e. there is a scrollbar that can ever be drawn.
+    bool AnyAxisScrollable() const {
+        return scroll_.MaxOffset() > 0.0f || scroll_.MaxOffsetX() > 0.0f;
+    }
+
+    // Rail-only repaint: request a frame whose dirty region is just the scrollbar
+    // strips, not the whole panel. The panel's own DirtyFlags stay untouched
+    // (InvalidateDirty(None) only forwards the frame request up the tree), so
+    // CollectDirtyBounds reports the strips via railsDirty_ instead of
+    // VisualBounds(). ScrollViewer::Render paints only inside those strips: the
+    // pill is at most 7 DIP wide plus a 3 DIP edge gap, inside the 16 DIP hover
+    // strip. Without an overflowing axis there is no rail to paint at all and no
+    // strip to report, and an EMPTY dirty set would make the host redraw the whole
+    // window, so that case requests nothing here; OnAnimationTick handles the
+    // no-overflow case itself (it stops the fade cycle and repaints the panel
+    // once) rather than relying on this.
+    void InvalidateRails() {
+        if (!AnyAxisScrollable()) return;
+        railsDirty_ = true;
+        InvalidateDirty(DirtyFlags::None);
+    }
+    void AppendRailRects(std::vector<RectDip>& out) const {
+        constexpr float kStrip = 16.0f;  // ScrollViewer's hover strip == kRailStrip
+        if (scroll_.MaxOffset() > 0.0f)
+            out.push_back(RectDip{std::max(bounds_.x, bounds_.right() - kStrip), bounds_.y,
+                                  std::min(kStrip, bounds_.w), bounds_.h});
+        if (scroll_.MaxOffsetX() > 0.0f)
+            out.push_back(RectDip{bounds_.x, std::max(bounds_.y, bounds_.bottom() - kStrip),
+                                  bounds_.w, std::min(kStrip, bounds_.h)});
+    }
+
     ScrollViewer scroll_;
+    bool railsDirty_ = false;     // rail-only repaint pending (see InvalidateRails)
     float spacing_ = 0.0f;
     Thickness padding_;           // content inset on all four sides
     // DIPs per wheel "line". A ScrollPanel holds heterogeneous content, so unlike
@@ -254,11 +335,18 @@ private:
     // scrolled half that and read as sluggish.
     float wheelStep_ = 32.0f;
     float contentHeight_ = 0.0f;  // total height of all children + spacing
-    // The width constraint children were last measured with. Arrange compares each
-    // child's Desired width against it: only a child wider than its constraint has a
-    // genuine natural width worth a horizontal rail; the rest were stretched BY the
-    // measurement and can be re-fit to the viewport width.
+    // The width constraint children were last measured with (already minus the
+    // vertical rail's strip when Measure saw the content overflow). Arrange compares
+    // each child's Desired width against it: only a child wider than its constraint
+    // has a genuine natural width worth a horizontal rail; the rest were stretched BY
+    // the measurement and are arranged at the viewport width, re-measured first if
+    // that width differs from this one.
     float measureConstraintW_ = 0.0f;
+    // The last Measure's rail decision and the offer it was made for; a repeat of
+    // the same offer starts from that width (see MeasureOverride).
+    bool railLastPass_ = false;
+    float railAvailW_ = -1.0f;
+    float railAvailH_ = -1.0f;
     // The offset the current child bounds were arranged at. Compared against the
     // live offset to decide whether an Arrange is still owed.
     float arrangedOffset_ = 0.0f;

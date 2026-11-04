@@ -1,5 +1,5 @@
 // WindowServicesSubscriptionTests.cpp — unit tests for the generation-guarded
-// Subscription registration pattern (phase B3).
+// Subscription registration pattern.
 //
 // A stale Subscription (whose slot was replaced by a newer Register*/Set* call)
 // must NOT clear the newer registration when it is destroyed. This mock
@@ -27,7 +27,7 @@ public:
     D2DContext& D2D() override { return d2d_; }
     DWriteContext& DWrite() override { return dwrite_; }
 
-    // Composition layer (Plan B): not exercised by these popup-registration tests.
+    // Composition layer (ICompositionBackend): not exercised by these popup-registration tests.
     // No backend → a control would fall back to its UI-thread path.
     ICompositionBackend* Composition() override { return nullptr; }
 

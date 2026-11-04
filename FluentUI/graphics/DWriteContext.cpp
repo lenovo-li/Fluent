@@ -82,4 +82,43 @@ IDWriteTextFormat* DWriteContext::Format(float sizeDip, DWRITE_FONT_WEIGHT weigh
     return raw;
 }
 
+bool DWriteContext::PrimaryLineMetrics(float sizeDip, DWRITE_FONT_WEIGHT weight,
+                                       float* height, float* baseline) {
+    // Alignment and wrapping do not change a line's metrics, so key on size + weight
+    // only (fixed values for the rest of the format key).
+    const unsigned long long key = PackKey(FormatKey{
+        sizeDip, weight, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_NEAR,
+        DWRITE_WORD_WRAPPING_NO_WRAP});
+    {
+        std::lock_guard<std::mutex> lock(lineMetricsMutex_);
+        auto it = lineMetrics_.find(key);
+        if (it != lineMetrics_.end()) {
+            *height = it->second.height;
+            *baseline = it->second.baseline;
+            return true;
+        }
+    }
+    // Built outside the lock: Format() takes its own lock, and two threads racing
+    // here compute the same value, so the second emplace is a harmless no-op.
+    IDWriteTextFormat* fmt = Format(sizeDip, weight, DWRITE_TEXT_ALIGNMENT_LEADING,
+                                    DWRITE_PARAGRAPH_ALIGNMENT_NEAR,
+                                    DWRITE_WORD_WRAPPING_NO_WRAP);
+    if (!fmt) return false;
+    ComPtr<IDWriteTextLayout> probe;
+    if (FAILED(factory_->CreateTextLayout(L"Ag中", 3, fmt, 1e5f, 1e5f,
+                                          probe.GetAddressOf())))
+        return false;
+    DWRITE_LINE_METRICS lm{};
+    UINT32 count = 0;
+    if (FAILED(probe->GetLineMetrics(&lm, 1, &count)) || count == 0 || !(lm.height > 0.0f))
+        return false;
+    {
+        std::lock_guard<std::mutex> lock(lineMetricsMutex_);
+        lineMetrics_.emplace(key, LineMetrics{lm.height, lm.baseline});
+    }
+    *height = lm.height;
+    *baseline = lm.baseline;
+    return true;
+}
+
 } // namespace fluent

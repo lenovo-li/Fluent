@@ -1,4 +1,4 @@
-// LogSinkTests.cpp — the producer-side staging buffer for high-throughput logs (§2.3).
+// LogSinkTests.cpp — the producer-side staging buffer for high-throughput logs.
 //
 // This is one of the few genuinely threaded pieces in the repo, and the properties that
 // matter are all about work NOT done: exactly one wakeup per batch no matter how many

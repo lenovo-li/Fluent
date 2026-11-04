@@ -1,11 +1,11 @@
-// Event.h — the FluentUI typed event primitive (roadmap §10).
+// Event.h — the FluentUI typed event primitive.
 //
 // A minimal multicast event with a *function-pointer* handler slot instead of
 // std::function, so subscribing costs no heap allocation (only the slots_ vector
 // grows). A handler is `void(*)(void* owner, Sender&, Args&)`: the owner pointer
 // is the receiver (usually the subscribing object) that the static thunk casts
 // back to its concrete type. This is the "zero-allocation typed event" the
-// roadmap prescribes for control notifications (Click/Checked/ValueChanged/...).
+// framework uses for control notifications (Click/Checked/ValueChanged/...).
 //
 // Lifetime safety (both directions):
 //   * Subscriber destroyed first — Subscribe returns a Subscription (RAII); its

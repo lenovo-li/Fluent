@@ -132,6 +132,16 @@ void ScrollViewer::Wake()
     Invalidate();
 }
 
+void ScrollViewer::HideBarsNow()
+{
+    visibility_ = visTarget_ = 0.0f;
+    expand_ = expandTarget_ = 0.0f;
+    expandX_ = expandXTarget_ = 0.0f;
+    barHover_ = barHoverX_ = false;
+    idleSec_ = idleHideDelaySec_;
+    Invalidate();
+}
+
 void ScrollViewer::SetBarHover(bool over)
 {
     if (over == barHover_) return;
@@ -151,7 +161,7 @@ bool ScrollViewer::NeedsTick() const
     // counting down to hide. Both axes have to be quiet: hovering the horizontal rail
     // must keep the shared fade alive, or the bar the pointer is sitting on vanishes.
     if (visibility_ > 0.01f && !barHover_ && !barHoverX_ && !dragging_ && !draggingX_ &&
-        idleSec_ < idleHideDelaySec_)
+        !autoscrolling_ && idleSec_ < idleHideDelaySec_)
         return true;
     return false;
 }
@@ -169,8 +179,8 @@ bool ScrollViewer::Tick(float dtSec)
         else offset_ += diff * t;
     }
 
-    // Idle countdown -> auto-hide (unless hovering or dragging EITHER rail).
-    if (!barHover_ && !barHoverX_ && !dragging_ && !draggingX_) {
+    // Idle countdown -> auto-hide (unless hovering, dragging, or autoscrolling).
+    if (!barHover_ && !barHoverX_ && !dragging_ && !draggingX_ && !autoscrolling_) {
         idleSec_ += dtSec;
         if (idleSec_ >= idleHideDelaySec_) visTarget_ = 0.0f;
     }
@@ -254,6 +264,113 @@ void ScrollViewer::DragTo(float dipY)
     float trackRange = std::max(1.0f, bounds_.h - thumb.h);
     float contentRange = MaxOffset();
     SetOffset(dragStartOffset_ + (dipY - dragStartY_) * contentRange / trackRange);
+}
+
+// Browser-style autoscroll: click once to start, velocity scales with distance from
+// the anchor, click again (or press another button) to stop. This is the middle-click
+// behavior in Chrome/Edge/Firefox — the anchor stays fixed, the pointer roams free,
+// and the view scrolls continuously until explicitly canceled.
+//
+// Dead zone prevents drift when the pointer sits near the anchor. The gain constant
+// (pixels-per-second per DIP of distance) and max speed are tuned to feel responsive
+// without being twitchy; adjust if needed after testing on real content.
+void ScrollViewer::BeginAutoscroll(float anchorX, float anchorY)
+{
+    autoscrolling_ = true;
+    autoscrollAnchorX_ = anchorX;
+    autoscrollAnchorY_ = anchorY;
+    autoscrollVelocityX_ = 0.0f;
+    autoscrollVelocityY_ = 0.0f;
+    Wake();  // keep scrollbar visible while autoscrolling
+}
+
+void ScrollViewer::UpdateAutoscrollVelocity(float pointerX, float pointerY)
+{
+    if (!autoscrolling_) return;
+    constexpr float kDeadZone = 10.0f;      // DIP: no scroll within this radius
+    constexpr float kGain = 15.0f;          // DIP/sec per DIP of distance
+    constexpr float kMaxSpeed = 2000.0f;    // DIP/sec cap
+
+    const float dx = pointerX - autoscrollAnchorX_;
+    const float dy = pointerY - autoscrollAnchorY_;
+    const float dist = std::sqrt(dx * dx + dy * dy);
+
+    if (dist <= kDeadZone) {
+        autoscrollVelocityX_ = autoscrollVelocityY_ = 0.0f;
+        return;
+    }
+
+    const float speed = std::min((dist - kDeadZone) * kGain, kMaxSpeed);
+    autoscrollVelocityX_ = (dx / dist) * speed;
+    autoscrollVelocityY_ = (dy / dist) * speed;
+}
+
+bool ScrollViewer::TickAutoscroll(float dtSec)
+{
+    if (!autoscrolling_) return false;
+    // Apply velocity. SetOffset clamps to [0, MaxOffset], so hitting a boundary stops
+    // that axis naturally without explicit checks.
+    if (std::abs(autoscrollVelocityX_) > 0.1f || std::abs(autoscrollVelocityY_) > 0.1f) {
+        SetOffset(offset_ + autoscrollVelocityY_ * dtSec);
+        SetOffsetX(offsetX_ + autoscrollVelocityX_ * dtSec);
+        Wake();  // reset idle countdown on every scroll frame
+    }
+    return true;  // still active, keep ticking
+}
+
+HCURSOR ScrollViewer::AutoscrollCursor(float pointerX, float pointerY) const
+{
+    if (!autoscrolling_) return nullptr;
+
+    constexpr float kDeadZone = 10.0f;
+    const float dx = pointerX - autoscrollAnchorX_;
+    const float dy = pointerY - autoscrollAnchorY_;
+    const float dist = std::sqrt(dx * dx + dy * dy);
+
+    // In the dead zone: show the four-way anchor cursor.
+    if (dist <= kDeadZone) {
+        static HCURSOR sizeAll = LoadCursor(nullptr, IDC_SIZEALL);
+        return sizeAll;
+    }
+
+    // Outside dead zone: show direction-indicating cursor based on the dominant direction.
+    // Use 8-way compass rose: N, NE, E, SE, S, SW, W, NW.
+    // Angle = atan2(dy, dx) in radians, then map to 8 directions.
+    const float angle = std::atan2(dy, dx);  // -π to π
+    const float deg = angle * 180.0f / 3.14159f;  // convert to degrees
+
+    // Map to 8 sectors: each 45° wide, centered on cardinal/diagonal directions.
+    // Right (E): -22.5° to 22.5°
+    // Down-Right (SE): 22.5° to 67.5°
+    // Down (S): 67.5° to 112.5°
+    // Down-Left (SW): 112.5° to 157.5°
+    // Left (W): 157.5° to 180° and -180° to -157.5°
+    // Up-Left (NW): -157.5° to -112.5°
+    // Up (N): -112.5° to -67.5°
+    // Up-Right (NE): -67.5° to -22.5°
+
+    static HCURSOR sizeWE = LoadCursor(nullptr, IDC_SIZEWE);      // horizontal ↔
+    static HCURSOR sizeNS = LoadCursor(nullptr, IDC_SIZENS);      // vertical ↕
+    static HCURSOR sizeNWSE = LoadCursor(nullptr, IDC_SIZENWSE);  // diagonal ↖↘
+    static HCURSOR sizeNESW = LoadCursor(nullptr, IDC_SIZENESW);  // diagonal ↗↙
+
+    if (deg >= -22.5f && deg < 22.5f) {
+        return sizeWE;  // Right (E)
+    } else if (deg >= 22.5f && deg < 67.5f) {
+        return sizeNWSE;  // Down-Right (SE) → ↘
+    } else if (deg >= 67.5f && deg < 112.5f) {
+        return sizeNS;  // Down (S)
+    } else if (deg >= 112.5f && deg < 157.5f) {
+        return sizeNESW;  // Down-Left (SW) → ↙
+    } else if (deg >= 157.5f || deg < -157.5f) {
+        return sizeWE;  // Left (W)
+    } else if (deg >= -157.5f && deg < -112.5f) {
+        return sizeNWSE;  // Up-Left (NW) → ↖
+    } else if (deg >= -112.5f && deg < -67.5f) {
+        return sizeNS;  // Up (N)
+    } else {  // deg >= -67.5f && deg < -22.5f
+        return sizeNESW;  // Up-Right (NE) → ↗
+    }
 }
 
 float ScrollViewer::HBarThickness() const

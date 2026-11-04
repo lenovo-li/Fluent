@@ -1,4 +1,4 @@
-// EventTests.cpp — unit tests for the typed Event<Sender,Args> primitive (WP-03).
+// EventTests.cpp — unit tests for the typed Event<Sender,Args> primitive.
 // Pure logic: subscribe/raise/unsubscribe, reentrant cancel (self + others),
 // Subscription-destruction unsubscribes, and raising after the sender is gone.
 

@@ -97,6 +97,9 @@ public:
     void RefreshCells() { Invalidate(); }
 
     void SetCellProvider(CellProvider provider);
+    // The provider's text for a cell, or empty when there is no provider or the
+    // indices are out of range. What UI Automation reads as a row's name.
+    std::wstring CellText(int row, int col) const;
     void SetRowColorProvider(RowColorProvider provider);
 
     // --- Appearance ------------------------------------------------------
@@ -111,7 +114,7 @@ public:
     void SetShowGridLines(bool on);
     bool ShowGridLines() const { return showGridLines_; }
 
-    // --- Column features (Phase 1) ---------------------------------------
+    // --- Column features: resize, sort, copy -----------------------------
     // Enable/disable column resize dragging globally. When enabled, draggable columns
     // (Column::resizable=true) show a resize cursor on their divider and allow dragging.
     void SetColumnResizeEnabled(bool enabled) { columnResizeEnabled_ = enabled; }
@@ -129,7 +132,7 @@ public:
     void SetCopyEnabled(bool enabled) { copyEnabled_ = enabled; }
     bool CopyEnabled() const { return copyEnabled_; }
 
-    // --- Phase 4: row reordering -----------------------------------------
+    // --- Row reordering --------------------------------------------------
     // Enable drag-and-drop row reordering. When enabled, dragging a selected row moves it
     // (and any other selected rows in Multiple mode) to a new position. The grid does NOT
     // reorder backing data — the app receives RowsReordered(oldIndices, newIndex) and must
@@ -144,7 +147,7 @@ public:
     const std::vector<int>& ReorderedOldIndices() const { return reorderedOldIndices_; }
     int ReorderedNewIndex() const { return reorderedNewIndex_; }
 
-    // --- Phase 5: column autosizing --------------------------------------
+    // --- Column autosizing -----------------------------------------------
     // Fit a column to its content by measuring all visible cells plus the header. Returns
     // the new width in DIPs. Does NOT change the column — the caller applies it via
     // SetColumns(). Measuring all rows would be O(N), so this samples only the viewport.
@@ -152,7 +155,7 @@ public:
     // Convenience: measure and apply in one call.
     void AutosizeColumn(int col);
 
-    // --- Cell editing (Phase 3) ------------------------------------------
+    // --- Cell editing ----------------------------------------------------
     // Enable in-place editing. When enabled, F2 or double-click on a cell opens a text
     // box overlay. Enter commits, Escape cancels. The validation callback is called before
     // commit; return false to reject the edit and keep the overlay open.
@@ -193,7 +196,7 @@ public:
     void SetSelectedRow(int row);
     int SelectedRow() const;
 
-    // Multi-selection API (Phase 2). In Single mode, SelectedRows() returns a 0- or
+    // Multi-selection API. In Single mode, SelectedRows() returns a 0- or
     // 1-element vector. ClearSelection() works in both modes.
     const std::vector<int>& SelectedRows() const { return selectedRows_; }
     bool IsRowSelected(int row) const;
@@ -226,17 +229,55 @@ public:
     // Where a given cell lands right now, accounting for both scroll offsets. May be
     // outside ViewportRect if the cell is scrolled away.
     RectDip CellRect(int row, int col) const;
+    // Vertical gridline `boundary` (0 = the grid's left edge, b > 0 = the right edge of
+    // column b-1): writes its x and returns true when it should be drawn, false when it
+    // is off-screen or would land on the frozen band. The band rule is the point: a
+    // SCROLLING column's edge that has scrolled left of the band's right edge is under
+    // the pinned columns, and drawing it there (the cells are clipped, the lines were
+    // not) ran a line through the frozen text and swept across it while scrolling.
+    // Frozen-column edges are never offset, so they always draw. Exposed for the same
+    // reason as CellRect: a headless test can check it without a device.
+    bool VerticalGridLineX(int boundary, float& x) const;
 
     // Scroll offsets, exposed so a test can place the viewport deterministically instead
     // of synthesising wheel events.
     void SetVerticalOffset(float dip);
     float VerticalOffset() const { return scroll_.Offset(); }
+    // Scroll range ends (content minus viewport; the frozen band excluded on X).
+    float MaxVerticalOffset() const;
+    float MaxHorizontalOffset() const;
     void SetHorizontalOffset(float dip);
     float HorizontalOffset() const { return scroll_.OffsetX(); }
 
     // Scroll a row into view. Needed by keyboard navigation and by an app restoring a
     // selection; without it "select row 900" would leave the viewport at the top.
     void ScrollRowIntoView(int row);
+    // The row under a control-space y (the click path's arithmetic), or -1.
+    int RowIndexAt(float dipY) const { return RowAtPoint(dipY); }
+    // Ctrl+click's path: add/remove one row and raise SelectionChanged. UI
+    // Automation's AddToSelection / RemoveFromSelection in Multiple mode.
+    void PerformToggleRowSelection(int row) {
+        if (editingRow_ >= 0 && editingRow_ != row) CommitEdit();
+        ToggleRowSelection(row);
+    }
+    // A click on a row: commits a live edit on another row first (keeps what was
+    // typed), then selects. UI Automation's SelectionItem.Select.
+    void PerformSelectRow(int row) {
+        if (editingRow_ >= 0 && editingRow_ != row) CommitEdit();
+        SetSelectedRow(row);
+    }
+    // ScrollRowIntoView for a caller that is not the keyboard: if the view has to
+    // move, a live edit is committed first (the SetVerticalOffset rule), so the edit
+    // box never floats over a row that scrolled under it.
+    void PerformScrollRowIntoView(int row);
+    // The horizontally scrolling band: the viewport minus the frozen columns.
+    float ScrollableViewportWidth() const;
+    // A cell as painted: CellRect clipped to the viewport (and, for a scrolling
+    // column, to the band right of the frozen columns). Empty when scrolled out.
+    RectDip VisibleCellRect(int row, int col) const;
+    // The column under a control-space x on the body, or -1 (frozen columns first,
+    // as they paint on top).
+    int ColumnIndexAt(float dipX) const;
 
     // --- Element contract -------------------------------------------------
     void Measure(float availW, float availH) override;
@@ -259,6 +300,8 @@ public:
     // propagates the context to them automatically. Same wiring ListBox does for scroll_.
     void OnAttachedToTree() override;
     void OnDetachedFromTree() override;
+    // UI Automation peer (automation/DataPeers.h).
+    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
 
 private:
     // Row under a point, or -1. Shared by pointer handling and tests.
@@ -307,8 +350,15 @@ private:
     // Ctrl+click, not by a Shift+click, so repeated Shift+clicks re-extend from the same
     // origin instead of walking the anchor along.
     int selectionAnchor_ = -1;
+    // The ACTIVE row: the row the last selection gesture landed on (the moving end of
+    // a Shift range, the row a Ctrl+click toggled, the row a plain click/arrow chose).
+    // Keyboard navigation steps from here. It cannot be derived from selectedRows_:
+    // stepping from front() (the lowest selected row) made a downward Shift range stop
+    // growing after one row, because {5,6}.front() is still 5 and 5+1 is 6 again.
+    // Same role as Selector's selectedIndex_ in ListBox/TreeView. -1 = none.
+    int activeRow_ = -1;
 
-    // --- Phase 1 features ------------------------------------------------
+    // --- Column features: resize, sort, copy -----------------------------
     bool columnResizeEnabled_ = true;
     bool copyEnabled_ = true;
     int sortColumn_ = -1;
@@ -321,7 +371,7 @@ private:
     // Divider currently under the pointer (for cursor feedback), or -1.
     mutable int hoverDivider_ = -1;
 
-    // --- Phase 4: row reordering -----------------------------------------
+    // --- Row reordering --------------------------------------------------
     bool rowReorderEnabled_ = false;
     Event<DataGrid, RoutedEventArgs> rowsReordered_;
     std::vector<int> reorderedOldIndices_;
@@ -332,7 +382,7 @@ private:
     // Visual drop indicator position (row index where the drop would land).
     int dropTargetRow_ = -1;
 
-    // --- Phase 3: cell editing -------------------------------------------
+    // --- Cell editing ----------------------------------------------------
     bool editingEnabled_ = false;
     CellValidator cellValidator_;
     Event<DataGrid, RoutedEventArgs> cellEdited_;
@@ -363,10 +413,6 @@ private:
     // and putting it in the tree would give it its own layout slot and hit-testing.
     // ListBox holds it the same way for the same reason.
     ScrollViewer scroll_;
-
-    // Reused across the row loop so a screenful of cells does not allocate a string per
-    // cell per frame. Mutable because Render is logically const but must reuse it.
-    mutable std::wstring cellScratch_;
 
     Event<DataGrid, RoutedEventArgs> selectionChanged_;
     Event<DataGrid, RoutedEventArgs> headerClicked_;

@@ -246,6 +246,15 @@ CreateTextLayout(L"中Ag", 3, ...);  // 中文+拉丁
 CreateTextLayout(L"مرحبا Ag", 8, ...);  // 阿拉伯+拉丁
 ```
 
+### 补充：单行文本也会跳
+
+问题不只出现在多行控件里。一个单行 TextBlock 只要内容在"纯中文"和"含拉丁字母"之间切换，
+它的高度就会变，下面的布局整体移动：Gallery 的 ContentDialog 页里，结果文本从
+"结果：非模态已打开（主窗口仍可交互）"换成"结果：非模态关闭 Cancel（取消）"，14 DIP 下
+高度从 16.51 变成 17.34。所以 TextBlock 也按主字体统一行高：`DWriteContext::PrimaryLineMetrics`
+用 "Ag中" 探测并按（字号，字重）缓存行高和基线，TextBlock 在没有显式 `SetLineSpacing` 时
+用它做 `SetLineSpacing(UNIFORM)`。测试 `TextBlockLayoutCache.PureCjkAndMixedTextMeasureTheSameHeight`。
+
 ### 3. 富文本控件：允许行高差异
 
 如果控件**设计上允许**不同行有不同样式（如 RichTextBox），则不需要强制统一行高：
@@ -291,3 +300,4 @@ format->SetLineSpacing(...);  // IDWriteTextFormat 没有这个方法
 ## 历史
 
 - **2026-09-26**：初始版本，记录 TextArea font fallback 行高跳变问题及修复方案
+- **2026-10-31**：补充单行 TextBlock 的同类问题，TextBlock 改为按主字体统一行高

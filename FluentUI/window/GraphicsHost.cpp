@@ -8,7 +8,7 @@ static constexpr const char* kTag = "GraphicsHost";
 
 HRESULT GraphicsHost::Initialize(HWND hwnd, UINT pixelW, UINT pixelH,
                                   std::function<void()> requestCommit) {
-    // NativeWindowHost::InitGraphics order (line 297-310):
+    // Initialization order, which device recovery (Rebuild) mirrors:
     // 1. d2d_.Initialize()
     // 2. dwrite_.Initialize()
     // 3. comp_.Initialize(&d2d_, hwnd, pixelW, pixelH)
@@ -35,8 +35,8 @@ HRESULT GraphicsHost::Initialize(HWND hwnd, UINT pixelW, UINT pixelH,
 }
 
 void GraphicsHost::Reset() {
-    // NativeWindowHost::RecoverDevice order (line 996-997):
-    // comp_.Reset(), d2d_.Reset(), then rebuild
+    // Teardown half of NativeWindowHost::RecoverDevice: comp_ first (it was
+    // initialized from d2d_), then d2d_; Rebuild follows.
     comp_.Reset();
     d2d_.Reset();
     // Note: resourceCache_.Clear() and compBackend_.reset() are NOT called here —
@@ -45,7 +45,7 @@ void GraphicsHost::Reset() {
 }
 
 HRESULT GraphicsHost::Rebuild(HWND hwnd, UINT pixelW, UINT pixelH) {
-    // NativeWindowHost::RecoverDevice rebuild (line 999-1009):
+    // Rebuild half of NativeWindowHost::RecoverDevice:
     // 1. d2d_.Initialize()
     // 2. comp_.Initialize(&d2d_, hwnd, pixelW, pixelH)
     // 3. resourceCache_.Initialize(&dwrite_, d2d_.D2DFactory())

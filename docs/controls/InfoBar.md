@@ -182,14 +182,38 @@ submitSub_ = submit->Click().Subscribe(this,
 
 ---
 
+## UI Automation
+
+InfoBar 的 peer（`automation/DataPeers.h`）：
+
+| 项 | 值 |
+|---|---|
+| ControlType | StatusBar |
+| Name | `Title()`；没有标题时为 `Message()` |
+| HelpText | 有标题时为 `Message()` |
+| LiveSetting | `Severity::Error` 为 Assertive（打断当前朗读），其余为 Polite |
+| 子节点 | 可关闭时有一个 Button（关闭按钮），Invoke 走新的公开 `PerformClose()`，与点击、Space/Enter 相同，触发 `Closed` |
+
+标题或消息变化时发 LiveRegionChanged：讲述人不移动焦点也会读出状态更新。同一帧内的多次修改合并为一次，文本没变的失效（如只改严重级别）不发，没有客户端监听时不发。
+
+已知限制：只有客户端已经访问过这个 InfoBar 之后的文本变化才会播报。新加入树的 InfoBar、或从隐藏变为可见的 InfoBar 不会自动播报（peer 是惰性创建的，创建时的文本被当作已读）；另一方面，隐藏状态下改文本仍会发事件。需要“出现即播报”时，应用在显示后修改一次文本即可。讲述人的实际表现需要在真机上听。
+
+惰性创建：只有 UIA 客户端访问到这个控件时才创建 peer，没有客户端时零开销。行（项）不是元素，客户端访问到才创建节点。模式操作经投递消息执行，执行前重新检查控件仍在树上且已启用。自定义方式见 inheritance-guide.md 的“UI Automation”一节。
+
+验证：无头测试 `tests/unit/AutomationDataPeerTests.cpp`，真实 UIA 客户端自测 `FluentUITests.exe --uia-smoke`；12 处变异（把操作换回不发事件的 setter、行名只取一列、日期按下标作 key、日志行序号不前进等）全部被测试抓到。讲述人实际朗读的效果需要在真机上听。
+
 ## 备注
 
 ### 性能特征
 
-- **Measure 成本**：每次 Measure 构建 1~2 个 DirectWrite 布局（标题不换行、正文
-  换行）。文字或宽度不变时由 `MeasureCached` 挡住，不会每帧重建。
+- **Measure 成本**：标题（不换行）和正文（换行）各一个 DirectWrite 布局，经共享的
+  `ResourceCache` 取得，文字、字号、宽度和主题 epoch 不变时是一次哈希查找，不再新建。
 - **Render 成本**：一个圆角矩形填充 + 描边、一个圆环 + 圆点（几何绘制，不依赖
   图标字体）、1~2 次 DrawText、可选的关闭按钮两条线。无动画、无每帧 tick。
+  推进 y 需要的标题行高也从同一个缓存项读取。此前 Render 每次重绘都为此新建一个
+  `IDWriteTextLayout`，悬停关闭按钮的重绘也一样。由
+  `LabelMeasureCache.InfoBarMeasureAndRenderReuseLayouts` 锁定（第二次 Measure 和一次
+  Render 都不产生缓存 miss）。
 - **不请求动画帧**：`WantsAnimationTick()` 未被重写，所以它对空闲成本零贡献。
 
 ### 使用注意事项

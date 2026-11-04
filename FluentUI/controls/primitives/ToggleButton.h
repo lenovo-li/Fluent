@@ -1,4 +1,4 @@
-// ToggleButton.h — a ButtonBase whose activation flips a boolean (roadmap §WP-06).
+// ToggleButton.h — a ButtonBase whose activation flips a boolean.
 //
 // CheckBox and ToggleSwitch are the same control underneath: a focusable,
 // clickable element holding one bool that activation (click / Space / Enter)
@@ -9,7 +9,7 @@
 // to ButtonBase::OnActivate — and calls the virtual OnToggle() after a flip so the
 // concrete control can raise its own typed Event with its own name. The subclass
 // keeps its public getters/setters as thin aliases over IsChecked()/SetChecked(),
-// so no caller changes (roadmap acceptance: no duplicated checked logic, public
+// so no caller changes (no duplicated checked logic, public
 // API preserved).
 //
 // RadioButton is intentionally NOT a ToggleButton: its "checked" is derived from
@@ -36,6 +36,8 @@ public:
     }
 
 protected:
+    // UI Automation peer (automation/ControlPeers.h); defined in ControlPeers.cpp.
+    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
     // Activation flips the state (user-driven), so this raises the notification.
     void OnActivate() override { Toggle(); }
 

@@ -104,6 +104,11 @@ IDWriteTextLayout* TextArea::LineLayout(size_t lineNumber, size_t minCover) cons
                 LineLayoutCache::kUnboundedHeightDip,
                 compositionLayout_.GetAddressOf())))
             return nullptr;
+        // Same uniform line box as the cached lines below. Composing CJK into a Latin
+        // line pulls in a fallback font with a taller natural line height, so without
+        // this the caret's line would shift by under a DIP when composition starts and
+        // shift back on commit — the jump the cached path's spacing exists to prevent.
+        ApplyUniformLineSpacing(compositionLayout_.Get());
         NoteLineWidth(compositionLayout_.Get());
         return compositionLayout_.Get();
     }
@@ -115,11 +120,7 @@ IDWriteTextLayout* TextArea::LineLayout(size_t lineNumber, size_t minCover) cons
     NoteLineWidth(layout);
     
     // 强制统一行高：NoWrap 模式也需要，防止同样的 font fallback 问题
-    if (layout) {
-        const float uniformHeight = LineHeight();
-        const float baseline = uniformHeight * 0.8f;
-        layout->SetLineSpacing(DWRITE_LINE_SPACING_METHOD_UNIFORM, uniformHeight, baseline);
-    }
+    ApplyUniformLineSpacing(layout);
     
     return layout;
 }
@@ -229,7 +230,7 @@ void TextArea::EnsureLineIndex() const {
 }
 
 // ---------------------------------------------------------------------------
-// Wrapped virtualization (§3)
+// Wrapped virtualization
 // ---------------------------------------------------------------------------
 
 // The seed for "how many characters fit on one visual line" before anything has been
@@ -237,8 +238,8 @@ void TextArea::EnsureLineIndex() const {
 // drawn frame measures every visible paragraph and feeds the rolling average, and the
 // estimates that remain describe text nobody is looking at.
 //
-// fontSize * 0.5 as an average advance width is the same rough figure §1.5b-3 uses for
-// its prefix-clip estimate — being consistent about the guess means the two are wrong in
+// fontSize * 0.5 as an average advance width is the same rough figure the NoWrap prefix clip uses for
+// its estimate — being consistent about the guess means the two are wrong in
 // the same direction rather than fighting each other.
 float TextArea::SeedCharsPerLine() const {
     const float avgGlyphW = std::max(1.0f, EffectiveFontSize() * 0.5f);
@@ -316,6 +317,9 @@ IDWriteTextLayout* TextArea::WrapParagraphLayout(size_t p) const {
                 fmt, wrapWidth, LineLayoutCache::kUnboundedHeightDip,
                 compositionLayout_.GetAddressOf())))
             return nullptr;
+        // Uniform line box, as for the cached paragraphs (see the NoWrap composition
+        // path for why the composed line would otherwise shift).
+        ApplyUniformLineSpacing(compositionLayout_.Get());
 
         // Cache the inputs so a re-entrant call (MeasureWrapParagraph from WrapCaretMetrics)
         // returns the SAME pointer instead of freeing it.
@@ -327,7 +331,7 @@ IDWriteTextLayout* TextArea::WrapParagraphLayout(size_t p) const {
 
     const unsigned gen = Context().theme ? Context().theme->generation : 0u;
     // The cache is keyed by paragraph number and its layout box is the wrap width, both
-    // set in EnsureWrapExtent. minCover is deliberately kFullLine: the §1.5b-3 prefix
+    // set in EnsureWrapExtent. minCover is deliberately kFullLine: the prefix
     // clip is a NOWRAP optimization (there, characters past the visible columns are off
     // to the right and genuinely unneeded). Under Wrap those same characters flow onto
     // the NEXT visual line and are on screen, so clipping the layout would delete visible
@@ -338,13 +342,36 @@ IDWriteTextLayout* TextArea::WrapParagraphLayout(size_t p) const {
     
     // 强制统一行高：防止 font fallback 导致纯中文行(YaHei 15.24)和混合行(Segoe 16.00)
     // 行高不一致，造成输入首个拉丁字符时该行向下跳变 ~0.76 DIP。
-    if (layout) {
-        const float uniformHeight = LineHeight();
-        const float baseline = uniformHeight * 0.8f;  // DWrite 默认 baseline 比例
-        layout->SetLineSpacing(DWRITE_LINE_SPACING_METHOD_UNIFORM, uniformHeight, baseline);
-    }
+    ApplyUniformLineSpacing(layout);
     
     return layout;
+}
+
+bool TextArea::LineBoxForTest(size_t i, float& height, float& baseline) const {
+    IDWriteTextLayout* layout =
+        wrapMode_ == TextWrapMode::NoWrap ? LineLayout(i) : WrapParagraphLayout(i);
+    if (!layout) return false;
+    DWRITE_LINE_METRICS lm{};
+    UINT32 count = 0;
+    // One slot: E_NOT_SUFFICIENT_BUFFER for a multi-line paragraph still fills it.
+    layout->GetLineMetrics(&lm, 1, &count);
+    if (count == 0) return false;
+    height = lm.height;
+    baseline = lm.baseline;
+    return true;
+}
+
+// One line box for every line, whatever fonts it falls back to. Shared by the cached
+// line/paragraph layouts and the uncached composition layout so the two cannot differ:
+// a pure-CJK line (YaHei, ~15.2 DIP natural height) and a mixed line (Segoe, 16 DIP)
+// would otherwise sit at different heights, and the caret's line would jump when a
+// composition switched it from one path to the other. 0.8 is DWrite's usual baseline
+// ratio for these fonts.
+void TextArea::ApplyUniformLineSpacing(IDWriteTextLayout* layout) const {
+    if (!layout) return;
+    const float uniformHeight = LineHeight();
+    layout->SetLineSpacing(DWRITE_LINE_SPACING_METHOD_UNIFORM, uniformHeight,
+                           uniformHeight * 0.8f);
 }
 
 uint32_t TextArea::MeasureWrapParagraph(size_t p) const {
@@ -557,7 +584,7 @@ bool TextArea::LayoutWidthKnown() const {
     return bounds_.w > kPadX + kScrollReserve;
 }
 
-// NOTE: EnsureLayout() is GONE, and its absence is the point of §3.
+// NOTE: EnsureLayout() is GONE, and its absence is the point of per-paragraph Wrap virtualization.
 //
 // It used to build one IDWriteTextLayout over the whole buffer, which is what gave Wrap
 // its two hard ceilings: content past maxHeight (100000 DIP, ~5000 wrapped lines) was
@@ -760,7 +787,7 @@ float TextArea::MaxOffsetDip() const {
 }
 
 // ---------------------------------------------------------------------------
-// High-throughput log append (§2)
+// High-throughput log append
 // ---------------------------------------------------------------------------
 
 void TextArea::AppendText(std::wstring_view s) {
@@ -819,7 +846,7 @@ void TextArea::AppendText(std::wstring_view s) {
         // the extent map is built from. So take the ordinary full invalidation.
         //
         // OnTextLayoutDirty rather than InvalidateLayout(): the latter only sets
-        // layoutDirty_, which since §3 no longer covers the line index or the paragraph
+        // layoutDirty_, which no longer covers the line index or the paragraph
         // extent map. Appending under Wrap with only that flag set left the paragraph
         // model describing the PREVIOUS text — the paragraph count did not grow, so the
         // new text was outside the document as far as scrolling and hit-testing were
@@ -876,7 +903,7 @@ size_t TextArea::TrimToMaxLines() {
         // index already knows it, so no scan is needed.
         bytes = lines_.LineRange(drop).first;
     } else {
-        // No index in Wrap mode, so count newlines. O(document), which is the same order
+        // Count newlines directly rather than build the index just to trim. O(document), which is the same order
         // Wrap already pays to re-lay-out after any change — it does not alter this
         // mode's cost profile, and the alternative (a cap that silently does nothing
         // under Wrap) is an API that lies.
@@ -905,7 +932,25 @@ size_t TextArea::TrimToMaxLines() {
         // O(visible) instead of O(1) — once per `maxLines_` lines appended.
         lineLayouts_.Clear();
         ++lineCacheClears_;
+    } else {
+        // Wrap keeps a line index and per-paragraph heights too, both now describing
+        // text that is gone. AppendText happened to be covered (it marks the layout
+        // dirty before trimming), but SetMaxLines on an existing document was not:
+        // the extent, paint and hit-test kept using the untrimmed paragraphs.
+        OnTextLayoutDirty();
     }
+
+    // The undo history goes with the trimmed text. Every entry records an absolute
+    // offset into the buffer as it was when the edit happened, and the front of that
+    // buffer just vanished: Insert(8, "xyz") recorded before a 6-character trim now
+    // points past "xyz" (ApplyUndoResult clamps it to the end and removes nothing),
+    // and with a smaller trim it removes OTHER text. Shifting the entries back by
+    // `bytes` is not enough either — an entry whose range fell inside the discarded
+    // lines has no text left to act on. So the history is cleared, the same rule
+    // SetText follows (a document whose start is gone is not the one those edits were
+    // made to). A plain append without a trim leaves the history alone: appending at
+    // the end moves no recorded offset.
+    undo_.Clear();
 
     // Caret and selection are absolute offsets into the buffer; everything before `bytes`
     // is gone. Shift them back, clamping the part that fell inside the discarded range to
@@ -1097,8 +1142,29 @@ bool TextArea::OnNavigationKey(UINT vk, bool shift) {
 // ---------------------------------------------------------------------------
 
 void TextArea::OnPointerPressed(PointerEventArgs& e) {
-    if (e.button != PointerButton::Left) return;
     float dipX = e.position.x, dipY = e.position.y;
+
+    // Middle-button: toggle autoscroll if there's anywhere to scroll.
+    if (e.button == PointerButton::Middle) {
+        if (scroll_.IsAutoscrolling()) {
+            // Already autoscrolling: stop it.
+            scroll_.EndAutoscroll();
+        } else if (scroll_.MaxOffset() > 0.0f || scroll_.MaxOffsetX() > 0.0f) {
+            // Start autoscroll at this anchor point. No capture needed — the pointer
+            // roams free and OnPointerMoved updates velocity based on distance.
+            scroll_.BeginAutoscroll(dipX, dipY);
+        }
+        e.handled = true;
+        return;
+    }
+
+    // Left-button press while autoscrolling: cancel autoscroll first.
+    if (e.button == PointerButton::Left && scroll_.IsAutoscrolling()) {
+        scroll_.EndAutoscroll();
+        // Fall through to normal left-press handling (selection).
+    }
+
+    if (e.button != PointerButton::Left) return;
     // Vertical thumb first (right edge), horizontal thumb second (bottom edge).
     // The two hit regions are disjoint when HTrackLength() reserves the corner, so
     // at most one branch fires.
@@ -1177,6 +1243,11 @@ void TextArea::AutoScrollForDragSelect(float dipY) {
 
 void TextArea::OnPointerMoved(PointerEventArgs& e) {
     float dipX = e.position.x, dipY = e.position.y;
+    if (scroll_.IsAutoscrolling()) {
+        scroll_.UpdateAutoscrollVelocity(dipX, dipY);
+        // No invalidate here: the tick will scroll and invalidate.
+        e.handled = true; return;
+    }
     if (scroll_.IsDragging()) {
         scroll_.DragTo(dipY);
         // A thumb drag is a user-driven scroll, so it is one of the places that decides
@@ -1282,7 +1353,7 @@ float TextArea::CurrentOffsetX() const {
 
 bool TextArea::WantsAnimationTick() const {
     if (!IsEffectivelyVisible()) return false;
-    return scroll_.NeedsTick() || dragOutsideEdge_;
+    return scroll_.NeedsTick() || scroll_.IsAutoscrolling() || dragOutsideEdge_;
 }
 
 void TextArea::OnAnimationTick(float dtSec) {
@@ -1290,6 +1361,10 @@ void TextArea::OnAnimationTick(float dtSec) {
     // Runs in PumpAnimations, OUTSIDE the window content frame — safe to refill
     // surfaces here. The host renders once after ticking, so don't self-invalidate.
     scroll_.Tick(dtSec);
+    if (scroll_.IsAutoscrolling()) {
+        scroll_.TickAutoscroll(dtSec);
+        UpdateTailFollow();
+    }
     if (dragOutsideEdge_ && selecting_) {
         // Keep pulling the view while the pointer sits outside the text region. Goes
         // through ExtendDragSelection, not a bare caret_ assignment: a double-click drag
@@ -1338,13 +1413,28 @@ void TextArea::OnTextLayoutDirty() {
 // re-rasterizing, which is what makes composing in a 28 MB document cost the same as
 // composing in an empty one.
 //
-// Wrap has no per-line model to preserve, so it takes the full path unchanged.
-void TextArea::OnCompositionDirty() {
-    if (wrapMode_ != TextWrapMode::NoWrap) { OnTextLayoutDirty(); return; }
-}
+// Wrap is the same. Its paragraph index is the same lines_ (EnsureLineIndex builds it
+// in both modes, over text_), every cached paragraph layout other than the caret's is
+// still exact, and the caret's paragraph is built separately into compositionLayout_,
+// which WrapParagraphLayout guards by (paragraph, wrap width, composed text) — so a
+// new composition string rebuilds that one layout by itself. The paragraph's visual
+// line count is corrected the same way any estimate is: MeasureWrapParagraph records
+// it when the band is measured, from the composed layout while composing and from the
+// still-cached plain layout once the composition ends.
+//
+// Taking the full OnTextLayoutDirty here (as Wrap once did) rebuilt the line index and
+// reset every paragraph's measured height on each composition keystroke: O(document)
+// per pinyin letter, and the reset sent measured paragraphs above the caret back to
+// estimates, so the text could shift vertically while composing.
+//
+// Nothing to do in either mode; the caller's Invalidate() re-rasterizes.
+void TextArea::OnCompositionDirty() {}
 
+// Delegate to the base rather than repeating its Invalidate(): the base hook is also
+// what raises SelectionChanged(), and an override that only repainted silently
+// turned that public event off for TextArea while TextBox kept firing it.
 void TextArea::OnSelectionChanged() {
-    Invalidate();
+    TextEditBase::OnSelectionChanged();
 }
 
 
@@ -1698,6 +1788,8 @@ void TextArea::OnAttachedToTree() {
 void TextArea::OnDetachedFromTree() {
     // Clear the scroll model's context — it is no longer valid.
     scroll_.DetachFromContext();
+    // Restores the window's IME if this editor had suppressed it (see TextEditBase).
+    TextEditBase::OnDetachedFromTree();
 }
 
 void TextArea::OnFocusChanged() {
@@ -1719,6 +1811,22 @@ void TextArea::OnDpiChanged(float dpiScale) {
 }
 
 HCURSOR TextArea::Cursor() const {
+    // Autoscroll: direction-indicating arrow based on pointer position.
+    if (scroll_.IsAutoscrolling()) {
+        // Need the current pointer position to show the right direction arrow.
+        // Cursor() is const and has no coordinates, so we use GetCursorPos.
+        POINT pt;
+        if (GetCursorPos(&pt) && Context().hwnd) {
+            ScreenToClient(Context().hwnd, &pt);
+            const float dpiScale = Context().dpiScale;
+            const float dipX = pt.x / dpiScale;
+            const float dipY = pt.y / dpiScale;
+            return scroll_.AutoscrollCursor(dipX, dipY);
+        }
+        // Fallback if we can't get cursor pos: show the anchor cursor.
+        static HCURSOR sizeAll = LoadCursor(nullptr, IDC_SIZEALL);
+        return sizeAll;
+    }
     // Over a scrollbar track: system default (arrow).
     if (pointerOverScrollBar_)
         return nullptr;

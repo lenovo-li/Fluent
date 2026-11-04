@@ -59,6 +59,7 @@ public:
             if (!c) continue;
             if (c->IsAttached()) c->DetachFromContext();
             c->SetParent(nullptr);
+            OnChildRemoved(c.get());
         }
         children_.clear();
         // The panel's desired size may shrink to zero after clearing children.
@@ -76,6 +77,12 @@ public:
     // which invalidates Measure to keep layout caching correct. Returns nullptr for an
     // out-of-range index instead of asserting, because a walker iterating a tree that is
     // being mutated is a normal situation for a debugging tool, not a programming error.
+    // UI Automation children: every child (attached state is filtered by the
+    // automation tree, so a container that detaches some children needs no override).
+    size_t LogicalChildCount() const override { return children_.size(); }
+    UIElement* LogicalChildAt(size_t i) const override {
+        return i < children_.size() ? children_[i].get() : nullptr;
+    }
     FrameworkElement* ChildAt(size_t i) const {
         return i < children_.size() ? children_[i].get() : nullptr;
     }
@@ -127,7 +134,6 @@ public:
     UIElement* HitTestDeep(float dipX, float dipY) override;
     UIElement* HitTestDropTarget(float dipX, float dipY) override;
     void CollectFocusables(std::vector<UIElement*>& out) override;
-    void CollectDirtyBounds(std::vector<RectDip>& out) override;
     // Both visibility hooks recurse into children. This is what carries a
     // SetVisible(false) on a container down to a composited descendant (TextArea /
     // TreeView), whose DComp visual is parented on the COMPOSITOR ROOT rather than
@@ -140,19 +146,25 @@ public:
     void OnDeviceLost() override;
     void OnDeviceRestored() override;
     void CollectAnimations(std::vector<UIElement*>& out) override;
-    bool AnyDirtyInSubtree(DirtyFlags flags) const override;
-    void ClearDirtySubtree() override;
     // A panel must re-measure when its own Measure bit is set OR any descendant
     // needs it: a child's changed desired size feeds the panel's MeasureOverride.
     // Without this, MeasureCached would reuse the panel's stale size after a
-    // deeply-nested control changed (roadmap §6.2).
+    // deeply-nested control changed.
     bool NeedsRemeasure() const override { return AnyDirtyInSubtree(DirtyFlags::Measure); }
 
     void Measure(float availW, float availH) override;
     void Arrange(const RectDip& finalRect) override;
 
 protected:
-    // Propagate the tree context into / out of the owned children (roadmap §6.3).
+    // Dirty walks: report / test / clear self, then recurse into every child
+    // through the child's PUBLIC entry point, which skips a child whose subtree
+    // mark is clear. That per-child test is the whole pruning: a panel with one
+    // dirty grandchild visits that one branch and only flag-tests the rest.
+    void CollectDirtyBoundsOverride(std::vector<RectDip>& out) override;
+    bool AnyDirtyInSubtreeOverride(DirtyFlags flags) const override;
+    void ClearDirtySubtreeOverride() override;
+
+    // Propagate the tree context into / out of the owned children.
     // The base UIElement lifecycle calls these: on attach after this panel's own
     // OnAttachedToTree (self first, then subtree), on detach before it (subtree
     // first, then self), so ordering matches WPF's mount/unmount.
@@ -182,6 +194,14 @@ protected:
     // Place a child within `slot` honoring its margin + alignment. Helper for
     // ArrangeOverride implementations.
     static void ArrangeChild(FrameworkElement* child, const RectDip& slot);
+
+    // Called by RemoveAt and Clear for every child about to be destroyed, after it
+    // was detached and unparented and while the pointer is still valid. A subclass
+    // that keeps per-child state keyed by the child's ADDRESS (Grid's cell map) must
+    // drop it here: the allocator will hand that address to the next child, which
+    // would then silently inherit the dead child's entry instead of the default.
+    // Default does nothing.
+    virtual void OnChildRemoved(FrameworkElement* child) { UNREFERENCED_PARAMETER(child); }
 
 private:
     // Shared body of OnVisibilityChanged/OnAncestorVisibilityChanged: neither

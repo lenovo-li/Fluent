@@ -42,8 +42,10 @@ namespace fluent {
 // The private message the shell posts to the owning window for tray events.
 //
 // WM_APP+n is the documented range for application-private messages. WM_APP+17 is
-// ModalFrameHeartbeat's tick (window/ModalFrameHeartbeat.h) — keep this list
-// consistent when adding another. Application's WM_APP+1/+2 do not collide: those
+// ModalFrameHeartbeat's tick (window/ModalFrameHeartbeat.h), WM_APP+19 PopupHost's
+// open notice (services/PopupHost.h), WM_APP+20 the HUD ping (window/HudOverlay.h), WM_APP+21
+// PopupHost's deferred render, WM_APP+22 Window's deferred root release (window/Window.h)
+// — keep this list consistent when adding another. Application's WM_APP+1/+2 do not collide: those
 // are posted to its own message-only window, never to a Window's HWND.
 constexpr UINT WM_FLUENT_TRAY_CALLBACK = WM_APP + 18;
 

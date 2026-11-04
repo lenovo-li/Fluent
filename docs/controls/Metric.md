@@ -166,12 +166,31 @@ debt->SetInverted(true);            // 负债率上涨是坏消息
 
 ---
 
+## UI Automation
+
+Metric 的 peer：
+
+| 项 | 值 |
+|---|---|
+| ControlType | Text |
+| 模式 | 无；Name = `Label()` + 空格 + `Value()` |
+| AutomationId | `SetAutomationId` |
+| HelpText | `Tooltip()` |
+
+惰性创建：只有 UIA 客户端访问到这个控件时才创建 peer，没有客户端时零开销。模式操作经投递消息执行，执行前重新检查控件仍在树上且已启用。属性变化只在真正变化且有客户端监听时发送。自定义方式见 inheritance-guide.md 的“UI Automation”一节。
+
+验证：无头测试 `tests/unit/AutomationControlPeerTests.cpp` / `AutomationSelectorPeerTests.cpp`，真实 UIA 客户端自测 `FluentUITests.exe --uia-smoke`；14 处变异（如把 UIA 操作换回不发事件的 setter、去掉项缓存上限）全部被测试抓到。
+
 ## 备注
 
 ### 性能特征
 
-- **Measure 成本**：最多 3 个 DirectWrite 布局（label / value / delta）。
-- **Render 成本**：最多 3 次 DrawText。无填充、无描边、无动画。
+- **Measure 成本**：最多 3 个 DirectWrite 布局（label / value / delta），经共享的
+  `ResourceCache` 取得，内容不变时是哈希查找。
+- **Render 成本**：最多 3 次 DrawText。无填充、无描边、无动画。推进 y 的行高与 Measure
+  共用同一个缓存项（三行都不换行，所以两边用同一个布局宽度作键）。此前 Render 每次重绘
+  都为每行新建一个 `IDWriteTextLayout`。由 `LabelMeasureCache.MetricMeasureAndRenderReuseLayouts`
+  锁定。
 - **不请求动画帧**。
 
 ### 使用注意事项

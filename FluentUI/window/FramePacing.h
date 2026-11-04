@@ -3,7 +3,7 @@
 // WHY THIS EXISTS: the content used to be a swap chain, and Present1 blocked on
 // vsync, so the message loop got its pacing for free — it could ask
 // MsgWaitForMultipleObjectsEx for a 0 timeout and rely on Present for
-// backpressure. Route 2 replaced the swap chain with an IDCompositionVirtualSurface,
+// backpressure. Replacing the swap chain with an IDCompositionVirtualSurface removed that,
 // and Commit() does NOT block. With the frame-latency waitable gone too, a loop that
 // still passes timeout=0 whenever something animates spins as fast as the CPU allows:
 // a 36s session on a 120Hz display measured 69762 frames (~1927 fps, ~16x the panel)
@@ -105,6 +105,20 @@ inline bool FrameIsDue(double remainingMs) {
     return remainingMs <= kFrameDueEpsilonMs;
 }
 
+// Should the message loop advance a window's animations on this turn?
+//
+// Only when it is about to paint: a pending frame that is due. The loop turns once
+// per wake, and a wake can be any input message, so "once per turn" means "once
+// per mouse report" under a fast mouse, far more often than frames are painted.
+// The tick's dt comes from the real clock, so skipping the turns that do not paint
+// loses nothing: the tick before the paint advances by the whole elapsed time.
+// Same FrameIsDue as the paint decision, so the tick and the paint cannot drift
+// apart (a tick without its paint is wasted work; a paint without its tick shows a
+// stale animation state).
+inline bool AnimationTickIsDue(bool framePending, double remainingMs) {
+    return framePending && FrameIsDue(remainingMs);
+}
+
 // Should a frame be painted NOW, when the decision can only be made at discrete,
 // externally-timed opportunities and waiting is impossible?
 //
@@ -169,7 +183,9 @@ inline bool FrameIsNearestOpportunity(double remainingMs, double gapMs) {
 // magnitude, because a slow frame is genuinely slow for as long as it takes.
 //
 // Continuity is a property of the scheduler at the end of the previous frame (was a
-// frame pending, an animation live, a resize unapplied), so the host samples it there
+// frame pending, an animation live, a resize unapplied, or — inside the system modal
+// loop — a mouse move already queued, because there the next WM_SIZE does not exist
+// yet when the frame ends), so the host samples it there
 // and passes it in. Then a 3-second frame is kept, a 3-second idle is dropped, and
 // there is no load at which the two get confused.
 //
@@ -207,6 +223,50 @@ inline double UpdateOpportunityGap(double previousEstimate, double observedMs) {
 inline double FrameWaitRemainingMs(double elapsedMs, int refreshHz) {
     const double interval = RefreshIntervalMs(refreshHz);
     return interval - elapsedMs - kFrameWakeMarginMs;
+}
+
+// How long, in refresh intervals, a modal heartbeat tick may keep deferring to queued
+// input before it paints anyway. See ModalTickShouldYieldToInput.
+inline constexpr double kModalTickYieldWindowIntervals = 2.0;
+
+// Should a modal-heartbeat tick skip its paint because user input is already queued?
+//
+// THE STALL THIS PREVENTS. Inside the system's modal resize loop, GetMessage hands out
+// POSTED messages before INPUT messages. The heartbeat posts WM_FLUENT_MODAL_TICK and
+// re-opens its single in-flight slot as soon as the tick is dispatched — before the
+// paint, so a motionless drag gets its next tick on time. When a frame costs more than
+// one refresh interval, the next tick is therefore already queued by the time the paint
+// returns, the modal loop takes it ahead of the pending WM_MOUSEMOVE, and so on for as
+// long as frames stay slow. The mouse is never read, the window is never resized, and
+// no WM_SIZE arrives. Measured: a consumer app whose pane width animation forced a full
+// re-layout each frame (~12-15ms on a 120Hz panel) froze the drag for the animation's
+// whole 310-335ms, then jumped to the cursor — once per animation, every time.
+//
+// THE RULE. If input is pending, skip this tick so the modal loop reads the mouse; the
+// resulting WM_SIZE / WM_MOVING paints through ServiceModalFrame (which also pumps the
+// animation), so nothing is lost. Without pending input this returns false and the tick
+// paints exactly as before — the motionless-drag case it exists for is unchanged.
+//
+// THE BOUND. Input pending does not guarantee a paint follows: dragging against the
+// minimum size moves the mouse without changing the size, so no WM_SIZE is generated.
+// Yielding unconditionally would then starve the animation for as long as the mouse
+// keeps moving. So a tick only yields while the last painted frame ENDED less than
+// kModalTickYieldWindowIntervals refreshes ago; past that it paints regardless, which
+// caps the cost of a yield that bought nothing at about two refreshes.
+//
+// Measured from the frame's END, not its start. The question is "has the UI thread had
+// a chance to read input since it last painted", and a slow frame's start is long past
+// by the time it returns — a start-based window would expire during the paint itself
+// and never yield in exactly the slow-frame case this is for.
+//
+//   inputPending     : mouse or keyboard messages are waiting in the queue
+//   hasPreviousFrame : false before the first paint (nothing to measure against)
+//   sinceFrameEndMs  : time since the last painted frame finished
+//   refreshHz        : monitor refresh (0 = unknown -> 60Hz assumed)
+inline bool ModalTickShouldYieldToInput(bool inputPending, bool hasPreviousFrame,
+                                        double sinceFrameEndMs, int refreshHz) {
+    if (!inputPending || !hasPreviousFrame) return false;
+    return sinceFrameEndMs < RefreshIntervalMs(refreshHz) * kModalTickYieldWindowIntervals;
 }
 
 } // namespace fluent

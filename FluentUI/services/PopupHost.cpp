@@ -17,7 +17,7 @@ namespace {
 const char* kTag = "PopupHost";
 const wchar_t* kClassName = L"FluentUI.PopupHost";
 
-constexpr float kPadding = 8.0f;       // DIP, content inset from card edge
+constexpr float kPadding = PopupHost::kContentPadding;  // DIP, content inset from card edge
 
 #ifndef DWMWA_WINDOW_CORNER_PREFERENCE
 #define DWMWA_WINDOW_CORNER_PREFERENCE 33
@@ -88,6 +88,7 @@ HRESULT PopupHost::Create(HINSTANCE hInstParent, HWND hwndOwner,
 HRESULT PopupHost::InitGraphics(UINT pixelW, UINT pixelH) {
     FL_RETURN_IF_FAILED(kTag, comp_.Initialize(d2d_, hwnd_, pixelW, pixelH));
     graphicsReady_ = true;
+    graphicsDevice_ = d2d_->D2DDevice();
     TraceMsg(kTag, "InitGraphics: DCompHost initialized");
     return S_OK;
 }
@@ -144,11 +145,28 @@ HRESULT PopupHost::Open(const RECT& anchorScreenRect, float wDip, float hDip) {
     pixelW_ = std::max<UINT>(1, rc.right - rc.left);
     pixelH_ = std::max<UINT>(1, rc.bottom - rc.top);
 
-    // Initialize or resize the DComp composition target.
-    if (!graphicsReady_) {
-        FL_RETURN_IF_FAILED(kTag, InitGraphics(pixelW_, pixelH_));
-    } else {
-        FL_RETURN_IF_FAILED(kTag, comp_.Resize(pixelW_, pixelH_));
+    // Rebuild the composition target if the owner's device was replaced since it was
+    // made. NativeWindowHost::RecoverDevice rebuilds the shared D2DContext IN PLACE,
+    // and resident popups (tooltip, ComboBox, DatePicker) are created once and reused,
+    // so without this they kept a DComp device bound to the dead D2D device and never
+    // drew again. Checked here because every popup passes through Open, so no owner
+    // has to enumerate them after a device loss.
+    if (graphicsReady_ && graphicsDevice_.Get() != d2d_->D2DDevice()) {
+        TraceMsg(kTag, "Open: owner device was rebuilt; recreating composition target");
+        comp_.Reset();
+        graphicsReady_ = false;
+        graphicsDevice_.Reset();
+    }
+
+    // Initialize or resize the DComp composition target. A failure must return the
+    // popup to Closed: left in Opening, CanOpen and CanClose both refuse forever and
+    // the popup can neither open again nor be closed.
+    HRESULT ghr = graphicsReady_ ? comp_.Resize(pixelW_, pixelH_)
+                                 : InitGraphics(pixelW_, pixelH_);
+    if (FAILED(ghr)) {
+        Trace(kTag, "Open: composition target init/resize FAILED", ghr);
+        state_ = PopupState::Closed;
+        return ghr;
     }
 
     // Layout content to the card's interior (inset by padding).
@@ -180,12 +198,22 @@ HRESULT PopupHost::Open(const RECT& anchorScreenRect, float wDip, float hDip) {
 
     ShowWindow(hwnd_, SW_SHOWNOACTIVATE);
     UpdateWindow(hwnd_);
+    if (automation_) automation_->OnPopupShown(hwnd_);  // MenuOpened, only with a listener
 
     // DO NOT SetCapture on a WS_EX_NOACTIVATE window — the system immediately
     // revokes it (WM_CAPTURECHANGED), causing the popup to close instantly.
     // Instead, the parent window implements light-dismiss by checking clicks
     // outside the popup via ContainsScreenPoint().
     TraceMsg(kTag, "Open: popup shown (no capture, parent handles light-dismiss)");
+
+    // Tell the owner a popup is now on screen so it can dismiss its hover tooltip
+    // (which would otherwise sit on top of this popup's first row) and hold it off
+    // while the popup is up. Sent, not posted: the tooltip must be gone by the time
+    // Open returns, not one message later. Sent last, after the window is visible,
+    // because the owner tells "still open" apart from "closed" by IsWindowVisible —
+    // there is no matching close notice to keep balanced.
+    if (notifyOwnerOnOpen_ && hwndOwner_)
+        SendMessageW(hwndOwner_, WM_FLUENT_POPUP_OPENED, reinterpret_cast<WPARAM>(hwnd_), 0);
     return S_OK;
 }
 
@@ -194,9 +222,9 @@ void PopupHost::Close() {
     // are no-ops). See CanClose() in PopupState.h.
     if (!CanClose(state_)) return;
 
-    // Enter Closing for the duration of the side effects: a reentrant Close() is
-    // a no-op (state != Open) and a reentrant Open() is rejected (CanOpen is
-    // false in Closing). IsOpen() also reads false throughout onClose_.
+    // Enter Closing for the duration of the popup's own side effects: a reentrant
+    // Close() is a no-op (state != Open) and a reentrant Open() is rejected
+    // (CanOpen is false in Closing).
     state_ = PopupState::Closing;
     
     // Unregister the auxiliary animation root so the parent window stops collecting
@@ -204,10 +232,21 @@ void PopupHost::Close() {
     auxAnimSub_.reset();
     
     ShowWindow(hwnd_, SW_HIDE);
-    if (onClose_) onClose_();
     state_ = PopupState::Closed;
-
     TraceMsg(kTag, "Close: popup hidden");
+    if (automation_) automation_->OnPopupHidden();  // MenuClosed, only with a listener
+
+    // The owner's callback runs LAST, with the popup already Closed. ComboBox and
+    // DatePicker raise their public DropDownClosed / CalendarClosed from it, and a
+    // handler may reopen the popup, which CanOpen rejected while this callback still
+    // ran in Closing. Nothing below the call touches a member and the callback runs
+    // from a local copy, so THIS function survives the owner being destroyed inside
+    // it; the owner's own Event::Raise and any input dispatch further up the stack do
+    // not (see PopupState.h), so handlers must not destroy the control synchronously.
+    if (onClose_) {
+        std::function<void()> cb = onClose_;
+        cb();
+    }
 }
 
 bool PopupHost::ContainsScreenPoint(int screenX, int screenY) const {
@@ -218,6 +257,13 @@ bool PopupHost::ContainsScreenPoint(int screenX, int screenY) const {
     return PtInRect(&rc, pt) != FALSE;
 }
 
+void PopupHost::EnableAutomation() {
+    if (automation_) return;  // a reused level keeps its host
+    automation_ = std::make_unique<automation::AutomationHost>();
+    automation_->Bind(this);
+    automation_->SetFocusProxy(hwndOwner_);
+}
+
 void PopupHost::SetContent(UIElement* content) {
     if (content_ == content) return;
     // Detach the previous content from this popup's context (releases its
@@ -225,8 +271,8 @@ void PopupHost::SetContent(UIElement* content) {
     if (content_ && content_->IsAttached()) content_->DetachFromContext();
     content_ = content;
     // Inject the popup's service context so tree-attached content (e.g. a tooltip
-    // TextBlock) reads DWrite through Context() instead of a manual SetDWrite
-    // (roadmap §6.2). The popup shares the parent's device-level DWrite AND, if
+    // TextBlock) reads DWrite through Context() instead of a manual SetDWrite.
+    // The popup shares the parent's device-level DWrite AND, if
     // parentWindow_ is set, the parent's AnimationRegistry — so popup content can
     // use smooth scrolling, scrollbar fade, and other UIElement animations without
     // this lightweight window needing its own FrameHost.
@@ -237,8 +283,8 @@ void PopupHost::SetContent(UIElement* content) {
         ctx.hwnd = hwnd_;
         ctx.dpiScale = DpiScale();
         ctx.input = &input_;  // content grabs capture through the popup's router
-        ctx.resourceCache = resourceCache_;  // share the parent's caches (§13.3)
-        ctx.theme = theme_;                  // share the parent's stable snapshot (§11)
+        ctx.resourceCache = resourceCache_;  // share the parent's caches
+        ctx.theme = theme_;                  // share the parent's stable snapshot
         // Share the parent window's AnimationRegistry. The parent collects content_
         // as an auxiliary root while the popup is open (RegisterAuxAnimationRoot in
         // Open) and ticks it on its own clock; a tick's Invalidate() lands in
@@ -248,6 +294,7 @@ void PopupHost::SetContent(UIElement* content) {
         // WindowServices host, and content must not grab the parent's active-popup
         // dismiss/key/wheel slots through it.
         ctx.animations = parentWindow_ ? parentWindow_->Anims() : nullptr;
+        ctx.automation = automation_.get();  // null unless EnableAutomation
         content_->AttachToContext(ctx);
         roots_.push_back(content_);
     }
@@ -270,7 +317,20 @@ bool PopupHost::ForwardKey(UINT vk) {
     return args.handled;
 }
 
+void PopupHost::RequestRender() {
+    if (!renderCoalescer_.Request()) return;  // a render is already on its way
+    // PostMessage fails only without a window or with a full queue. Without a window
+    // Render() is a no-op anyway; with a full queue, paint now rather than lose it.
+    if (!hwnd_ || !PostMessageW(hwnd_, WM_FLUENT_POPUP_RENDER, 0, 0)) {
+        renderCoalescer_.Take();
+        Render();
+    }
+}
+
 void PopupHost::Render() {
+    // Whatever was requested so far is covered by this paint (or moot, if the
+    // popup is not showing), so a deferred render still in the queue can skip.
+    renderCoalescer_.Covered();
     if (!graphicsReady_ || !IsOpen()) return;
 
     ID2D1DeviceContext* dc = nullptr;
@@ -296,7 +356,7 @@ void PopupHost::Render() {
     // area; corners outside the rounded rect stay transparent (DComp
     // ALPHA_MODE_PREMULTIPLIED) so the rounding reads cleanly against whatever is
     // behind the window. One brush is created per frame and shared with the
-    // content element (roadmap §5.3.1).
+    // content element.
     ComPtr<ID2D1SolidColorBrush> brush;
     if (FAILED(dc->CreateSolidColorBrush(pal.cardFill, brush.GetAddressOf()))) {
         comp_.EndContentFrame();
@@ -392,6 +452,10 @@ LRESULT PopupHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_ERASEBKGND:
             return 1;  // DComp owns the content
 
+        case WM_FLUENT_POPUP_RENDER:
+            if (renderCoalescer_.Take()) Render();
+            return 0;
+
         case WM_PAINT: {
             PAINTSTRUCT ps;
             BeginPaint(hwnd_, &ps);
@@ -399,8 +463,22 @@ LRESULT PopupHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         }
 
+        case WM_GETOBJECT:
+            if (automation_) {
+                LRESULT r = 0;
+                if (automation_->OnGetObject(hwnd_, wp, lp, false, r)) return r;
+            }
+            break;
+
+        case automation::WM_FLUENT_UIA_FLUSH:
+            if (automation_) automation_->OnFlush();
+            return 0;
+
         case WM_DESTROY:
             state_ = PopupState::Closed;
+            // Same order as a window (AutomationHost.h): stop serving, disconnect the
+            // providers the content's earlier detach froze, return the root.
+            if (automation_) automation_->OnWindowDestroyed(hwnd_);
             return 0;
     }
     return DefWindowProcW(hwnd_, msg, wp, lp);

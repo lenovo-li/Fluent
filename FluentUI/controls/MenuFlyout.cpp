@@ -1,6 +1,9 @@
 // MenuFlyout.cpp
 
 #include "MenuFlyout.h"
+#include "../automation/AutomationSite.h"
+#include "../automation/ItemPeers.h"
+#include "../automation/UiaProvider.h"
 #include "../window/WindowServices.h"
 #include "../services/PopupHost.h"
 #include "../styling/ThemeTokens.h"
@@ -29,6 +32,9 @@ struct MenuListCallbacks {
     std::function<void(int)> onHover;     // hovered item changed (itemIndex or -1)
     std::function<void()> onCloseAll;     // Esc / dismiss
     std::function<void(bool)> onLeftRight; // Right(true)/Left(false) navigation
+    std::function<void()> onCloseSub;     // close this level's open submenu (UIA Collapse)
+    std::function<bool(int)> isSubOpen;   // is item idx's submenu the open next level
+    std::function<bool()> isLive;         // is this list still the open level it was made for
 };
 
 } // namespace
@@ -88,6 +94,34 @@ public:
         Invalidate();
     }
     int Hovered() const { return hovered_; }
+
+    // --- For the UI Automation peer (below) ---------------------------------------
+    const MenuItem* Item(int idx) const {
+        return items_ && idx >= 0 && idx < ItemCount() ? &(*items_)[idx] : nullptr;
+    }
+    float ItemHeightDip(int idx) const {
+        const MenuItem* it = Item(idx);
+        return it ? (it->separator ? kSepH : kItemH) : 0.0f;
+    }
+    int ItemAtY(float y) const { return HitItem(y); }
+    // The click's path: a parent item opens its submenu, a leaf is invoked (the
+    // flyout closes, then MenuItem::Invoked is raised). Refuses non-selectable rows.
+    // A retired level (menu closed, or reopened with a new list at the same level
+    // index) keeps its peer until the flyout reaps it; acting through it would
+    // invoke an item of whatever is open at that index now.
+    bool IsLiveLevel() const { return !cb_.isLive || cb_.isLive(); }
+    void ActivateIndex(int idx) {
+        if (!IsLiveLevel()) return;
+        const MenuItem* it = Item(idx);
+        if (!it || !it->Selectable()) return;
+        if (it->HasSubmenu()) {
+            if (cb_.onOpenSub) cb_.onOpenSub(idx);
+        } else if (cb_.onInvoke) {
+            cb_.onInvoke(idx);
+        }
+    }
+    void CloseSubmenu() { if (IsLiveLevel() && cb_.onCloseSub) cb_.onCloseSub(); }
+    bool IsSubmenuOpen(int idx) const { return cb_.isSubOpen && cb_.isSubOpen(idx); }
 
     // DIP Y of the top of item `idx` within the popup window (includes the
     // 8-dip interior padding that PopupHost applies above the content).
@@ -207,6 +241,8 @@ public:
     }
 
 protected:
+    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
+
     void OnPointerMoved(PointerEventArgs& e) override {
         int idx = HitItem(e.position.y);
         if (idx != hovered_) {
@@ -381,12 +417,22 @@ std::unique_ptr<Control> MenuFlyout::MakeListView(const std::vector<MenuItem>* i
     cb.onInvoke = [this, levelIndex](int idx) { InvokeItem(levelIndex, idx); };
     cb.onOpenSub = [this, levelIndex](int idx) { OpenSubmenu(levelIndex, idx); };
     cb.onHover = [this, levelIndex](int idx) {
-        // Stage 3 will open/close submenus on hover; stage 2 root has no submenus,
-        // but wire it now so cascading works without touching the list view.
+        // Hover opens the hovered item's submenu (or closes a deeper level that no
+        // longer belongs to the hovered row).
         OnItemHovered(levelIndex, idx);
     };
     cb.onCloseAll = [this]() { Close(); };
     cb.onLeftRight = [this, levelIndex](bool right) { OnLeftRight(levelIndex, right); };
+    cb.onCloseSub = [this, levelIndex]() { CloseFrom(levelIndex + 1); };
+    MenuListView* self = view.get();
+    cb.isLive = [this, levelIndex, self]() {
+        const size_t l = static_cast<size_t>(levelIndex);
+        return l < levels_.size() && levels_[l].list.get() == self;
+    };
+    cb.isSubOpen = [this, levelIndex](int idx) {
+        const size_t next = static_cast<size_t>(levelIndex) + 1;
+        return next < levels_.size() && levels_[next].parentIndex == idx;
+    };
     view->SetCallbacks(std::move(cb));
     return view;
 }
@@ -396,6 +442,128 @@ void MenuFlyout::MeasureLevel(Control* list, float& outW, float& outH) const {
     outH = kItemH;
     if (auto* mv = dynamic_cast<MenuListView*>(list))
         mv->ComputeDesired(outW, outH);
+}
+
+// ---------------------------------------------------------------------------
+// UI Automation: a menu level is a Menu whose rows are MenuItems (Separator rows
+// are Separators). Leaves have Invoke, parents ExpandCollapse; both go through the
+// click's path (ActivateIndex). The hovered row is the keyboard-current item: a
+// hover change raises AutomationFocusChanged on it, which is what Narrator reads
+// while the user arrows through a menu (focus itself stays in the owner window).
+// ---------------------------------------------------------------------------
+namespace {
+constexpr int kMenuOpenedEventId = 20003;   // UIA_MenuOpenedEventId
+constexpr int kMenuClosedEventId = 20007;   // UIA_MenuClosedEventId
+constexpr int kFocusChangedEventId = 20005; // UIA_AutomationFocusChangedEventId
+
+class MenuListPeer final : public automation::ItemsContainerPeer {
+public:
+    explicit MenuListPeer(MenuListView& o) : ItemsContainerPeer(o) {}
+    MenuListView& List() const { return static_cast<MenuListView&>(Owner()); }
+    automation::ControlType GetControlType() const override { return automation::ControlType::Menu; }
+    bool IsControlElement() const override { return true; }
+    size_t ItemCount() const override { return static_cast<size_t>(List().ItemCount()); }
+    std::unique_ptr<automation::ItemPeer> MakeItem(size_t key) override;
+    size_t FocusedIndex() const override {
+        const int h = List().Hovered();
+        return h >= 0 ? static_cast<size_t>(h) : ItemCount();
+    }
+    // A menu is never element-focused (its window is WS_EX_NOACTIVATE); while a row
+    // is hovered the menu is where the keyboard goes.
+    bool HasFocusWithin() const override { return List().Hovered() >= 0; }
+    AutomationPeer* ItemAtPoint(float x, float y) override {
+        UNREFERENCED_PARAMETER(x);
+        const int i = List().ItemAtY(y);  // popup client DIPs; no transform in a popup
+        return i >= 0 ? ItemAt(static_cast<size_t>(i)) : nullptr;
+    }
+    int PopupOpenedEventId() const override { return kMenuOpenedEventId; }
+    int PopupClosedEventId() const override { return kMenuClosedEventId; }
+    void OnFlushRecheck() override {
+        ItemsContainerPeer::OnFlushRecheck();
+        const int h = List().Hovered();
+        if (h == lastHover_) return;
+        lastHover_ = h;
+        if (h < 0) return;
+        AutomationPeer* item = ItemAt(static_cast<size_t>(h));
+        automation::IAutomationSite* site = Owner().AutomationSite();
+        if (item && site) site->QueueEvent(item->Provider(), kFocusChangedEventId);
+    }
+
+private:
+    int lastHover_ = -1;
+};
+
+class MenuItemPeer final : public automation::ItemPeer,
+                           public automation::IInvokePeer,
+                           public automation::IExpandCollapsePeer {
+public:
+    MenuItemPeer(MenuListPeer& c, size_t key) : ItemPeer(c, key) {}
+    automation::ControlType GetControlType() const override {
+        const MenuItem* it = Row();
+        return it && it->separator ? automation::ControlType::Separator : automation::ControlType::MenuItem;
+    }
+    std::wstring GetName() const override {
+        const MenuItem* it = Row();
+        return it ? it->text : std::wstring();
+    }
+    // The accelerator hint ("Ctrl+C") as help text: the peer layer has no
+    // AcceleratorKey property yet.
+    std::wstring GetHelpText() const override {
+        const MenuItem* it = Row();
+        return it ? it->accelerator : std::wstring();
+    }
+    bool IsEnabled() const override {
+        const MenuItem* it = Row();
+        return ItemPeer::IsEnabled() && it && it->Selectable() && List().IsLiveLevel();
+    }
+    RectDip BoundsInHostDip() const override {
+        const MenuListView& l = List();
+        const int i = static_cast<int>(Index());
+        if (!l.Item(i)) return {};
+        const RectDip b = l.Bounds();
+        return OwnerRectToHost({b.x, l.ItemYOffsetDip(i), b.w, l.ItemHeightDip(i)});
+    }
+    automation::IInvokePeer* AsInvoke() override {
+        const MenuItem* it = Row();
+        return it && !it->separator && !it->HasSubmenu() ? this : nullptr;
+    }
+    automation::IExpandCollapsePeer* AsExpandCollapse() override {
+        const MenuItem* it = Row();
+        return it && it->HasSubmenu() ? this : nullptr;
+    }
+    void Invoke() override {
+        // The flyout closes inside (levels are parked, not destroyed), then the app's
+        // Invoked handler runs. Hold the provider and ask afterwards whether the peer
+        // survived, the ButtonPeer rule.
+        ComPtr<IUnknown> prov(Provider());
+        List().ActivateIndex(static_cast<int>(Index()));  // may retire this level
+        automation::AutomationPeer* p = automation::PeerFromProvider(prov.Get());
+        automation::IAutomationSite* site = p ? p->Owner().AutomationSite() : nullptr;
+        if (site) site->QueueInvoked(prov.Get());
+    }
+    automation::ExpandState GetExpandState() const override {
+        return List().IsSubmenuOpen(static_cast<int>(Index())) ? automation::ExpandState::Expanded
+                                                               : automation::ExpandState::Collapsed;
+    }
+    void Expand() override {
+        if (!List().IsSubmenuOpen(static_cast<int>(Index()))) List().ActivateIndex(static_cast<int>(Index()));
+    }
+    void Collapse() override {
+        if (List().IsSubmenuOpen(static_cast<int>(Index()))) List().CloseSubmenu();
+    }
+
+private:
+    MenuListView& List() const { return static_cast<MenuListPeer&>(Container()).List(); }
+    const MenuItem* Row() const { return List().Item(static_cast<int>(Index())); }
+};
+
+std::unique_ptr<automation::ItemPeer> MenuListPeer::MakeItem(size_t key) {
+    return std::make_unique<MenuItemPeer>(*this, key);
+}
+}  // namespace
+
+std::unique_ptr<automation::AutomationPeer> MenuListView::CreateAutomationPeer() {
+    return std::make_unique<MenuListPeer>(*this);
 }
 
 void MenuFlyout::ShowAt(int screenX, int screenY) {
@@ -440,8 +608,9 @@ void MenuFlyout::OpenRoot(const RECT& anchor) {
         TraceMsg(kTag, "OpenRoot: PopupHost::Create failed");
         return;
     }
-    level.popup->SetResourceCache(ctx_.resourceCache);  // share caches (§13.3)
-    level.popup->SetTheme(ctx_.theme);            // share theme snapshot (§11)
+    level.popup->EnableAutomation();  // before SetContent: a level is its own UIA window
+    level.popup->SetResourceCache(ctx_.resourceCache);  // share caches
+    level.popup->SetTheme(ctx_.theme);            // share theme snapshot
     level.popup->SetLightDismiss(false);  // the flyout manages the whole chain
     ApplyOpacityTo(level);                // before Open: Open paints the first frame
     level.popup->SetContent(level.list.get());
@@ -505,14 +674,24 @@ void MenuFlyout::OpenSubmenu(int levelIndex, int itemIndex) {
     float wDip = 0.0f, hDip = 0.0f;
     MeasureLevel(level.list.get(), wDip, hDip);
 
-    level.popup = std::make_unique<PopupHost>();
-    if (FAILED(level.popup->Create(window_->Instance(), window_->Hwnd(),
-                                   &window_->D2D(), &window_->DWrite()))) {
-        TraceMsg(kTag, "OpenSubmenu: PopupHost::Create failed");
-        return;
+    // Reuse a retired level's window when there is one; create only when the pool is
+    // empty. Hovering back and forth between items with submenus used to create a
+    // fresh PopupHost — an HWND plus, on its first Open, a DComp target and surface —
+    // on every hover, synchronously inside WM_MOUSEMOVE, and park the old one in
+    // retired_ until the next OpenRoot. With reuse the window count is bounded by the
+    // deepest level ever shown, and a hover only re-points an existing window.
+    level.popup = TakeRetiredPopup();
+    if (!level.popup) {
+        level.popup = std::make_unique<PopupHost>();
+        if (FAILED(level.popup->Create(window_->Instance(), window_->Hwnd(),
+                                       &window_->D2D(), &window_->DWrite()))) {
+            TraceMsg(kTag, "OpenSubmenu: PopupHost::Create failed");
+            return;
+        }
     }
-    level.popup->SetResourceCache(ctx_.resourceCache);  // share caches (§13.3)
-    level.popup->SetTheme(ctx_.theme);            // share theme snapshot (§11)
+    level.popup->EnableAutomation();  // idempotent for a reused window
+    level.popup->SetResourceCache(ctx_.resourceCache);  // share caches
+    level.popup->SetTheme(ctx_.theme);            // share theme snapshot
     level.popup->SetLightDismiss(false);
     ApplyOpacityTo(level);                // before Open: Open paints the first frame
     level.popup->SetContent(level.list.get());
@@ -581,6 +760,21 @@ void MenuFlyout::OnLeftRight(int levelIndex, bool right) {
         if (static_cast<int>(levels_.size()) > 1)
             CloseFrom(static_cast<int>(levels_.size()) - 1);
     }
+}
+
+std::unique_ptr<PopupHost> MenuFlyout::TakeRetiredPopup() {
+    // Moving a PopupHost OUT of a retired level is safe on any call stack: nothing
+    // is destroyed, the window just gets new content (SetContent detaches the old
+    // list from it) and a new position. The retired level keeps its list, which is
+    // freed with the rest at ReapRetired.
+    //
+    // Only a fully Closed host is taken. One in Closing is still inside its own
+    // Close() further up the stack, and re-opening it there would be rejected anyway.
+    for (Level& l : retired_) {
+        if (l.popup && l.popup->State() == PopupState::Closed)
+            return std::move(l.popup);
+    }
+    return nullptr;
 }
 
 void MenuFlyout::ReapRetired() {

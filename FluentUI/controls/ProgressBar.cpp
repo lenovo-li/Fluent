@@ -27,7 +27,17 @@ bool ProgressBar::WantsAnimationTick() const {
     // this branch: the indeterminate sweep is a continuous animation with no settled state
     // to snap to, so priming does not apply to it.
     if (!AnimationPrimed()) return false;
-    return animFill_.Animating(value_, 0.001f);
+    return animFill_.Animating(value_, 0.001f * RangeSpan());
+}
+
+float ProgressBar::RangeSpan() const {
+    return std::max(max_ - min_, 1e-6f);
+}
+
+float ProgressBar::NormalizedFill(float v) const {
+    const float span = max_ - min_;
+    if (!(span > 0.0f)) return 0.0f;  // min == max: nothing to fill
+    return std::clamp((v - min_) / span, 0.0f, 1.0f);
 }
 
 void ProgressBar::OnAnimationTick(float dtSec) {
@@ -37,9 +47,19 @@ void ProgressBar::OnAnimationTick(float dtSec) {
         float s = static_cast<float>(sweep_) + dtSec / kSweepSec;
         if (s >= 1.0f) s -= 1.0f;
         sweep_.SetImmediate(s);
+        // Both UI-thread branches mark our own bounds dirty (see
+        // CheckBox::OnAnimationTick). Without it this tick contributes no dirty
+        // rect: alone, the host turns the empty dirty set into a FULL-window
+        // redraw every frame — forever, for an indeterminate bar on a host with
+        // no composition device — and next to another dirty element the partial
+        // redraw clips the segment out so the sweep skips frames. Render level
+        // only; the compositor branch above returns before this and stays free.
+        Invalidate();
         return;
     }
-    animFill_.Approach(value_, dtSec, kAnimTau);
+    // Epsilons scale with the range so 0..100 settles like the default 0..1.
+    animFill_.Approach(value_, dtSec, kAnimTau, 0.01f * RangeSpan());
+    Invalidate();
 }
 
 void ProgressBar::Measure(float availW, float availH) {
@@ -65,7 +85,7 @@ void ProgressBar::Render(const DrawingContext& dc) {
                                     : D2D1::ColorF(0, 0, 0, 0.10f)));
 
     if (indeterminate_) {
-        // Compositor path (Plan B): the sweeping segment is a DComp visual drawn
+        // Compositor path: the sweeping segment is a DComp visual drawn
         // above this content by the compositor thread — draw only the groove here
         // (already done above) and let the compositor animate the segment.
         if (compositorActive_) return;
@@ -82,7 +102,7 @@ void ProgressBar::Render(const DrawingContext& dc) {
             D2D1::RoundedRect(D2D1::RectF(segL, ty, segR, ty + kBarH), r, r),
             EffectiveAccentColor(pal.accent));
     } else {
-        float p = std::clamp(static_cast<float>(animFill_), 0.0f, 1.0f);
+        float p = NormalizedFill(static_cast<float>(animFill_));
         float fillR = left + width * p;
         if (fillR > left + 0.5f) {
             dc.FillRoundedRect(
@@ -93,7 +113,7 @@ void ProgressBar::Render(const DrawingContext& dc) {
 }
 
 // ---------------------------------------------------------------------------
-// Plan B: indeterminate sweep on the DirectComposition compositor thread.
+// Indeterminate sweep on the DirectComposition compositor thread.
 // ---------------------------------------------------------------------------
 
 void ProgressBar::TrackGeometryPx(float& ox, float& oy, float& w, float& h,

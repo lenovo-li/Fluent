@@ -19,6 +19,7 @@
 #include "../graphics/ResourceCache.h"
 #include "../core/UIElement.h"
 #include "../input/InputManager.h"
+#include "../automation/AutomationHost.h"
 #include "PopupState.h"
 #include <functional>
 #include <algorithm>
@@ -26,8 +27,73 @@
 
 namespace fluent {
 
-class PopupHost {
+// Sent (synchronously) by PopupHost::Open to the owner window once the popup is
+// visible; wParam is the popup's HWND. NativeWindowHost uses it to dismiss the
+// hover tooltip and keep it from re-showing over the popup — the one point every
+// popup (ComboBox drop-down, DatePicker calendar, MenuFlyout / context menu, any
+// future PopupHost user) passes through, so no control has to remember to do it.
+//
+// WM_APP+n is the documented range for application-private messages. WM_APP+17 is
+// ModalFrameHeartbeat's tick, WM_APP+18 the tray callback (window/TrayIcon.h), WM_APP+20
+// the HUD ping (window/HudOverlay.h), WM_APP+21 the popup's deferred render (below),
+// WM_APP+22 Window's deferred release of a replaced root (window/Window.h), WM_APP+23
+// the UI Automation flush (automation/AutomationHost.h) — keep the list consistent
+// when adding another.
+constexpr UINT WM_FLUENT_POPUP_OPENED = WM_APP + 19;
+
+// Posted by a PopupHost to its OWN window to run one coalesced Render(); see
+// PopupRenderCoalescer.
+constexpr UINT WM_FLUENT_POPUP_RENDER = WM_APP + 21;
+
+// Coalesces a popup's repaint requests into one deferred Render().
+//
+// WHY. The popup's invalidate callbacks (the content root's, and its InputManager's,
+// which fires after EVERY routed pointer move) used to call Render() directly: a full
+// BeginDraw, card + content repaint, EndDraw and Commit, synchronously on the input
+// path, once per call. Moving the mouse across a ComboBox list therefore repainted the
+// whole popup at least once per WM_MOUSEMOVE and twice when the hovered row changed,
+// and every scrollbar-fade tick repainted again within the same frame. BeginDraw is a
+// GPU sync point, so that is real CPU and GPU time spent on pixels that mostly did not
+// change.
+//
+// HOW. The first request after a render posts WM_FLUENT_POPUP_RENDER to the popup's
+// own window; later requests only see the flag already set. The message is handled
+// after the messages already queued, so every invalidation from one drained batch of
+// input collapses into one paint. A synchronous Render() (Open, resize) clears the
+// flag, so a deferred render that was overtaken by it does nothing. Pure state so the
+// rule is testable without a window.
+class PopupRenderCoalescer {
 public:
+    // A repaint was requested. True only for the first request since the last
+    // render: that caller posts the wake-up message, the rest are absorbed.
+    bool Request() {
+        if (pending_) return false;
+        pending_ = true;
+        return true;
+    }
+    // The posted message arrived. True if a render is still owed (and clears it);
+    // false when a synchronous render already covered it.
+    bool Take() {
+        const bool owed = pending_;
+        pending_ = false;
+        return owed;
+    }
+    // A render is happening now; anything requested so far is covered by it.
+    void Covered() { pending_ = false; }
+    bool Pending() const { return pending_; }
+
+private:
+    bool pending_ = false;
+};
+
+class PopupHost : private automation::IAutomationWindow {
+public:
+    // Inset (DIP) between the card edge and the content on every side. The content is
+    // arranged into (w - 2*kContentPadding) x (h - 2*kContentPadding), so a caller that
+    // sizes the popup from its content's natural size must add 2*kContentPadding to
+    // both dimensions or the content is cut off by that much.
+    static constexpr float kContentPadding = 8.0f;
+
     ~PopupHost();
 
     // Create the popup window (hidden). hInstParent, hwndOwner from the parent
@@ -39,10 +105,12 @@ public:
     // Position the popup at `anchorScreenRect` (screen pixels) with a DIP size
     // (wDip, hDip), then show. Picks the target monitor and DPI, flips above the
     // anchor if it would overflow the bottom of the work area, and clamps
-    // horizontally. SetCapture for light-dismiss. Reuses the existing HWND.
+    // horizontally. Does NOT SetCapture (the window is WS_EX_NOACTIVATE, and capture
+    // on it is lost immediately): light-dismiss is the parent window's job, which
+    // tests outside clicks with ContainsScreenPoint. Reuses the existing HWND.
     HRESULT Open(const RECT& anchorScreenRect, float wDip, float hDip);
 
-    // Hide and release capture.
+    // Hide the popup. Holds no capture, so there is none to release.
     void Close();
     // "Open" for callers means visible and interactive (Open or Closing counts as
     // not-yet-fully-closed; IsOpen reports true only in the steady Open state).
@@ -53,8 +121,20 @@ public:
     // ComboBox) owns it and must outlive the popup.
     void SetContent(UIElement* content);
 
+    // Expose this popup to UI Automation as its own window (a fragment root; the
+    // content element's peer is its child). Opt-in, per popup, before SetContent:
+    // MenuFlyout's levels use it; ComboBox's list does not (its items belong to the
+    // ComboBox peer, and a second copy in a popup root would list them twice).
+    // Costs one AutomationHost (no provider, no peer) until a client asks.
+    //
+    // Lifetime contract: content attached to an automation popup must be detached
+    // (SetContent(other) / DetachFromContext) or destroyed BEFORE this PopupHost,
+    // because its peer reaches this popup's host to queue its provider's disconnect.
+    // MenuFlyout::Level declares the popup before the list, so the list dies first.
+    void EnableAutomation();
+
     // Share the parent's resource cache so popup-hosted content reuses the same
-    // text-layout / glyph-geometry caches (roadmap §13.3). The cache is DWrite /
+    // text-layout / glyph-geometry caches. The cache is DWrite /
     // D2D-factory backed and safe to share across composition targets on the UI thread.
     // Must be set before SetContent to be injected into the content's context.
     void SetResourceCache(ResourceCache* cache) { resourceCache_ = cache; }
@@ -69,7 +149,7 @@ public:
         animations_ = anims;
     }
 
-    // Share the parent's stable theme snapshot (roadmap §11, WP-05) so popup
+    // Share the parent's stable theme snapshot so popup
     // content reads the same tokens the tree does, and the popup paints its own
     // card chrome (fill / border) from it. The pointer is stable (overwritten in
     // place on a theme change); set it before SetContent so it is injected into
@@ -83,7 +163,9 @@ public:
     // can route keys to the popup content for navigation). Returns true if handled.
     bool ForwardKey(UINT vk);
 
-    // Trigger a repaint (content invalidate callback should call this).
+    // Repaint now, synchronously (Open and resize need the pixels before they
+    // continue). Invalidations do not call this: they go through RequestRender,
+    // which coalesces them into one deferred Render (PopupRenderCoalescer).
     void Render();
 
     // Check if a screen-pixel point is inside the popup client rect (for parent
@@ -122,6 +204,13 @@ public:
     // whole set of windows instead of each popup closing itself independently.
     void SetLightDismiss(bool enabled) { lightDismiss_ = enabled; }
 
+    // Whether Open() announces itself to the owner window with
+    // WM_FLUENT_POPUP_OPENED (default on). The tooltip's own popup turns this off:
+    // it is the thing the announcement dismisses, so announcing it would hide the
+    // tooltip the moment it appeared. Not tied to SetLightDismiss — menu levels
+    // also disable light-dismiss yet are exactly the popups a tooltip must not cover.
+    void SetNotifyOwnerOnOpen(bool enabled) { notifyOwnerOnOpen_ = enabled; }
+
     float DpiScale() const { return dpi_ / 96.0f; }
     HWND Hwnd() const { return hwnd_; }
 
@@ -137,9 +226,13 @@ private:
     void RouteMouseDown(int px, int py);
     void RouteMouseUp(int px, int py);
 
+    // Both invalidate callbacks (content root, InputManager) land here. Deferred,
+    // not Render(): see PopupRenderCoalescer.
     static void InvalidateThunk(void* ctx) {
-        static_cast<PopupHost*>(ctx)->Render();
+        static_cast<PopupHost*>(ctx)->RequestRender();
     }
+    void RequestRender();
+    PopupRenderCoalescer renderCoalescer_;
 
     HWND hwnd_ = nullptr;
     HWND hwndOwner_ = nullptr;
@@ -148,6 +241,9 @@ private:
     UINT pixelW_ = 0, pixelH_ = 0;
     PopupState state_ = PopupState::Closed;
     bool graphicsReady_ = false;
+    // The D2D device comp_ was built on. Held (not just compared by address) so the old
+    // device cannot be freed and its address reused by the rebuilt one.
+    ComPtr<ID2D1Device> graphicsDevice_;
 
     D2DContext* d2d_ = nullptr;
     DWriteContext* dwrite_ = nullptr;
@@ -159,7 +255,7 @@ private:
 
     UIElement* content_ = nullptr;       // not owned
     // The popup's own input router: hit-tests + routes pointer events over the
-    // single content element and owns pointer capture inside this window (WP-03).
+    // single content element and owns pointer capture inside this window.
     // A popup keeps focus in the parent window, so there is no FocusManager here;
     // keyboard reaches the content via ForwardKey -> OnKeyDownRouted.
     InputManager input_;
@@ -169,8 +265,15 @@ private:
     float cardOpacity_ = 1.0f;     // background card opacity [0..1]
     float contentOpacity_ = 1.0f;  // content opacity [0..1]
     bool lightDismiss_ = true;  // click-outside closes this popup itself
+    bool notifyOwnerOnOpen_ = true;  // Open() sends WM_FLUENT_POPUP_OPENED to the owner
 
     std::function<void()> onClose_;
+
+    // UI Automation (EnableAutomation). Null for popups that did not opt in.
+    std::unique_ptr<automation::AutomationHost> automation_;
+    size_t AutomationRootCount() const override { return content_ ? 1 : 0; }
+    UIElement* AutomationRootAt(size_t i) const override { return i == 0 ? content_ : nullptr; }
+    UIElement* AutomationFocusedElement() const override { return nullptr; }
 };
 
 } // namespace fluent

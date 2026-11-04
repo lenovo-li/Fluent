@@ -1,9 +1,9 @@
 // SetPropertyTests.cpp — unit tests for the unified SetProperty helper and the
-// per-property invalidation mapping it drives (roadmap §7.1 / §7.2).
+// per-property invalidation mapping it drives.
 //
 // SetProperty is protected on Element; a small test peer exposes it and the
 // dirty state so the tests can assert both the change-detection contract and
-// that each flag lands where §7.2 says it should. Pure logic: no window/GPU.
+// that each flag expands to its documented dirty closure. Pure logic: no window/GPU.
 
 #include "../framework/Test.h"
 #include "../../FluentUI/core/FrameworkElement.h"
@@ -44,7 +44,7 @@ TEST(SetProperty, ChangeStoresValueAndInvalidatesClosure) {
 }
 
 // Setting the same value is a no-op: returns false and schedules NO frame
-// (the whole point of §7.1 — a redundant set never dirties anything).
+// (the whole point of SetProperty — a redundant set never dirties anything).
 TEST(SetProperty, RedundantSetIsNoOp) {
     PropPeer p;
     p.SetInt(7, DirtyFlags::Measure);
@@ -56,7 +56,7 @@ TEST(SetProperty, RedundantSetIsNoOp) {
     EXPECT_FALSE(Has(p.Dirty(), DirtyFlags::Render));
 }
 
-// A Render-only property does NOT dirty Measure or Arrange (§7.2: a color/pixel
+// A Render-only property does NOT dirty Measure or Arrange (a color/pixel
 // change must not trigger layout).
 TEST(SetProperty, RenderOnlyDoesNotDirtyLayout) {
     PropPeer p;

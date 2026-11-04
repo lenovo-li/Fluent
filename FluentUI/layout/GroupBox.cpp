@@ -53,7 +53,7 @@ void GroupBox::Measure(float availW, float availH) {
             const float layoutW = (availW > 0.0f) ? availW : 1000.0f;
             constexpr float kLayoutH = 1000.0f;
 
-            // Through the shared layout cache (roadmap §13.3) rather than a fresh
+            // Through the shared layout cache rather than a fresh
             // CreateTextLayout on every Measure. A GroupBox re-measures on every
             // frame of a resize drag (the constraint changes, so MeasureCached
             // cannot short-circuit), and the header string is what determines this
@@ -191,7 +191,7 @@ void GroupBox::CollectFocusables(std::vector<UIElement*>& out) {
     if (content_ && content_->IsVisible()) content_->CollectFocusables(out);
 }
 
-void GroupBox::CollectDirtyBounds(std::vector<RectDip>& out) {
+void GroupBox::CollectDirtyBoundsOverride(std::vector<RectDip>& out) {
     if (IsVisible() && Any(Dirty())) out.push_back(VisualBounds());
     if (content_ && content_->IsVisible()) content_->CollectDirtyBounds(out);
 }
@@ -228,12 +228,12 @@ void GroupBox::OnDeviceRestored() {
     if (content_) content_->OnDeviceRestored();
 }
 
-bool GroupBox::AnyDirtyInSubtree(DirtyFlags flags) const {
+bool GroupBox::AnyDirtyInSubtreeOverride(DirtyFlags flags) const {
     if (Has(Dirty(), flags)) return true;
     return content_ && content_->AnyDirtyInSubtree(flags);
 }
 
-void GroupBox::ClearDirtySubtree() {
+void GroupBox::ClearDirtySubtreeOverride() {
     ClearDirty();
     if (content_) content_->ClearDirtySubtree();
 }

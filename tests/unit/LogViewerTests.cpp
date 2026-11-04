@@ -622,3 +622,161 @@ TEST(LogViewer, EmptySpanTextInsideSelectionStillSeparatesLines)
 
     EXPECT_TRUE(v.SelectedText() == L"first\n\nthird");
 }
+
+// --- Ring-buffer trim keeps the geometry exact ------------------------------
+//
+// The trim no longer rewrites every surviving Y: lines live in a deque, Ys are stored
+// in an absolute coordinate, and the trim moves the origin. These pin what that must
+// still guarantee: the first surviving line is at 0, every line sits exactly on the
+// one above it, and the extent is the sum of the survivors — across many trims of
+// rows with different heights.
+TEST(LogViewer, TrimKeepsLineTopsContiguousFromZero)
+{
+    LogViewer v;
+    v.SetMaxLines(50);
+    for (int i = 0; i < 1000; ++i) {
+        const float size = 10.0f + static_cast<float>(i % 7) * 3.0f;
+        v.AppendLine({{L"row", kWhite, size}});
+    }
+    EXPECT_EQ(v.LineCount(), size_t(50));
+    EXPECT_NEAR(v.LineTopDip(0), 0.0f, 0.001f);
+
+    float sum = 0.0f;
+    for (size_t i = 0; i < v.LineCount(); ++i) {
+        EXPECT_NEAR(v.LineTopDip(i), sum, 0.01f);
+        sum += v.LineHeightDip(i);
+    }
+    EXPECT_NEAR(v.ContentExtentDip(), sum, 0.01f);
+}
+
+TEST(LogViewer, ClearAfterTrimRestartsAtZero)
+{
+    LogViewer v;
+    v.SetMaxLines(5);
+    for (int i = 0; i < 40; ++i) v.AppendLine({{L"row", kWhite, 12.0f}});
+    v.Clear();
+    v.AppendLine({{L"fresh", kWhite, 12.0f}});
+    EXPECT_NEAR(v.LineTopDip(0), 0.0f, 0.001f);
+    EXPECT_NEAR(v.ContentExtentDip(), 12.0f * kLineSpacing, 0.01f);
+}
+
+// --- Span layouts are cached for the visible lines -----------------------------
+//
+// RenderLine used to build a fresh IDWriteTextLayout for every span of every visible
+// line on every paint, and the hit test did the same per pointer move. The cache is
+// a window over the drawn range; PrepareVisibleLayoutsForTest is the exact call
+// Render makes before drawing (Render itself needs a device context).
+
+TEST(LogViewer, RepaintOfAnUnchangedViewBuildsNoLayouts)
+{
+    DWriteContext dw;
+    LogViewer v;
+    v.Arrange(RectDip{0, 0, 400, 100});
+    for (int i = 0; i < 200; ++i)
+        v.AppendLine({{L"[INFO] ", kWhite}, {L"message ", kYellow}, {L"tail", kRed}});
+    if (!AttachWithDWrite(v, dw)) return;
+
+    v.PrepareVisibleLayoutsForTest();
+    const unsigned afterFirst = v.SpanLayoutsBuilt();
+    const size_t visible = v.CachedLayoutLines();
+    EXPECT_TRUE(visible > size_t(0));
+    EXPECT_TRUE(visible < size_t(20));              // a screenful, not the document
+
+    for (int i = 0; i < 5; ++i) v.PrepareVisibleLayoutsForTest();
+    EXPECT_EQ(v.SpanLayoutsBuilt(), afterFirst);
+    v.DetachFromContext();
+}
+
+TEST(LogViewer, TailFollowAppendBuildsOnlyTheNewLine)
+{
+    // Tail-follow scrolls by one row per append. The rows still on screen keep their
+    // layouts, so the next paint lays out the arriving line and nothing else.
+    DWriteContext dw;
+    LogViewer v;
+    v.Arrange(RectDip{0, 0, 400, 100});
+    for (int i = 0; i < 200; ++i)
+        v.AppendLine({{L"[INFO] ", kWhite}, {L"message ", kYellow}, {L"tail", kRed}});
+    if (!AttachWithDWrite(v, dw)) return;
+    // Prime with one append. Attach measured every row, so the tail offset set
+    // before attach (from estimated heights) is stale, and the first append jumps
+    // to the real bottom — a jump legitimately rebuilds the whole window.
+    v.AppendLine({{L"[INFO] ", kWhite}, {L"message ", kYellow}, {L"tail", kRed}});
+    v.PrepareVisibleLayoutsForTest();
+
+    for (int i = 0; i < 10; ++i) {
+        const unsigned before = v.SpanLayoutsBuilt();
+        v.AppendLine({{L"[INFO] ", kWhite}, {L"message ", kYellow}, {L"tail", kRed}});
+        v.PrepareVisibleLayoutsForTest();
+        // Three spans per line; two lines of slack for the partial row at either edge.
+        EXPECT_TRUE(v.SpanLayoutsBuilt() - before <= 6u);
+    }
+    EXPECT_TRUE(v.CachedLayoutLines() < size_t(20));
+    v.DetachFromContext();
+}
+
+namespace {
+// Line `seq` of the trim test: a label plus a run of 'W' whose length cycles with
+// the sequence number, so every line is a different width from both neighbours.
+// Identical lines (the old version of the test) made a row attached to the wrong
+// line indistinguishable from the right one.
+std::wstring TrimTestLine(int seq) {
+    return L"line " + std::to_wstring(seq) + L" " + std::wstring(size_t(1 + seq % 7) * 3, L'W');
+}
+} // namespace
+
+TEST(LogViewer, TrimRenumbersTheLayoutWindowWithTheLines)
+{
+    // A full ring buffer trims on every append, renumbering every line. The window is
+    // keyed by line index, so it must shift with them: rows for lines still on screen
+    // stay valid instead of being thrown away (or, worse, attached to the wrong line).
+    //
+    // The "wrong line" case is the one that matters and the one a build counter
+    // cannot see: if the window kept its first index while the lines moved, the next
+    // visible range would overlap it completely, nothing would be rebuilt, and row k
+    // would quietly hold old line k+1's layout — drawn text, hit test and selection
+    // highlight all one line off. So each line here has its own width, and every
+    // cached width is checked against the width of that line's real text, measured
+    // by a second viewer that never trims.
+    DWriteContext dw;
+    LogViewer v;
+    v.Arrange(RectDip{0, 0, 400, 100});
+    v.SetMaxLines(100);
+    int seq = 0;
+    for (; seq < 100; ++seq) v.AppendLine({{TrimTestLine(seq), kWhite}});
+    if (!AttachWithDWrite(v, dw)) return;
+
+    // Reference widths: one viewer holding every line the test will ever append,
+    // queried outside any trim (its layout window starts empty, so these come from
+    // freshly built layouts of the exact text).
+    LogViewer ref;
+    ref.Arrange(RectDip{0, 0, 400, 100});
+    constexpr int kTotal = 100 + 1 + 10;
+    for (int i = 0; i < kTotal; ++i) ref.AppendLine({{TrimTestLine(i), kWhite}});
+    AttachWithDWrite(ref, dw);
+
+    // Prime with one append. Attach measured every row, so the tail offset set
+    // before attach (from estimated heights) is stale, and the first append jumps
+    // to the real bottom — a jump legitimately rebuilds the whole window.
+    v.AppendLine({{TrimTestLine(seq++), kWhite}});
+    v.PrepareVisibleLayoutsForTest();
+
+    for (int i = 0; i < 10; ++i) {
+        const unsigned before = v.SpanLayoutsBuilt();
+        v.AppendLine({{TrimTestLine(seq++), kWhite}});
+        v.PrepareVisibleLayoutsForTest();
+        EXPECT_EQ(v.LineCount(), size_t(100));
+        // One span per line; two lines of slack for the partial row at either edge.
+        EXPECT_TRUE(v.SpanLayoutsBuilt() - before <= 2u);
+
+        // Line k of the viewer now holds sequence number (seq - 100 + k). Check the
+        // whole visible tail, where the cached rows are.
+        const size_t first = v.LineCount() - v.CachedLayoutLines();
+        EXPECT_TRUE(v.CachedLayoutLines() > size_t(1));
+        for (size_t k = first; k < v.LineCount(); ++k) {
+            const size_t refLine = static_cast<size_t>(seq - 100) + k;
+            EXPECT_NEAR(v.CachedLineWidthForTest(k), ref.CachedLineWidthForTest(refLine), 0.01f);
+        }
+    }
+    ref.DetachFromContext();
+    v.DetachFromContext();
+}

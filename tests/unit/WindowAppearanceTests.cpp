@@ -1,5 +1,5 @@
-// WindowAppearanceTests.cpp — unit tests for the backdrop decision core (WP-05
-// Stage 4, roadmap §12.2). ResolveBackdrop is a PURE function of the environment,
+// WindowAppearanceTests.cpp — unit tests for the backdrop decision core.
+// ResolveBackdrop is a PURE function of the environment,
 // so the whole degradation ladder is a truth table — no HWND, no DWM, no OS reads
 // (those live in the Win32 half, WindowAppearance::ReadEnvironment/Apply*, which
 // needs a real desktop and is covered by manual testing).

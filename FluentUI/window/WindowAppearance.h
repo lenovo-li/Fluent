@@ -1,4 +1,4 @@
-// WindowAppearance.h — window material / chrome policy (roadmap §12).
+// WindowAppearance.h — window material / chrome policy.
 //
 // The old host hard-coded `DwmSetWindowAttribute(DWMWA_SYSTEMBACKDROP_TYPE,
 // DWMSBT_MAINWINDOW)` and logged on failure — no version gate, no fallback, no
@@ -8,8 +8,8 @@
 //   1. A PURE DECISION CORE (ResolveBackdrop): given the environment (OS build,
 //      DWM composition on/off, transparency enabled, high-contrast, remote
 //      session) and a requested BackdropKind, it decides the *effective* material
-//      and whether to fall back to a solid fill — encoding the §12.2 degradation
-//      ladder. No Win32 calls, fully unit-testable (WindowAppearanceTests).
+//      and whether to fall back to a solid fill — encoding the material
+//      degradation ladder. No Win32 calls, fully unit-testable (WindowAppearanceTests).
 //
 //   2. A WIN32 APPLY HALF (WindowAppearance): reads the real environment
 //      (RtlGetVersion via ntdll for the true build number — GetVersionEx lies
@@ -20,7 +20,7 @@
 // Mica is a WINDOW MATERIAL only (it tints the desktop behind the window); it is
 // never a control fill. When it is unavailable (pre-Windows 11, composition off,
 // RDP, high-contrast) the window falls back to a solid window-background fill so
-// content stays readable — the hard acceptance criterion for WP-05.
+// content stays readable — a hard requirement.
 #pragma once
 
 #include "../fl_common.h"
@@ -75,11 +75,11 @@ struct ResolvedBackdrop {
 // The minimum Windows 11 build that supports DWMWA_SYSTEMBACKDROP_TYPE.
 inline constexpr uint32_t kMinMicaBuild = 22000;
 
-// PURE decision core (roadmap §12.2). No Win32 calls — deterministic in its
+// PURE decision core. No Win32 calls — deterministic in its
 // inputs so the full degradation ladder is a unit-test truth table.
 ResolvedBackdrop ResolveBackdrop(BackdropKind requested, const AppearanceEnv& env);
 
-// --- Window base fill (the other half of the §12.2 ladder) ----------------
+// --- Window base fill (the other half of the degradation ladder) ----------
 //
 // ResolveBackdrop only decides the MATERIAL. Something still has to paint the
 // opaque base when that material is absent, and for a long time nothing did:
@@ -99,7 +99,7 @@ struct BaseFillPlan {
 
 // Decide the window's base fill.
 //   * Solid fallback in effect (no material): fill with `windowBackground` at
-//     `opacity` — opaque by default, which is the WP-05 acceptance criterion.
+//     `opacity` — opaque by default, so content stays readable.
 //   * Material active and opacity == 1: DO NOT fill. The material IS the base and
 //     painting over it would erase the Mica look.
 //   * Material active and opacity < 1: the app deliberately asked for a partly
@@ -110,7 +110,7 @@ BaseFillPlan ResolveBaseFill(const ResolvedBackdrop& resolved,
                              const D2D1_COLOR_F& windowBackground,
                              float opacity);
 
-// DWM corner-rounding preference (roadmap §12.3). Mirror of DWM_WINDOW_CORNER_*.
+// DWM corner-rounding preference. Mirror of DWM_WINDOW_CORNER_*.
 enum class CornerPreference { Default, DoNotRound, Round, RoundSmall };
 
 // DWM exposes corner presets rather than an arbitrary pixel radius. This helper

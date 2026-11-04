@@ -5,7 +5,7 @@
 // mechanism that drives smooth scrolling — so no compositor visual is needed.
 // Space/Enter or a click toggles; a Checked event reports the new state.
 //
-// CheckBox is a ToggleButton (roadmap §WP-06): the checked bool, the click /
+// CheckBox is a ToggleButton: the checked bool, the click /
 // Space / Enter activation, and Toggle() live in the ToggleButton / ButtonBase
 // primitives; the label lives in ContentControl. CheckBox keeps its public
 // IsChecked()/SetChecked()/Checked() names (inherited or thin) and only adds the
@@ -40,14 +40,14 @@ public:
     void Measure(float availW, float availH) override;
 
     // The focus ring is stroked OUTSIDE the box, which sits at the left edge of
-    // bounds_ (WP-07 §S4) — see FocusRingPadDip.
+    // bounds_ — see FocusRingPadDip.
     float VisualOverflowDip() const override;
 
 protected:
     // Raise the public Checked event when the user toggles (ToggleButton hook).
     void OnToggleChanged(bool newState) override { checked_evt_.Raise(*this, newState); }
     // DWrite arrives with the tree context; re-measure once it is available so the
-    // label width is computed (roadmap §6.2 — no manual SetDWrite).
+    // label width is computed (DWrite comes from the attached UIContext — no manual SetDWrite).
     void OnAttachedToTree() override { InvalidateMeasure(); }
 
 private:

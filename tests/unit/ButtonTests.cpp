@@ -1,5 +1,5 @@
 // ButtonTests.cpp — unit tests for Button's UI-thread highlight tint animation
-// (WP-02 Step 4, after removing the per-control DComp overlay surface). Pure
+// (which replaced the per-control DComp overlay surface). Pure
 // logic: the tint opacity eases toward a state-driven target on each tick, and
 // WantsAnimationTick reports motion left. Rendering itself is GPU and verified
 // on-device; here we exercise only the animation state machine.
@@ -54,7 +54,7 @@ TEST(Button, LeaveReturnsTintToZero) {
     EXPECT_FALSE(b.WantsAnimationTick());
 }
 
-// --- P1-16: Flyout integration --------------------------------------------
+// --- Flyout integration -------------------------------------------------
 //
 // The Show path needs a window (ShowBelow calls BeginShowAt, which queries the
 // HWND + DPI), so headless tests cover only the property and the OnActivate

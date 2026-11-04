@@ -309,8 +309,28 @@ buttonPanel->Add(std::move(cancelBtn));
 2. **Flyout 所有权**: `SetFlyout` 接受非拥有指针，确保 flyout 对象在按钮生命周期内存活
 3. **焦点可见性**: 按钮默认显示焦点环，通过 Tab 导航时自动显示
 4. **禁用状态**: 调用 `SetEnabled(false)` 后，按钮变灰且不响应交互（由 UIElement 提供）
+5. **`SetFontSize` 同时影响测量与绘制**: Measure 用 `EffectiveFontSize()`，与 Render 一致。
+   此前 Measure 读主题的 `bodySize`，`SetFontSize(24)` 后按 14 DIP 测宽、按 24 DIP 居中绘制，
+   不裁剪的文字左右各溢出约 17 DIP，超出 3.75 DIP 的 `VisualOverflowDip`，在相邻控件上留下
+   残影。由 `LabelMeasureCache.ButtonMeasureHonoursFontSize` 锁定。
 
 ---
+
+## UI Automation
+
+Button（`RepeatButton`、扩展库的 `BigButton` 继承同一 peer） 的 peer（`automation/ControlPeers.h`）：
+
+| 项 | 值 |
+|---|---|
+| ControlType | Button |
+| 模式 | Invoke |
+| Name 来源 | `Text()`（`SetAutomationName` 优先） |
+| AutomationId | `SetAutomationId` |
+| HelpText | `Tooltip()` |
+
+惰性创建：只有 UIA 客户端（讲述人、Inspect.exe、测试工具）访问到这个控件时才创建 peer，没有客户端时零开销。模式操作（Invoke/Toggle/Select/SetValue）经投递消息执行，执行前重新检查控件仍在树上且已启用，所以处理函数里删除控件自身是安全的。属性变化事件（Name、IsEnabled、ToggleState、Value）在控件失效后合并检查，只有真正变化且有客户端监听时才发送。自定义方式见 inheritance-guide.md 的“UI Automation”一节。
+
+验证：`tests/unit/AutomationPeerTests.cpp`、`AutomationPeerLifetimeTests.cpp`（无头，用记录调用的假 UIA core），10 处变异全部被测试抓到；真实客户端下的表现需在真机用 Inspect.exe 检查。
 
 ## 相关控件
 

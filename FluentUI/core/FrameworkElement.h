@@ -1,4 +1,4 @@
-﻿// FrameworkElement.h — the WPF-style layout-property layer (roadmap §5.3).
+﻿// FrameworkElement.h — the WPF-style layout-property layer.
 //
 // Adds the common layout inputs (Width/Height, Margin, H/V alignment) and turns
 // the abstract Measure/Arrange from UIElement into concrete default leaf behavior
@@ -8,7 +8,7 @@
 // Layer boundary: FrameworkElement owns "how big / where in my slot", not
 // "what's inside me" (that's Control's Padding/Background) and not children
 // (that's Panel). Every property setter routes through SetProperty so a change
-// dirties exactly Measure (see roadmap §7.2).
+// dirties exactly Measure.
 #pragma once
 
 #include "UIElement.h"
@@ -36,7 +36,7 @@ public:
     float Width() const { return width_; }
     float Height() const { return height_; }
 
-    // Min/Max size constraints (roadmap §4 gap A). std::nullopt = "no constraint"
+    // Min/Max size constraints. std::nullopt = "no constraint"
     // (default: min = 0, max = +infinity). A change dirties Measure so the element
     // and its parent re-measure. The clamp runs at the end of Measure (see
     // ClampDesiredSize), so it applies to the base leaf layout; controls that
@@ -151,11 +151,11 @@ public:
     // page is opened" is that a hidden element is neither rendered nor ticked, so the
     // stray ease was spent whenever the page first became visible, and never again.
     //
-    // The rule: a state change is only ANIMATED once the control has actually been
-    // painted at least once. Before that there is no previous frame on screen, so there is
-    // nothing to animate from and the value is snapped. Controls call
-    // MarkAnimationPrimed() from Render() and check AnimationPrimed() in the setter that
-    // moves an AnimatedValue.
+    // The rule: a state change is only ANIMATED once the control has been laid out at
+    // least once. Before that there is no previous frame on screen, so there is nothing
+    // to animate from and the value is snapped. Priming is automatic (Arrange above sets
+    // it and calls SnapAnimationsToSettledState); a control only checks AnimationPrimed()
+    // in the setter that moves an AnimatedValue.
     //
     // Keyed on FIRST ARRANGE, and deliberately not on first Render. An invisible child is
     // skipped by both Measure and Arrange (Panel.cpp checks IsVisible() in each), so a
@@ -179,9 +179,9 @@ protected:
     // Enforces MinWidth/MaxWidth/MinHeight/MaxHeight on desired_. Called by
     // both the base Measure() and the ApplySizeConstraints hook, so it covers
     // direct Measure() calls (root, Image) and the normal MeasureCached path.
-    // Phase 3b: clamps whichever field the current thread owns. Reading the
-    // pre-clamp value from that same field is what makes this idempotent, so the
-    // double application on the normal panel-child path is harmless.
+    // Reads desired_ and writes the clamped value back to the same field, which
+    // is what makes this idempotent, so the double application on the normal
+    // panel-child path is harmless.
     void ClampDesiredSize() {
         const float minW = minWidth_.value_or(0.0f);
         const float maxW = maxWidth_.value_or(std::numeric_limits<float>::infinity());
@@ -258,7 +258,7 @@ protected:
     std::optional<float> minHeight_;
     std::optional<float> maxHeight_;
 
-    // False until the control has painted once; see AnimationPrimed() above.
+    // False until the first Arrange; see AnimationPrimed() above.
     bool animPrimed_ = false;
 };
 

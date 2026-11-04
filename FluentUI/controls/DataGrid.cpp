@@ -96,6 +96,7 @@ void DataGrid::SetRowCount(int count) {
                        [this](int r) { return r >= rowCount_; }),
         selectedRows_.end());
     if (selectionAnchor_ >= rowCount_) selectionAnchor_ = -1;
+    if (activeRow_ >= rowCount_) activeRow_ = -1;
     InvalidateDirty(DirtyFlags::Measure);
 }
 
@@ -145,6 +146,7 @@ void DataGrid::SetSelectionMode(SelectionMode mode) {
         const int keep = selectedRows_.front();
         selectedRows_.clear();
         selectedRows_.push_back(keep);
+        activeRow_ = keep;
         Invalidate();
         RoutedEventArgs args{};
         args.source = this;
@@ -168,6 +170,7 @@ void DataGrid::ClearSelection() {
     if (selectedRows_.empty()) return;
     selectedRows_.clear();
     selectionAnchor_ = -1;
+    activeRow_ = -1;
     Invalidate();
     RoutedEventArgs args{};
     args.source = this;
@@ -183,11 +186,14 @@ void DataGrid::SetSelectedRow(int row) {
     const bool same = (clamped < 0) ? selectedRows_.empty()
                                     : (selectedRows_.size() == 1 &&
                                        selectedRows_.front() == clamped);
+    // Anchor and active row follow even when the set is unchanged: after Ctrl+clicking
+    // row 5 off {3,5}, selecting row 3 again must make 3 the row arrows step from.
+    selectionAnchor_ = clamped;
+    activeRow_ = clamped;
     if (same) return;
 
     selectedRows_.clear();
     if (clamped >= 0) selectedRows_.push_back(clamped);
-    selectionAnchor_ = clamped;
     Invalidate();   // selection is a fill, not a size
     RoutedEventArgs args{};
     args.source = this;
@@ -195,6 +201,13 @@ void DataGrid::SetSelectedRow(int row) {
 }
 
 void DataGrid::SelectSingleRow(int row) { SetSelectedRow(row); }
+
+std::wstring DataGrid::CellText(int row, int col) const {
+    if (!cellProvider_ || row < 0 || row >= rowCount_ || col < 0 ||
+        col >= static_cast<int>(columns_.size()))
+        return {};
+    return cellProvider_(row, col);
+}
 
 void DataGrid::ToggleRowSelection(int row) {
     if (row < 0 || row >= rowCount_) return;
@@ -210,6 +223,7 @@ void DataGrid::ToggleRowSelection(int row) {
     // Ctrl+click re-anchors: a following Shift+click extends from the row just touched,
     // which is what Explorer does.
     selectionAnchor_ = row;
+    activeRow_ = row;
     Invalidate();
     RoutedEventArgs args{};
     args.source = this;
@@ -226,6 +240,14 @@ void DataGrid::RangeSelectTo(int row) {
     }
     const int lo = std::min(selectionAnchor_, row);
     const int hi = std::max(selectionAnchor_, row);
+    // The moving end of the range is where the next Shift+arrow steps from.
+    activeRow_ = row;
+    // Unchanged set (Shift+Down pressed against the last row, a repeated Shift+click
+    // on the same row): no repaint and no SelectionChanged. selectedRows_ is sorted
+    // and unique, so "same size, same ends" means the same contiguous range.
+    if (selectedRows_.size() == static_cast<size_t>(hi - lo + 1) &&
+        selectedRows_.front() == lo && selectedRows_.back() == hi)
+        return;
     selectedRows_.clear();
     selectedRows_.reserve(static_cast<size_t>(hi - lo + 1));
     for (int r = lo; r <= hi; ++r) selectedRows_.push_back(r);
@@ -339,6 +361,23 @@ float DataGrid::ColumnLeft(int col) const {
     return x;
 }
 
+bool DataGrid::VerticalGridLineX(int boundary, float& x) const {
+    if (boundary < 0 || boundary > static_cast<int>(columns_.size())) return false;
+    const RectDip vp = ViewportRect();
+    if (boundary == 0) {
+        x = bounds_.x;
+    } else {
+        const int col = boundary - 1;
+        x = ColumnLeft(col) + columns_[static_cast<size_t>(col)].width;
+        // A scrolling column's edge left of the band's right edge is hidden by the
+        // frozen columns. Strictly left: an edge exactly ON the band edge coincides
+        // with the last frozen column's own line, so drawing it is harmless.
+        if (!columns_[static_cast<size_t>(col)].frozen && x < bounds_.x + FrozenWidth())
+            return false;
+    }
+    return x >= vp.x && x <= vp.right();
+}
+
 RectDip DataGrid::CellRect(int row, int col) const {
     if (col < 0 || col >= static_cast<int>(columns_.size())) return RectDip{};
     const RectDip vp = ViewportRect();
@@ -362,6 +401,48 @@ void DataGrid::SetHorizontalOffset(float dip) {
     Invalidate();
 }
 
+void DataGrid::PerformScrollRowIntoView(int row) {
+    if (row < 0 || row >= rowCount_) return;
+    const RectDip vp = ViewportRect();
+    const float top = row * rowHeight_, view = scroll_.Offset();
+    const bool moves = top < view || top + rowHeight_ > view + vp.h;
+    if (moves && editingRow_ >= 0) CommitEdit();
+    ScrollRowIntoView(row);
+}
+
+RectDip DataGrid::VisibleCellRect(int row, int col) const {
+    if (row < 0 || row >= rowCount_) return {};
+    const RectDip c = CellRect(row, col);
+    if (c.isEmpty()) return {};
+    const RectDip vp = ViewportRect();
+    float x0 = std::max(c.x, vp.x);
+    if (!columns_[static_cast<size_t>(col)].frozen) x0 = std::max(x0, vp.x + FrozenWidth());
+    const float x1 = std::min(c.right(), vp.right());
+    const float y0 = std::max(c.y, vp.y), y1 = std::min(c.bottom(), vp.bottom());
+    if (x1 <= x0 || y1 <= y0) return {};
+    return RectDip{x0, y0, x1 - x0, y1 - y0};
+}
+
+int DataGrid::ColumnIndexAt(float dipX) const {
+    const RectDip vp = ViewportRect();
+    if (dipX < vp.x || dipX >= vp.right()) return -1;
+    const float band = vp.x + FrozenWidth();
+    for (int pass = 0; pass < 2; ++pass) {  // frozen columns, then scrolling ones
+        for (int c = 0; c < static_cast<int>(columns_.size()); ++c) {
+            const bool frozen = columns_[static_cast<size_t>(c)].frozen;
+            if (frozen != (pass == 0)) continue;
+            if (!frozen && dipX < band) continue;  // under the frozen band
+            const float l = ColumnLeft(c);
+            if (dipX >= l && dipX < l + columns_[static_cast<size_t>(c)].width) return c;
+        }
+    }
+    return -1;
+}
+
+float DataGrid::ScrollableViewportWidth() const {
+    return std::max(0.0f, ViewportRect().w - FrozenWidth());
+}
+
 void DataGrid::ScrollRowIntoView(int row) {
     if (row < 0 || row >= rowCount_) return;
     const RectDip vp = ViewportRect();
@@ -378,6 +459,9 @@ void DataGrid::ScrollRowIntoView(int row) {
     else if (rowBottom > viewBottom) scroll_.SetOffset(rowBottom - vp.h);
     Invalidate();
 }
+
+float DataGrid::MaxVerticalOffset() const { return scroll_.MaxOffset(); }
+float DataGrid::MaxHorizontalOffset() const { return scroll_.MaxOffsetX(); }
 
 void DataGrid::ClampScroll() {
     const RectDip vp = ViewportRect();
@@ -486,13 +570,13 @@ void DataGrid::Render(const DrawingContext& dc) {
             // would let a scrolled column's text run through the pinned band.
             auto drawCell = [&](int col) {
                 const Column& column = columns_[static_cast<size_t>(col)];
-                // One scratch buffer for the whole frame. assign() (not operator=) so the
-                // buffer's capacity is REUSED: `cellScratch_ = provider(...)` is a move
-                // assignment that steals the temporary's block and frees the grown
-                // capacity, reallocating on every cell — the exact trap ListBox hit.
+                // Drawn straight from the provider's result. CellProvider returns by
+                // value, so that string is one allocation per visible cell per frame
+                // (beyond the small-string buffer) whatever the grid does with it. Copying
+                // it into a reused scratch buffer, as this used to, avoided nothing and
+                // added a memcpy per cell.
                 const std::wstring text = cellProvider_(r, col);
-                cellScratch_.assign(text);
-                if (cellScratch_.empty()) return;
+                if (text.empty()) return;
 
                 const RectDip cell = CellRect(r, col);
                 DWRITE_TEXT_ALIGNMENT ta =
@@ -503,8 +587,8 @@ void DataGrid::Render(const DrawingContext& dc) {
                     typo.bodySize, DWRITE_FONT_WEIGHT_NORMAL, ta,
                     DWRITE_PARAGRAPH_ALIGNMENT_CENTER, DWRITE_WORD_WRAPPING_NO_WRAP);
                 if (!fmt) return;
-                dc.DrawText(cellScratch_.c_str(),
-                            static_cast<UINT32>(cellScratch_.size()), fmt,
+                dc.DrawText(text.c_str(),
+                            static_cast<UINT32>(text.size()), fmt,
                             D2D1::RectF(cell.x + kCellPadH, cell.y,
                                         cell.right() - kCellPadH, cell.bottom()),
                             textColor, D2D1_DRAW_TEXT_OPTIONS_CLIP);
@@ -540,10 +624,11 @@ void DataGrid::Render(const DrawingContext& dc) {
                 dc.DrawLine(D2D1::Point2F(vp.x, y), D2D1::Point2F(vp.right(), y),
                             c.gridLine, 1.0f);
             }
+            // VerticalGridLineX drops scrolling-column edges that slid under the frozen
+            // band, which the cells' own clip already hides.
             for (int col = 0; col <= static_cast<int>(columns_.size()); ++col) {
-                const float x = (col == 0) ? bounds_.x
-                              : ColumnLeft(col - 1) + columns_[static_cast<size_t>(col - 1)].width;
-                if (x >= vp.x && x <= vp.right())
+                float x = 0.0f;
+                if (VerticalGridLineX(col, x))
                     dc.DrawLine(D2D1::Point2F(x, vp.y), D2D1::Point2F(x, vp.bottom()),
                                 c.gridLine, 1.0f);
             }
@@ -697,7 +782,10 @@ void DataGrid::OnPointerPressed(PointerEventArgs& e) {
     const float dipX = e.position.x, dipY = e.position.y;
 
     // Vertical scrollbar drag: press anywhere in the hover strip, not just the narrow thumb.
+    // Both scrollbar branches commit a live edit first, for the reason SetVerticalOffset
+    // gives: scrolling does not re-Arrange, so the editor would stay put over another row.
     if (scroll_.HitBarRegion(dipX, dipY)) {
+        if (editingRow_ >= 0) CommitEdit();
         if (!scroll_.HitThumb(dipX, dipY)) {
             // Off-thumb press: center the thumb on the pointer before dragging.
             const RectDip thumb = scroll_.ThumbRect();
@@ -717,6 +805,7 @@ void DataGrid::OnPointerPressed(PointerEventArgs& e) {
 
     // Horizontal scrollbar drag.
     if (scroll_.HitHBarRegion(dipX, dipY)) {
+        if (editingRow_ >= 0) CommitEdit();
         if (!scroll_.HitHThumb(dipX, dipY)) {
             const RectDip hTrack = scroll_.HTrackRect();
             const RectDip hThumb = scroll_.HThumbRect();
@@ -882,14 +971,12 @@ void DataGrid::OnPointerMoved(PointerEventArgs& e) {
         return;
     }
 
-    // Divider hover: remembered so Cursor() can answer without recomputing, and so a
-    // change in hover state repaints (the cursor is a window-level effect, but tracking
-    // it here keeps Cursor() O(1)).
-    const int divider = DividerAtPoint(dipX, dipY);
-    if (divider != hoverDivider_) {
-        hoverDivider_ = divider;
-        Invalidate();
-    }
+    // Divider hover: remembered so Cursor() can answer in O(1). NOT an invalidation:
+    // Render draws nothing for a hovered divider — the feedback is the resize cursor,
+    // which the window applies through WM_SETCURSOR — and repainting here redrew the
+    // whole grid (every visible cell's text) twice per divider the pointer crossed,
+    // for no visible change.
+    hoverDivider_ = DividerAtPoint(dipX, dipY);
 
     // Scrollbar hover: wake the bar, expand on hover.
     scroll_.Wake();
@@ -944,7 +1031,16 @@ void DataGrid::OnPointerLeft() {
 
 void DataGrid::OnPointerWheelChanged(PointerEventArgs& e) {
     // Animated, so the wheel feels like the rest of the framework's scrolling; AnimateBy
-    // accumulates against the pending target so spinning builds momentum.
+    // accumulates against the pending target so spinning builds momentum. Commit a live
+    // edit first (see SetVerticalOffset): the wheel used to scroll the rows out from
+    // under an editor that stayed where it was.
+    //
+    // Nothing to scroll (all rows fit): leave the wheel UNHANDLED so it bubbles to an
+    // enclosing ScrollPanel. Marking it handled here swallowed it, and a page holding a
+    // short grid could not be scrolled while the pointer was over the grid. Same guard
+    // as ListBox / TreeView / ComboBox's list.
+    if (scroll_.MaxOffset() <= 0.0f) return;
+    if (editingRow_ >= 0) CommitEdit();
     scroll_.AnimateBy(-static_cast<float>(e.wheelDelta) / 120.0f *
                       kWheelStepRows * rowHeight_);
     e.handled = true;
@@ -993,7 +1089,11 @@ void DataGrid::OnKeyDownRouted(KeyEventArgs& e) {
     if (rowCount_ <= 0) return;
     const RectDip vp = ViewportRect();
     const int pageRows = std::max(1, static_cast<int>(vp.h / rowHeight_) - 1);
-    const int current = SelectedRow();  // first selected row, or -1
+    // Step from the ACTIVE row (the end the last gesture moved), falling back to the
+    // first selected row when there is none — see activeRow_ for why front() alone
+    // stalled a downward Shift range after one row.
+    const int current = (activeRow_ >= 0 && activeRow_ < rowCount_) ? activeRow_
+                                                                     : SelectedRow();
     int target = current;
 
     switch (e.vk) {
@@ -1007,9 +1107,8 @@ void DataGrid::OnKeyDownRouted(KeyEventArgs& e) {
     }
     target = std::clamp(target, 0, rowCount_ - 1);
     if (target != current) {
-        // Shift+arrow extends selection in Multiple mode; plain arrow replaces it. The
-        // extension direction is from the current FIRST selected row, which matches Explorer
-        // and produces predictable results.
+        // Shift+arrow extends selection in Multiple mode; plain arrow replaces it. Both
+        // step from the active row, which matches Explorer.
         const bool shift = (e.modifiers & ModifierKeys::Shift) != ModifierKeys::None;
         if (selectionMode_ == SelectionMode::Multiple && shift && current >= 0) {
             // Re-anchor at the current first, so Shift+Down then Shift+Up shrinks back down

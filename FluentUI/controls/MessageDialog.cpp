@@ -11,8 +11,10 @@ MessageDialog::MessageDialog(std::wstring title, std::wstring message,
     // A tighter title bar than the generic 48 DIP a dialog inherits. A message
     // box's title is two or three words ("Confirm", "Error") while the MESSAGE is
     // what the user has to read, so the taller bar put the visual weight in the
-    // wrong place and stopped reading as a message box at all.
-    SetTitleBarHeight(32.0f);
+    // wrong place and stopped reading as a message box at all. Not as tight as 32,
+    // though: the title is drawn at subtitle size (20 DIP, semibold) centered in the
+    // band, and 32 left it about 6 DIP from the top edge, visibly crowded.
+    SetTitleBarHeight(40.0f);
 
     // MessageDialog 的尺寸完全由框架自适应计算，调用方无需关心。
     // "you do not have to think about the size" is the entire reason to reach

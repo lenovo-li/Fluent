@@ -1,5 +1,5 @@
 // DWriteFormatTests.cpp — component tests for DWriteContext::Format's immutable
-// full-key cache (roadmap §5.3.2). Needs a real DirectWrite factory (no D3D /
+// full-key cache. Needs a real DirectWrite factory (no D3D /
 // HWND), so this is a "component" test rather than a pure unit test.
 //
 // The bug this locks down: Format() used to key only on (size, weight) and hand
@@ -199,7 +199,7 @@ TEST(DWriteFormat, ConcurrentFormatCacheInsertIsUnsynchronized) {
     EXPECT_EQ(nonNull.load(), kThreads);
 }
 
-// Phase 1 verification: with formatCacheMutex_ now guarding cache_, the
+// Fix verification: with formatCacheMutex_ now guarding cache_, the
 // unsynchronized race above is eliminated. This test runs the concurrent insert
 // scenario 100 times in a tight loop — if the mutex is missing or incorrectly
 // placed, TSan or a crash should surface within 100 iterations. A green result

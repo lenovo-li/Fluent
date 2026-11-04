@@ -1,4 +1,4 @@
-// DebugHudTests.cpp — unit tests for the pure HUD formatting (roadmap §18.3).
+// DebugHudTests.cpp — unit tests for the pure HUD formatting.
 // No window/GPU: FormatHudLines/FormatFrameReason/FpsFromMs are pure functions.
 
 #include "../framework/Test.h"

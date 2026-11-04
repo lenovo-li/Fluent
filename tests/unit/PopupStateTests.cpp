@@ -1,9 +1,10 @@
 // PopupStateTests.cpp — pure-logic tests for the popup state machine rules
-// (phase B1). No HWND / DComp: exercises the CanOpen / CanClose / IsOpenState
+// (services/PopupState.h). No HWND / DComp: exercises the CanOpen / CanClose / IsOpenState
 // decision functions that PopupHost delegates its transitions to.
 
 #include "../framework/Test.h"
 #include "../../FluentUI/services/PopupState.h"
+#include "../../FluentUI/services/PopupHost.h"  // PopupRenderCoalescer
 
 using namespace fluent;
 
@@ -51,4 +52,40 @@ TEST(PopupState, HappyPathCycleGuards) {
 
     s = PopupState::Closed;     // settled closed
     EXPECT_TRUE(CanOpen(s));
+}
+
+// --- Popup repaint coalescing ----------------------------------------------------
+//
+// The popup's invalidate callbacks used to Render() synchronously on every call: a
+// mouse move over a ComboBox list repainted the whole popup once per WM_MOUSEMOVE,
+// twice when the hovered row changed. Now only the first request posts a render.
+
+// A burst of invalidations (InputManager after the move, the list on a row change,
+// a scrollbar fade tick) costs one posted render.
+TEST(PopupRenderCoalescer, BurstOfRequestsPostsOnce) {
+    PopupRenderCoalescer c;
+    EXPECT_TRUE(c.Request());   // first: post the message
+    EXPECT_FALSE(c.Request());  // absorbed
+    EXPECT_FALSE(c.Request());  // absorbed
+    EXPECT_TRUE(c.Take());      // the message renders once
+    EXPECT_FALSE(c.Pending());
+}
+
+// After the deferred render ran, the next invalidation posts again: coalescing never
+// swallows a later change.
+TEST(PopupRenderCoalescer, RequestAfterRenderPostsAgain) {
+    PopupRenderCoalescer c;
+    EXPECT_TRUE(c.Request());
+    EXPECT_TRUE(c.Take());
+    EXPECT_TRUE(c.Request());
+}
+
+// A synchronous Render() (Open, resize) overtakes a queued one; the queued message
+// then has nothing left to do and must not paint a second time.
+TEST(PopupRenderCoalescer, SynchronousRenderCoversQueuedRequest) {
+    PopupRenderCoalescer c;
+    EXPECT_TRUE(c.Request());
+    c.Covered();
+    EXPECT_FALSE(c.Take());
+    EXPECT_TRUE(c.Request());  // and the next request posts normally
 }

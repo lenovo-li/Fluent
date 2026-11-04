@@ -1,4 +1,4 @@
-// DebugHud.h — pure formatting for the on-screen performance HUD (roadmap §18.3).
+// DebugHud.h — pure formatting for the on-screen performance HUD.
 //
 // The host owns rendering (DWrite/D2D); this header only turns the already-
 // collected FrameStats + FrameRing percentiles into HUD text lines, so the

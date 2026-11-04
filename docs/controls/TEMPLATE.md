@@ -204,7 +204,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
 - `RelatedControl2` — [关系说明]
 
 > 只在目标 `.md` **确实存在**时才写成 `[名字](名字.md)` 链接，否则用反引号写纯文本。
-> `docs/controls/` 目前只有 26 份控件文档，绝大多数控件还没有文档页，凭印象加链接就是死链。
+> 很多控件还没有文档页（见 `README.md` 里标「文档待写」的条目），凭印象加链接就是死链。
 
 ---
 

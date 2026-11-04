@@ -1,5 +1,5 @@
 // DirtyRegionTests.cpp — unit tests for the pure partial-redraw planner
-// (window/DirtyRegion.h, WP-07 §S4) and the RectDip geometry helpers it uses.
+// (window/DirtyRegion.h) and the RectDip geometry helpers it uses.
 
 #include "../framework/Test.h"
 #include "../../FluentUI/window/DirtyRegion.h"

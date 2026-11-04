@@ -26,51 +26,59 @@ void DrawIcon(const DrawingContext& dc, TreeViewIcon icon, float x, float y,
     default: c = pal.textSecondary; break;
     }
 
+    // Snap all icon coordinates to the pixel grid so geometric shapes render crisp at
+    // any DPI. Without this, fractional coordinates cause D2D to antialias the edges,
+    // making small icons (14×14 DIP) look blurry. The base (x, y) is already snapped
+    // by the caller, but we must also snap every offset point (x+1, x+7, etc.) because
+    // at non-integer DPI (125%, 150%) those offsets yield half-pixels too.
+    const float dpiScale = dc.DpiScale();
+    auto snap = [dpiScale](float dip) { return SnapToPixel(dip, dpiScale); };
+
     if (icon == TreeViewIcon::Folder) {
-        dc.FillRoundedRect(D2D1::RoundedRect(D2D1::RectF(x + 1, y + 5, x + 13, y + 12), 1.5f, 1.5f), c);
-        dc.FillRoundedRect(D2D1::RoundedRect(D2D1::RectF(x + 2, y + 3, x + 8, y + 6), 1.0f, 1.0f), c);
+        dc.FillRoundedRect(D2D1::RoundedRect(D2D1::RectF(snap(x + 1), snap(y + 5), snap(x + 13), snap(y + 12)), 1.5f, 1.5f), c);
+        dc.FillRoundedRect(D2D1::RoundedRect(D2D1::RectF(snap(x + 2), snap(y + 3), snap(x + 8), snap(y + 6)), 1.0f, 1.0f), c);
         return;
     }
     if (icon == TreeViewIcon::Warning) {
-        dc.DrawLine(D2D1::Point2F(x + 7, y + 2), D2D1::Point2F(x + 13, y + 12), c, 1.3f);
-        dc.DrawLine(D2D1::Point2F(x + 13, y + 12), D2D1::Point2F(x + 1, y + 12), c, 1.3f);
-        dc.DrawLine(D2D1::Point2F(x + 1, y + 12), D2D1::Point2F(x + 7, y + 2), c, 1.3f);
-        dc.DrawLine(D2D1::Point2F(x + 7, y + 5), D2D1::Point2F(x + 7, y + 8), c, 1.2f);
-        dc.FillEllipse(D2D1::Ellipse(D2D1::Point2F(x + 7, y + 10.5f), 0.8f, 0.8f), c);
+        dc.DrawLine(D2D1::Point2F(snap(x + 7), snap(y + 2)), D2D1::Point2F(snap(x + 13), snap(y + 12)), c, 1.3f);
+        dc.DrawLine(D2D1::Point2F(snap(x + 13), snap(y + 12)), D2D1::Point2F(snap(x + 1), snap(y + 12)), c, 1.3f);
+        dc.DrawLine(D2D1::Point2F(snap(x + 1), snap(y + 12)), D2D1::Point2F(snap(x + 7), snap(y + 2)), c, 1.3f);
+        dc.DrawLine(D2D1::Point2F(snap(x + 7), snap(y + 5)), D2D1::Point2F(snap(x + 7), snap(y + 8)), c, 1.2f);
+        dc.FillEllipse(D2D1::Ellipse(D2D1::Point2F(snap(x + 7), snap(y + 10.5f)), 0.8f, 0.8f), c);
         return;
     }
     if (icon == TreeViewIcon::Bluetooth) {
-        dc.DrawLine(D2D1::Point2F(x + 7, y + 2), D2D1::Point2F(x + 7, y + 12), c, 1.3f);
-        dc.DrawLine(D2D1::Point2F(x + 7, y + 2), D2D1::Point2F(x + 11, y + 5), c, 1.3f);
-        dc.DrawLine(D2D1::Point2F(x + 11, y + 5), D2D1::Point2F(x + 4, y + 10), c, 1.3f);
-        dc.DrawLine(D2D1::Point2F(x + 7, y + 12), D2D1::Point2F(x + 11, y + 9), c, 1.3f);
-        dc.DrawLine(D2D1::Point2F(x + 11, y + 9), D2D1::Point2F(x + 4, y + 4), c, 1.3f);
+        dc.DrawLine(D2D1::Point2F(snap(x + 7), snap(y + 2)), D2D1::Point2F(snap(x + 7), snap(y + 12)), c, 1.3f);
+        dc.DrawLine(D2D1::Point2F(snap(x + 7), snap(y + 2)), D2D1::Point2F(snap(x + 11), snap(y + 5)), c, 1.3f);
+        dc.DrawLine(D2D1::Point2F(snap(x + 11), snap(y + 5)), D2D1::Point2F(snap(x + 4), snap(y + 10)), c, 1.3f);
+        dc.DrawLine(D2D1::Point2F(snap(x + 7), snap(y + 12)), D2D1::Point2F(snap(x + 11), snap(y + 9)), c, 1.3f);
+        dc.DrawLine(D2D1::Point2F(snap(x + 11), snap(y + 9)), D2D1::Point2F(snap(x + 4), snap(y + 4)), c, 1.3f);
         return;
     }
     if (icon == TreeViewIcon::Disk) {
-        dc.FillRoundedRect(D2D1::RoundedRect(D2D1::RectF(x + 2, y + 3, x + 12, y + 11), 2.0f, 2.0f), c);
-        dc.FillEllipse(D2D1::Ellipse(D2D1::Point2F(x + 7, y + 7), 2.0f, 2.0f), pal.cardFill);
+        dc.FillRoundedRect(D2D1::RoundedRect(D2D1::RectF(snap(x + 2), snap(y + 3), snap(x + 12), snap(y + 11)), 2.0f, 2.0f), c);
+        dc.FillEllipse(D2D1::Ellipse(D2D1::Point2F(snap(x + 7), snap(y + 7)), 2.0f, 2.0f), pal.cardFill);
         return;
     }
 
     if (icon == TreeViewIcon::Computer) {
         // Monitor body
-        dc.DrawRoundedRect(D2D1::RoundedRect(D2D1::RectF(x + 1, y + 2, x + 13, y + 10), 1.5f, 1.5f), c, 1.2f);
+        dc.DrawRoundedRect(D2D1::RoundedRect(D2D1::RectF(snap(x + 1), snap(y + 2), snap(x + 13), snap(y + 10)), 1.5f, 1.5f), c, 1.2f);
         // Stand foot
-        dc.DrawLine(D2D1::Point2F(x + 4, y + 10), D2D1::Point2F(x + 4, y + 12), c, 1.2f);
-        dc.DrawLine(D2D1::Point2F(x + 10, y + 10), D2D1::Point2F(x + 10, y + 12), c, 1.2f);
-        dc.DrawLine(D2D1::Point2F(x + 3, y + 12), D2D1::Point2F(x + 11, y + 12), c, 1.2f);
+        dc.DrawLine(D2D1::Point2F(snap(x + 4), snap(y + 10)), D2D1::Point2F(snap(x + 4), snap(y + 12)), c, 1.2f);
+        dc.DrawLine(D2D1::Point2F(snap(x + 10), snap(y + 10)), D2D1::Point2F(snap(x + 10), snap(y + 12)), c, 1.2f);
+        dc.DrawLine(D2D1::Point2F(snap(x + 3), snap(y + 12)), D2D1::Point2F(snap(x + 11), snap(y + 12)), c, 1.2f);
     } else {
         // Generic device — IC chip: filled body with pin lines on both sides.
-        dc.FillRoundedRect(D2D1::RoundedRect(D2D1::RectF(x + 4, y + 3, x + 10, y + 11), 1.5f, 1.5f), c);
+        dc.FillRoundedRect(D2D1::RoundedRect(D2D1::RectF(snap(x + 4), snap(y + 3), snap(x + 10), snap(y + 11)), 1.5f, 1.5f), c);
         // Left pins
-        dc.DrawLine(D2D1::Point2F(x + 2, y + 5), D2D1::Point2F(x + 4, y + 5), c, 1.2f);
-        dc.DrawLine(D2D1::Point2F(x + 2, y + 7), D2D1::Point2F(x + 4, y + 7), c, 1.2f);
-        dc.DrawLine(D2D1::Point2F(x + 2, y + 9), D2D1::Point2F(x + 4, y + 9), c, 1.2f);
+        dc.DrawLine(D2D1::Point2F(snap(x + 2), snap(y + 5)), D2D1::Point2F(snap(x + 4), snap(y + 5)), c, 1.2f);
+        dc.DrawLine(D2D1::Point2F(snap(x + 2), snap(y + 7)), D2D1::Point2F(snap(x + 4), snap(y + 7)), c, 1.2f);
+        dc.DrawLine(D2D1::Point2F(snap(x + 2), snap(y + 9)), D2D1::Point2F(snap(x + 4), snap(y + 9)), c, 1.2f);
         // Right pins
-        dc.DrawLine(D2D1::Point2F(x + 10, y + 5), D2D1::Point2F(x + 12, y + 5), c, 1.2f);
-        dc.DrawLine(D2D1::Point2F(x + 10, y + 7), D2D1::Point2F(x + 12, y + 7), c, 1.2f);
-        dc.DrawLine(D2D1::Point2F(x + 10, y + 9), D2D1::Point2F(x + 12, y + 9), c, 1.2f);
+        dc.DrawLine(D2D1::Point2F(snap(x + 10), snap(y + 5)), D2D1::Point2F(snap(x + 12), snap(y + 5)), c, 1.2f);
+        dc.DrawLine(D2D1::Point2F(snap(x + 10), snap(y + 7)), D2D1::Point2F(snap(x + 12), snap(y + 7)), c, 1.2f);
+        dc.DrawLine(D2D1::Point2F(snap(x + 10), snap(y + 9)), D2D1::Point2F(snap(x + 12), snap(y + 9)), c, 1.2f);
     }
 }
 
@@ -294,9 +302,37 @@ void TreeView::OnSelectionChanged(int /*oldIndex*/, int newIndex)
 // is the tree-specific consequence of a set change: invalidation and typed event.
 void TreeView::OnSelectionSetChanged()
 {
+    // Nobody listening: skip expanding the ranges into one int per selected row.
+    // The set itself is range-based, so this vector<int> payload is the only
+    // O(selected) step left; a cost-sensitive subscriber can read SelectedRanges().
+    if (!selectionSetChanged_.HasSubscribers()) return;
     // Event::Raise takes Args& (non-const), so the vector must be an lvalue.
     std::vector<int> sel = SelectedIndices();
     selectionSetChanged_.Raise(*this, sel);
+}
+
+void TreeView::AddRangeToSelectionSet(int lo, int hi)
+{
+    // visibleRows_ holds the visible row indices in ascending (pre-order) order, so
+    // the visible rows in [lo, hi] are one contiguous slice of it, found by binary
+    // search. The ends themselves are normally visible (a click or arrow target),
+    // but the anchor may have been collapsed away since; it is then simply not in
+    // the slice, which is the honest answer — it is no longer on screen.
+    auto first = std::lower_bound(visibleRows_.begin(), visibleRows_.end(), lo);
+    auto last = std::upper_bound(first, visibleRows_.end(), hi);
+    // Coalesce the slice into runs of consecutive row indices: a fully expanded
+    // stretch is ONE range however long it is, and each collapsed node in the range
+    // only costs a break between two runs. The runs arrive in ascending order, so
+    // every AddRange is an append and the set never shifts. The scan is still
+    // O(visible rows in the range) — the visible list is materialized anyway — but it
+    // is integer compares in a contiguous array, not one hash-node allocation per row.
+    auto it = first;
+    while (it != last) {
+        const int runLo = *it;
+        int runHi = runLo;
+        for (++it; it != last && *it == runHi + 1; ++it) runHi = *it;
+        selectedSet_.AddRange(runLo, runHi);
+    }
 }
 
 void TreeView::OnBoundsChanged()
@@ -326,8 +362,19 @@ void TreeView::RebuildIndex()
 {
     idToIndex_.clear();
     idToIndex_.reserve(items_.size());
-    for (int i = 0; i < static_cast<int>(items_.size()); ++i)
-        idToIndex_[items_[i].id] = i;
+    for (int i = 0; i < static_cast<int>(items_.size()); ++i) {
+        // Ids are the node identity (parent links, expand/collapse, selection restore all
+        // go through this map), so a duplicate silently re-points every lookup at the
+        // LAST row carrying it: the Gallery once listed a group root twice, and clicking
+        // the first copy toggled the second. Report it; keep last-wins so behaviour is
+        // unchanged for callers that never hit this.
+        auto [it, inserted] = idToIndex_.emplace(items_[i].id, i);
+        if (!inserted) {
+            FL_TRACEF("TreeView", "duplicate node id %d at rows %d and %d; lookups use row %d",
+                      items_[i].id, it->second, i, i);
+            it->second = i;
+        }
+    }
 
     parentIndex_.assign(items_.size(), -1);
     for (int i = 0; i < static_cast<int>(items_.size()); ++i) {
@@ -348,6 +395,8 @@ void TreeView::RebuildVisible()
         }
         if (!isHidden) visibleRows_.push_back(i);
     }
+    visiblePos_.assign(items_.size(), -1);
+    for (int v = 0; v < static_cast<int>(visibleRows_.size()); ++v) visiblePos_[visibleRows_[v]] = v;
 }
 
 int TreeView::RowIndexById(int id) const
@@ -359,15 +408,41 @@ int TreeView::RowIndexById(int id) const
 
 int TreeView::VisibleIndexByRow(int rowIndex) const
 {
-    for (int i = 0; i < static_cast<int>(visibleRows_.size()); ++i)
-        if (visibleRows_[i] == rowIndex) return i;
-    return -1;
+    return rowIndex >= 0 && rowIndex < static_cast<int>(visiblePos_.size()) ? visiblePos_[rowIndex] : -1;
+}
+
+int TreeView::VisibleIndexOfId(int id) const { return VisibleIndexByRow(RowIndexById(id)); }
+
+RectDip TreeView::VisibleRowRect(int v) const
+{
+    if (v < 0 || v >= VisibleRowCount()) return {};
+    const float top = bounds_.y + v * rowHeight_ - CurrentOffset();
+    const float y0 = std::max(top, bounds_.y);
+    const float y1 = std::min(top + rowHeight_, bounds_.bottom());
+    if (y1 <= y0) return {};
+    return {bounds_.x, y0, bounds_.w, y1 - y0};
+}
+
+int TreeView::VisibleRowAt(float dipY) const
+{
+    const int v = static_cast<int>((dipY - bounds_.y + CurrentOffset()) / rowHeight_);
+    return v >= 0 && v < VisibleRowCount() ? v : -1;
+}
+
+void TreeView::ScrollVisibleRowIntoView(int v)
+{
+    if (v < 0 || v >= VisibleRowCount()) return;
+    const float target = EnsureVisibleOffset(v * rowHeight_, rowHeight_, CurrentOffset(), bounds_.h);
+    if (target != scroll_.Offset()) {
+        scroll_.SetOffset(target);
+        Invalidate();
+    }
 }
 
 int TreeView::HitRow(float dipY) const
 {
     // Use the EFFECTIVE offset (the in-flight position, mid-tween) so a click during a
-    // smooth scroll hits the row actually under the cursor (roadmap §11.10).
+    // smooth scroll hits the row actually under the cursor.
     float y = dipY - bounds_.y + CurrentOffset();
     int visibleIndex = static_cast<int>(y / rowHeight_);
     return (visibleIndex >= 0 && visibleIndex < static_cast<int>(visibleRows_.size()))
@@ -491,7 +566,7 @@ void TreeView::OnPointerReleased(PointerEventArgs& e)
     int visibleIndex = VisibleIndexByRow(rowIndex);
     if (visibleIndex >= 0) SetSelectedIndex(visibleIndex);
     
-    // Double-click detection (Phase 2): check if this click is within the double-click
+    // Double-click detection: check if this click is within the double-click
     // window and on the same row as the last click.
     DWORD now = GetTickCount();
     DWORD doubleClickTime = GetDoubleClickTime();  // System setting (usually 500ms)
@@ -797,13 +872,20 @@ void TreeView::DrawRow(const DrawingContext& dc, IDWriteTextFormat* fmt,
         const float iconSize = 16.0f;
         D2D1_RECT_F iconRect = D2D1::RectF(leftX + indent + 16.0f, y + 4.0f,
                                            leftX + indent + 16.0f + iconSize, y + 4.0f + iconSize);
+        // Raw-context draw, so the element opacity is ours to apply: a hard-coded
+        // 1.0 left the icon fully opaque inside a TreeView faded with SetOpacity.
         if (auto* dc2 = dc.Dc()) {
-            dc2->DrawBitmap(row.customIcon, iconRect, 1.0f,
+            dc2->DrawBitmap(row.customIcon, iconRect, dc.Opacity(),
                             D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC,
                             nullptr, nullptr);
         }
     } else {
-        DrawIcon(dc, row.icon, leftX + indent + 16.0f, y + 7.0f, pal);
+        // Snap icon position to the pixel grid so geometric shapes render crisp.
+        // Without this, fractional coordinates cause D2D to antialias the edges,
+        // making small icons (14×14 DIP) look blurry, especially at 100% DPI.
+        const float iconX = SnapToPixel(leftX + indent + 16.0f, dc.DpiScale());
+        const float iconY = SnapToPixel(y + 7.0f, dc.DpiScale());
+        DrawIcon(dc, row.icon, iconX, iconY, pal);
     }
 
     // Row text is the neutral text color, not the icon's accent. Selected rows use

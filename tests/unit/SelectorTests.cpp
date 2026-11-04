@@ -1,5 +1,5 @@
 // SelectorTests.cpp — unit tests for ItemsControl / Selector via ComboBox and
-// TreeView (WP-06 Stage 3).
+// TreeView.
 //
 // Headless: no GPU, no PopupHost open. ComboBox's popup is created only on tree
 // attach, so these exercise the item store + selection triad without a window.

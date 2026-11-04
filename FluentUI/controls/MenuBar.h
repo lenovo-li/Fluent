@@ -43,7 +43,7 @@ public:
     // Measure() takes min(availW, sum-of-title-widths), so a window too narrow for
     // every title leaves the bar shorter than its content. Render must not paint the
     // overflow: the dirty rect is the bar's bounds, so pixels outside it would never
-    // be cleared and the trailing highlight would survive as residue (WP-07 §S4).
+    // be cleared and the trailing highlight would survive as residue.
     // Split out as a pure function so the clamping is unit-testable headless.
     static RectDip VisibleTitleRect(float titleX, float titleW, const RectDip& bar);
 
@@ -51,7 +51,7 @@ public:
 
 protected:
     // Build the flyout from the tree context (window/DWrite) on attach, replacing
-    // the old manual Attach(WindowServices*)/SetDWrite (roadmap §6.2).
+    // the old manual Attach(WindowServices*)/SetDWrite.
     void OnAttachedToTree() override;
     void OnDetachedFromTree() override;
     void OnPointerLeft() override;

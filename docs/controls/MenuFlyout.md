@@ -348,6 +348,16 @@ controlB->SetContextMenuRef(&sharedMenu);
 
 这和 `ComboBox` 保持隐藏的弹出窗口活着是同一个模式。
 
+**子菜单复用退役的窗口。** `OpenSubmenu` 先从 `retired_` 里取一个已完全关闭（Closed 状态）的 `PopupHost`，
+池子空了才新建。以前在几个带子菜单的项之间来回悬停时，每次悬停都在 WM_MOUSEMOVE 里同步新建一个
+`PopupHost`（一个 HWND，第一次打开时再加一个 DComp 目标和表面），旧的堆在 `retired_` 里直到下次 `OpenRoot`。
+现在窗口数以出现过的最深层级为上限，悬停只是把已有窗口换个内容和位置。正在 Closing 的窗口不会被取用
+（它还在自己的 `Close()` 里）。
+
+未验证：需真机（`PopupHost` 在 headless 测试里不创建窗口）。在 demo 的 MenuFlyout 页打开有多个子菜单的菜单，
+在父项之间快速来回悬停，用任务管理器的「GDI 对象 / 用户对象」列或 Spy++ 看窗口数不再随悬停次数增长，
+子菜单出现时不卡顿。
+
 ### 借用 vs 持有
 
 - **持有**（`SetItems`）：向量移入 `items_`，flyout 负责生命期
@@ -390,7 +400,30 @@ MenuBar 用借用来复用同一份菜单（每次打开都是同一个向量）
 
 - **菜单项数量**：无虚拟化，所有项一次绘制。适合 5–50 项，不适合数百项（用 ListBox）
 - **子菜单层级**：理论无限制，实际 2–3 层（更深会让用户迷失）
-- **子菜单打开**：悬停即开，无延迟。划过一排父项会依次开关每个子菜单
+- **子菜单打开**：悬停即开，无延迟。划过一排父项会依次开关每个子菜单；窗口复用，不随悬停新建
+- **重绘合并**：所有弹出层的失效请求合并成一次投递的重绘（`PopupRenderCoalescer`，见 [ComboBox.md](ComboBox.md)），
+  鼠标在菜单上移动不再每个 WM_MOUSEMOVE 同步重绘一次
+
+## UI Automation
+
+每一级菜单是它自己的 popup 窗口，作为独立的 UIA 窗口暴露（`PopupHost::EnableAutomation`，只有 MenuFlyout 开启；ComboBox 的下拉列表不开启，它的项属于 ComboBox 的 peer）。
+
+| 项 | 值 |
+|---|---|
+| 菜单级 | Menu（popup 窗口的子节点） |
+| 项 | MenuItem，Name = `text`，HelpText = `accelerator`（peer 层还没有 AcceleratorKey 属性）；分隔线为 Separator；禁用项 IsEnabled = false |
+| 叶子项 | Invoke，走点击的路径：菜单先关闭，再触发 `MenuItem::Invoked` |
+| 有子菜单的项 | ExpandCollapse：Expand 打开子菜单（与点击相同），Collapse 关闭它 |
+| 键盘当前项 | 悬停/方向键选中的行；变化时发 AutomationFocusChanged（键盘焦点本身留在所属窗口，popup 是 WS_EX_NOACTIVATE）；该项的 HasKeyboardFocus 在所属窗口有焦点时为 true |
+| 打开/关闭 | 有客户端监听时发 MenuOpened / MenuClosed |
+
+没有客户端时：每个 popup 多一个空的 AutomationHost 对象，不创建 provider、peer，不投递消息。
+
+菜单关闭（或在同一级重新打开了新的列表）后，旧一级的菜单项节点在被回收前仍可能被客户端持有：它们报告 IsEnabled = false，Invoke/Expand 不执行，不会误触发新菜单里同位置的项。
+
+生命周期约定：popup 的内容必须先于 PopupHost 解除挂接或销毁（内容的 peer 要通过 popup 的 host 排队断开）。`MenuFlyout::Level` 先声明 popup 再声明列表，所以列表先销毁。
+
+验证：真实 UIA 客户端自测 `FluentUITests.exe --uia-smoke` 打开菜单，在 popup 窗口里找到 Menu 和 MenuItem “Copy”，Invoke 后应用的 `Invoked` 恰好触发一次、菜单关闭，元素级订阅收到 Invoked 事件。已知问题：MenuOpened 已发出（`UiaRaiseAutomationEvent` 返回 S_OK），但在本进程和另一个进程（PowerShell 的 UIA 客户端）里，订阅整个桌面的监听者都没有收到；元素级订阅能收到同一个 popup 发出的事件。讲述人是否播报“菜单”需要在真机上确认。
 
 ## 限制与未来
 

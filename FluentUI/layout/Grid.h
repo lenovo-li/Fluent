@@ -31,7 +31,7 @@ public:
     void SetColumnSpacing(float dip) { colSpacing_ = dip; }
     void SetRowSpacing(float dip) { rowSpacing_ = dip; }
 
-    // --- Runtime track access (GridSplitter, roadmap §5) ----------------------
+    // --- Runtime track access (GridSplitter) ----------------------
     //
     // A GridSplitter has to read the CURRENT track definitions and write new ones
     // as the user drags, which the Add*/Set* API above cannot express (it only
@@ -75,6 +75,12 @@ public:
 protected:
     SizeDip MeasureOverride(float availW, float availH) override;
     void ArrangeOverride(const RectDip& content) override;
+    // cells_ is keyed by the child's address. Without this erase a removed child's
+    // entry outlived it: the map only grew under Clear()+rebuild refreshes, and a new
+    // child allocated at the recycled address inherited the old row/column instead
+    // of the (0,0) default — placed in the wrong cell, and GridSplitter's
+    // TrackIndex read the wrong column through ColumnOf.
+    void OnChildRemoved(FrameworkElement* child) override { cells_.erase(child); }
 
 private:
     struct Cell {
@@ -85,9 +91,16 @@ private:
 
     // Resolve final track sizes along one axis given the available extent.
     // `tracks` are the definitions; `spacing` sits between adjacent tracks;
-    // `autoSizes` supplies each track's measured content size (0 for non-Auto).
+    // `contentSizes` supplies each Auto and Star track's measured content size
+    // (single-span children only; ignored for Pixel tracks).
+    //
+    // Star tracks share the leftover by weight when `avail` is finite. When it is
+    // infinite (measured inside a ScrollPanel / StackPanel along its scroll axis)
+    // there is no leftover to share, so a Star track takes its content size, the
+    // same as Auto (WPF behaves the same). Arrange gets a finite extent again,
+    // so Star still fills any extra space there.
     static std::vector<float> ResolveTracks(const std::vector<GridLength>& tracks,
-                                            const std::vector<float>& autoSizes,
+                                            const std::vector<float>& contentSizes,
                                             float spacing, float avail);
     // Cumulative start offset of each track (offsets[i] = start of track i).
     static std::vector<float> TrackOffsets(const std::vector<float>& sizes,

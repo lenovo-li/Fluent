@@ -1,11 +1,11 @@
 // DrawingContext.h — the thin Windows-specific drawing layer handed to
-// Element::Render (roadmap §13.2). It is deliberately NOT a cross-platform
+// Element::Render. It is deliberately NOT a cross-platform
 // virtual renderer: it wraps the frame's Direct2D device context plus the one
 // reusable solid-color brush the host creates per frame, and exposes typed,
 // color-taking draw calls so a control never touches the raw brush or repeats
 // the SetColor + draw dance.
 //
-// WP-07 additions:
+// Per-frame diagnostics and partial-redraw support:
 //   * `drawOps` counter: optional pointer incremented on each draw call,
 //     filling FrameStats.drawOps to track GPU work per frame.
 //   * `clipHint`: optional dirty-region rect in DIPs. Panel::Render skips
@@ -93,7 +93,7 @@ public:
     // The host builds one per frame from the frame device context, the single
     // shared solid brush it created on that context, and the DPI scale.
     // `drawOps` (optional): pointer to a counter incremented on each draw call,
-    //   filling FrameStats.drawOps (WP-07 §S1).
+    //   filling FrameStats.drawOps.
     // `clipHint` (optional): the dirty region in DIPs; Panel::Render skips
     //   children outside it. For a full frame omit / pass nullptr (default =
     //   effectively unbounded so every element is visited).
@@ -112,9 +112,13 @@ public:
 
     // --- Opacity ----------------------------------------------------------
     // The alpha multiplier applied to every color this context draws. This is the
-    // single choke point for element opacity: no control touches the raw brush
-    // (it is private and Dc() has no callers), so multiplying here covers every
-    // control uniformly — existing and future — with no per-control changes.
+    // choke point for element opacity: the shared brush is private, so every typed
+    // draw method below applies it, and a control that only uses those methods is
+    // covered with no per-control code. The exception is Dc(), the raw device
+    // context: anything drawn through it (a bitmap, a brush the control creates
+    // itself) must apply Opacity() / Faded() by hand. Image, TreeView's custom
+    // icons and RichTextBox's run colours do; the other Dc() callers only
+    // null-check it or push a transform/clip, which carries no colour.
     //
     // Composition: a parent renders a child through a context obtained from
     // WithOpacity(child->Opacity()), so nested opacities multiply the way they do
@@ -127,8 +131,7 @@ public:
     // which barely overlap) the result is visually identical at a fraction of the
     // cost — no D2D layer, no extra surface, no fill-rate hit. Where exact
     // subtree-composite semantics matter, put the element on its own composition
-    // visual and use ICompositionVisual::SetOpacity (which is what the composited
-    // TreeView / TextArea do).
+    // visual and use ICompositionVisual::SetOpacity (no control needs that today).
     float Opacity() const { return opacity_; }
 
     // A copy of this context whose opacity is multiplied by `factor`. Cheap (the
@@ -136,6 +139,34 @@ public:
     [[nodiscard]] DrawingContext WithOpacity(float factor) const {
         DrawingContext out = *this;
         out.opacity_ = Clamp01(opacity_ * Clamp01(factor));
+        return out;
+    }
+
+    // A copy whose clip hint is narrowed to its intersection with `r` (window DIPs).
+    // For a container that clips its children to a viewport: without it a panel
+    // nested inside a scroller sees the frame's hint (unbounded on a full frame) and
+    // its own bounds, which span the whole scrolled content, so nothing gets culled
+    // and every row of a 10000-row StackPanel is drawn to be clipped away. The hint
+    // only ever narrows, so a partial-redraw frame keeps its dirty-rect culling.
+    [[nodiscard]] DrawingContext WithClipHint(const RectDip& r) const {
+        DrawingContext out = *this;
+        const float x1 = (clipHint_.x > r.x) ? clipHint_.x : r.x;
+        const float y1 = (clipHint_.y > r.y) ? clipHint_.y : r.y;
+        const float x2 = (clipHint_.right() < r.right()) ? clipHint_.right() : r.right();
+        const float y2 = (clipHint_.bottom() < r.bottom()) ? clipHint_.bottom() : r.bottom();
+        // Disjoint -> a rect far outside everything, so intersects() is false for any
+        // child (a zero-size rect placed at x1/y1 could still touch one).
+        out.clipHint_ = (x2 > x1 && y2 > y1) ? RectDip{x1, y1, x2 - x1, y2 - y1}
+                                              : RectDip{-1e9f, -1e9f, 0.0f, 0.0f};
+        return out;
+    }
+
+    // A copy whose clip hint is REPLACED by `r` — for a container that draws its
+    // content under a transform (Viewbox), where the frame's window-space hint must
+    // be mapped into the content's own space rather than intersected with it.
+    [[nodiscard]] DrawingContext WithMappedClipHint(const RectDip& r) const {
+        DrawingContext out = *this;
+        out.clipHint_ = r;
         return out;
     }
 
@@ -232,15 +263,17 @@ public:
     // --- Accessors --------------------------------------------------------
     float DpiScale() const { return dpiScale_; }
 
-    // The dirty region hint in DIPs (WP-07 §S3). Panel::Render skips children
+    // The dirty region hint in DIPs. Panel::Render skips children
     // whose bounds don't intersect this rect. Defaults to effectively unbounded
     // (all children visited) for a full-frame draw; the host narrows it on a
     // partial-redraw frame to the dirty rect union.
     const RectDip& ClipHint() const { return clipHint_; }
 
-    // Escape hatch for host frame chrome (title-bar buttons, background card)
-    // that legitimately needs the raw context. Controls should not reach for it —
-    // the brush is private, so a control cannot bypass the typed draw methods.
+    // Escape hatch to the raw context, for host frame chrome and for the few
+    // controls that need something the typed methods do not offer (bitmaps,
+    // per-range text brushes, transforms, clips). Prefer the typed methods: a
+    // control that draws colour or a bitmap through this must apply Opacity() /
+    // Faded() itself, because nothing between it and D2D will.
     ID2D1DeviceContext* Dc() const { return dc_; }
 
 private:
@@ -251,8 +284,8 @@ private:
     ID2D1DeviceContext* dc_ = nullptr;       // frame device context (host-owned)
     ID2D1SolidColorBrush* brush_ = nullptr;  // shared brush; set via the methods
     float dpiScale_ = 1.0f;                  // dpi / 96
-    uint32_t* drawOps_ = nullptr;            // WP-07: per-frame draw-call counter
-    RectDip clipHint_;                       // WP-07: dirty region for Panel culling
+    uint32_t* drawOps_ = nullptr;            // per-frame draw-call counter
+    RectDip clipHint_;                       // dirty region for Panel culling
     float opacity_ = 1.0f;                   // alpha multiplier for every color
 };
 

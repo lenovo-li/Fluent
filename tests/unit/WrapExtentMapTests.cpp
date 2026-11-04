@@ -1,4 +1,4 @@
-// WrapExtentMapTests.cpp — the soft-wrap extent model (phase 3).
+// WrapExtentMapTests.cpp — the soft-wrap extent model.
 //
 // This is the structure that makes wrapped virtualization possible, and it is a pure
 // data structure by design: no DWrite, no window, no device. That is deliberate and it

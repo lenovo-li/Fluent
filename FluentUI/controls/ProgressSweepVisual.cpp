@@ -1,5 +1,5 @@
 // ProgressSweepVisual.cpp — see header. Compositor-thread indeterminate sweep,
-// now expressed against ICompositionBackend (Phase 2) instead of raw DComp.
+// now expressed against ICompositionBackend instead of raw DComp.
 
 #include "ProgressSweepVisual.h"
 #include "../diagnostics/PerformanceCounters.h"  // QpcNow / QpcFrequency

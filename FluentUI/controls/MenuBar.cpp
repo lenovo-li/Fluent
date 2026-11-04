@@ -25,7 +25,7 @@ void MenuBar::OnAttachedToTree() {
     flyout_ = std::make_unique<MenuFlyout>();
     // The flyout is not a visual-tree child (the bar owns it directly), so it
     // does not get a context automatically — hand it the bar's tree context so
-    // its list views read DWrite / the window through Context() (roadmap §6.2).
+    // its list views read DWrite / the window through Context().
     flyout_->SetContext(Context());
 
     // Keep the open menu alive when a click lands on one of our titles: the bar's
@@ -68,7 +68,12 @@ void MenuBar::AddMenu(std::wstring title, std::vector<MenuItem> items) {
     it.items = std::move(items);
     it.width = MeasureText(it.title) + kItemPadX * 2.0f;
     items_.push_back(std::move(it));
-    Invalidate();
+    // Measure, not Render: the desired width is the sum of the title widths, so a
+    // menu added after the bar is laid out (an auto-width slot, a runtime "Help"
+    // menu) must grow the bar. A Render-only invalidation left bounds_ at the old
+    // width, and the new title fell outside it — clamped away by VisibleTitleRect,
+    // neither drawn nor clickable until something else re-measured.
+    InvalidateMeasure();
 }
 
 float MenuBar::MeasureText(const std::wstring& s) const {

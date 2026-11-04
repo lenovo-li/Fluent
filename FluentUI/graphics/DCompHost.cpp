@@ -32,8 +32,12 @@ HRESULT DCompHost::Initialize(D2DContext* d2d, HWND hwnd, UINT pixelW,
         kTag, DCompositionCreateDevice2(
                   d2d_->D2DDevice(), IID_PPV_ARGS(desktop.ReleaseAndGetAddressOf())));
     FL_RETURN_IF_FAILED(kTag, desktop.As(&device_));
+    // topmost = FALSE. A window has one target per topmost value; the topmost slot
+    // is the F12 HUD's (window/HudOverlay.h), which draws above the content from its
+    // own thread. The flag only orders a target relative to child HWNDs, and
+    // FluentUI creates none, so the content looks the same in either slot.
     FL_RETURN_IF_FAILED(
-        kTag, desktop->CreateTargetForHwnd(hwnd, TRUE,
+        kTag, desktop->CreateTargetForHwnd(hwnd, FALSE,
                                            target_.ReleaseAndGetAddressOf()));
     FL_RETURN_IF_FAILED(
         kTag, device_->CreateVisual(rootVisual_.ReleaseAndGetAddressOf()));

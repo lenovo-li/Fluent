@@ -54,10 +54,15 @@ std::vector<MenuItem> TextEditBase::BuildEditMenuItems() {
     MenuItem cut;
     cut.text = L"剪切";
     cut.accelerator = L"Ctrl+X";
-    cut.enabled = hasSel && !readOnly_;
+    cut.enabled = hasSel && !readOnly_ && AllowCopyToClipboard();
     cut.AddInvokeHandler([this] {
         if (CopySelection(ClipboardOwner())) {
-            DeleteSelection();
+            // The RECORDED delete, same as Ctrl+X. The bare DeleteSelection() erases
+            // text_ without telling the undo stack, so the stack would still describe
+            // the buffer from before the cut: a following Ctrl+Z replays the previous
+            // entry against shifted offsets (ApplyUndoResult clamps them) and deletes
+            // the wrong characters, while the cut text itself can never come back.
+            DeleteSelectionRecorded();
             OnTextLayoutDirty();
             Changed();
         }
@@ -67,7 +72,7 @@ std::vector<MenuItem> TextEditBase::BuildEditMenuItems() {
     MenuItem copy;
     copy.text = L"复制";
     copy.accelerator = L"Ctrl+C";
-    copy.enabled = hasSel;
+    copy.enabled = hasSel && AllowCopyToClipboard();
     copy.AddInvokeHandler([this] { CopySelection(ClipboardOwner()); });
     items.push_back(std::move(copy));
 
@@ -233,7 +238,7 @@ void TextEditBase::InsertText(const std::wstring& raw) {
     std::wstring s = SanitizeInput(raw);
     if (s.empty()) return;
 
-    // --- P1-2: CharacterCasing + InputFilter (applied before MaxLength) -------
+    // --- Input policy: CharacterCasing + InputFilter (applied before MaxLength) -
     // 1. CharacterCasing: force the case of every inserted character. Applied to
     //    typing, paste, IME commit alike — any route. SetText and undo replay are
     //    excluded deliberately: SetText is programmatic (caller already controls it),
@@ -323,6 +328,21 @@ void TextEditBase::InsertText(const std::wstring& raw) {
             undo_.RecordInsert(at, s, caretBefore, caret_);
     }
 
+    OnTextLayoutDirty();
+    Changed();
+}
+
+void TextEditBase::ReplaceAllAsUserEdit(const std::wstring& text) {
+    if (readOnly_) return;
+    selAnchor_ = 0;
+    caret_ = static_cast<UINT32>(text_.size());
+    if (!text.empty()) {
+        InsertText(text);  // replaces the selection: one Replace undo entry + Changed()
+        return;
+    }
+    // InsertText ignores an empty run, so clearing is the Backspace-over-selection path.
+    if (!HasSelection()) return;
+    DeleteSelectionRecorded();
     OnTextLayoutDirty();
     Changed();
 }
@@ -472,8 +492,8 @@ void TextEditBase::OnKeyDownRouted(KeyEventArgs& e) {
                 OnSelectionChanged();
                 e.handled = true;
                 return;
-            case 'C': CopySelection(owner); e.handled = true; return;
-            case 'X': if (!readOnly_ && CopySelection(owner)) { DeleteSelectionRecorded(); OnTextLayoutDirty(); Changed(); } e.handled = true; return;
+            case 'C': if (AllowCopyToClipboard()) CopySelection(owner); e.handled = true; return;
+            case 'X': if (!readOnly_ && AllowCopyToClipboard() && CopySelection(owner)) { DeleteSelectionRecorded(); OnTextLayoutDirty(); Changed(); } e.handled = true; return;
             case 'V': Paste(owner); e.handled = true; return;
             case 'Z':
                 if (shift) Redo();  // Ctrl+Shift+Z is also a redo
@@ -539,6 +559,7 @@ void TextEditBase::OnFocusChanged() {
         selecting_ = false;
         composition_.clear();
     }
+    SyncImeAssociation();
     ResetBlink();
     Invalidate();
 }
@@ -547,12 +568,57 @@ void TextEditBase::OnFocusChanged() {
 // IME
 // ---------------------------------------------------------------------------
 
+namespace {
+// Detach (suppress) or restore the window's input context. A null HWND is a headless
+// tree: the caller still records the decision, there is just no window to apply it to.
+void SetWindowImeSuppressed(HWND hwnd, bool suppress) {
+    if (!hwnd) return;
+    if (suppress) {
+        // Cancel an in-flight composition first. Detaching the context mid-composition
+        // leaves some IMEs holding the uncommitted reading, which they then commit into
+        // whatever control gets the context back.
+        if (HIMC himc = ImmGetContext(hwnd)) {
+            ImmNotifyIME(himc, NI_COMPOSITIONSTR, CPS_CANCEL, 0);
+            ImmReleaseContext(hwnd, himc);
+        }
+    }
+    // (nullptr, 0) associates no context, which turns the IME off for this window;
+    // IACE_DEFAULT gives the window its default context back.
+    if (!ImmAssociateContextEx(hwnd, nullptr, suppress ? 0 : IACE_DEFAULT))
+        Trace("TextEdit", suppress ? "ImmAssociateContextEx(off) FAILED"
+                                   : "ImmAssociateContextEx(default) FAILED",
+              HRESULT_FROM_WIN32(GetLastError()));
+}
+} // namespace
+
+void TextEditBase::SyncImeAssociation() {
+    const bool want = IsAttached() && IsFocused() && !AllowImeComposition();
+    if (want == imeSuppressed_) return;
+    imeSuppressed_ = want;
+    if (want) composition_.clear();
+    SetWindowImeSuppressed(Context().hwnd, want);
+}
+
+void TextEditBase::OnDetachedFromTree() {
+    // Context() is still valid here (DetachFromContext clears it after this hook).
+    if (!imeSuppressed_) return;
+    imeSuppressed_ = false;
+    SetWindowImeSuppressed(Context().hwnd, false);
+}
+
 void TextEditBase::OnImeStartComposition(HWND) {
     composition_.clear();
     Invalidate();
 }
 
 void TextEditBase::OnImeComposition(HWND hwnd, LPARAM flags) {
+    // Backstop for AllowImeComposition (see the header): anything an IME still sends
+    // after the context was detached is dropped, result string included, so a
+    // password never receives text that was visible as a composition.
+    if (!AllowImeComposition()) {
+        composition_.clear();
+        return;
+    }
     HIMC himc = ImmGetContext(hwnd);
     if (!himc) return;
 

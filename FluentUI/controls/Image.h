@@ -72,14 +72,14 @@ public:
     // attached, else at attach. Used by an app that decodes from memory/resource.
     void SetSource(IWICBitmapSource* bitmap);
 
-    // P1-18: Fallback source when the primary source fails to load. Exposed
+    // Fallback source when the primary source fails to load. Exposed
     // exactly the same way: a path loaded at attach/measure. Default: empty (no
     // fallback, draw nothing on failure). The placeholder does not itself have a
     // fallback: if the placeholder also fails to load, the control draws nothing.
     void SetFailureSource(std::wstring path);
     const std::wstring& FailureSource() const { return failureSource_; }
 
-    // P1-18: Fired when the primary source fails to load (file not found, decode
+    // Fired when the primary source fails to load (file not found, decode
     // error, device loss recovery failure). Not fired when the FALLBACK fails —
     // only the primary source is the application's signal.
     struct ImageFailedArgs { std::wstring path; };
@@ -121,6 +121,8 @@ public:
     void Render(const DrawingContext& dc) override;
 
 protected:
+    // UI Automation peer (automation/RangeAndContainerPeers.h).
+    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
     void OnAttachedToTree() override;
     void OnDetachedFromTree() override;
     // The device the bitmap lives on is gone; drop it and rebuild on restore.

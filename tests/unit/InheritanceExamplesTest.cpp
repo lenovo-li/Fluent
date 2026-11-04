@@ -1,6 +1,6 @@
 // InheritanceExamplesTest.cpp — the inheritance examples must compile AND behave.
 //
-// examples/InheritanceExamples.h is the code docs/controls/inheritance-guide.md points
+// tests/unit/InheritanceExamples.h is the code docs/controls/inheritance-guide.md points
 // readers at. A doc example nobody compiles rots (see the docs audit: every
 // from-memory example in docs/controls was broken), so this file is what keeps it
 // honest: if a protected hook is renamed or its signature changes, the build breaks
@@ -11,7 +11,7 @@
 // hit-test, the Measure override taking effect, and CoerceValue/IsDragging semantics.
 
 #include "../framework/Test.h"
-#include "../../examples/InheritanceExamples.h"
+#include "InheritanceExamples.h"
 
 using namespace fluent;
 
@@ -104,6 +104,40 @@ TEST(InheritanceExamples, LogSliderSnapsToPowersOfTen) {
     // log10(420) = 2.623, rounds to 3 → 1000
     EXPECT_NEAR(1000.0f, s.Value(), 0.01f);  // SetValue goes through CoerceValue
     EXPECT_FALSE(s.Dragging());
+}
+
+// The example's preview/commit contract: drag steps preview only, and the release of a
+// drag that moved the value commits exactly once. The old example committed from an
+// IsDragging() else-branch in OnValueChanged, which a drag's release never reaches,
+// so a dragged value was never saved; this test fails on that version.
+TEST(InheritanceExamples, LogSliderCommitsADragOnRelease) {
+    LogSliderPeer s;
+    s.SetWidth(300.0f);
+    s.SetHeight(32.0f);
+    s.Measure(300.0f, 32.0f);
+    s.Arrange(RectDip{0, 0, 300, 32});
+    const int commitsBefore = s.CommitCount();
+
+    PointerEventArgs press;
+    press.position = Point{s.Start() + 1.0f, 16.0f};
+    press.button = PointerButton::Left;
+    s.OnPointerPressed(press);
+    PointerEventArgs move;
+    move.position = Point{s.End(), 16.0f};          // drag to the far end: 10000
+    s.OnPointerMoved(move);
+    EXPECT_TRUE(s.PreviewCount() > 0);
+    EXPECT_EQ(s.CommitCount(), commitsBefore);      // mid-drag: preview only
+
+    PointerEventArgs release = move;
+    release.button = PointerButton::Left;
+    s.OnPointerReleased(release);
+    EXPECT_EQ(s.CommitCount(), commitsBefore + 1);
+    EXPECT_NEAR(10000.0f, s.LastCommitted(), 0.01f);
+
+    // A programmatic set commits too.
+    s.SetValue(10.0f);
+    EXPECT_EQ(s.CommitCount(), commitsBefore + 2);
+    EXPECT_NEAR(10.0f, s.LastCommitted(), 0.01f);
 }
 
 // ValueToTrackPos is the inverse of the pointer mapping: min lands on TrackStart,

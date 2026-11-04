@@ -1,4 +1,4 @@
-// RoutedEventTests.cpp — pointer/key routing through the element chain (WP-03).
+// RoutedEventTests.cpp — pointer/key routing through the element chain.
 // Pure logic: deepest hit, bubble target->root, tunnel root->target, handled
 // short-circuit, child click bubbling to a parent. Drives InputManager over a
 // small hand-built tree (no HWND/GPU).
@@ -137,7 +137,7 @@ TEST(RoutedEvent, HandledShortCircuits) {
     EXPECT_FALSE(sawRootPressed);  // handled by mid, never bubbled to root
 }
 
-// A click on a child bubbles up so a parent can act on it (roadmap acceptance:
+// A click on a child bubbles up so a parent can act on it (required behavior:
 // "子内容点击能冒泡到父 Button"). Here the parent marks the bubbling press handled.
 TEST(RoutedEvent, ChildPressBubblesToParent) {
     std::vector<std::string> log;

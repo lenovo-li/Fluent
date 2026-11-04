@@ -1,4 +1,4 @@
-// RoutedEvent.h — argument structs for tunneling/bubbling input (roadmap §9.2).
+// RoutedEvent.h — argument structs for tunneling/bubbling input.
 //
 // A routed event travels the element chain from the hit element up to the root
 // (Bubble) after an optional root->target Preview pass (Tunnel). The args carry

@@ -131,6 +131,22 @@ for (auto* cb : {perms.read, perms.write, perms.exec}) {
 
 ---
 
+## UI Automation
+
+CheckBox 的 peer（`automation/ControlPeers.h`）：
+
+| 项 | 值 |
+|---|---|
+| ControlType | CheckBox |
+| 模式 | Toggle（On/Off） |
+| Name 来源 | `Text()` |
+| AutomationId | `SetAutomationId` |
+| HelpText | `Tooltip()` |
+
+惰性创建：只有 UIA 客户端（讲述人、Inspect.exe、测试工具）访问到这个控件时才创建 peer，没有客户端时零开销。模式操作（Invoke/Toggle/Select/SetValue）经投递消息执行，执行前重新检查控件仍在树上且已启用，所以处理函数里删除控件自身是安全的。属性变化事件（Name、IsEnabled、ToggleState、Value）在控件失效后合并检查，只有真正变化且有客户端监听时才发送。自定义方式见 inheritance-guide.md 的“UI Automation”一节。
+
+验证：`tests/unit/AutomationPeerTests.cpp`、`AutomationPeerLifetimeTests.cpp`（无头，用记录调用的假 UIA core），10 处变异全部被测试抓到；真实客户端下的表现需在真机用 Inspect.exe 检查。
+
 ## 备注
 
 ### 性能特征
@@ -138,6 +154,9 @@ for (auto* cb : {perms.read, perms.write, perms.exec}) {
 - **Render**:一个圆角方框 + 勾的两段线 + 一次 DrawText。勾用几何绘制,不依赖图标字体
   (离屏像素测试也依赖这一点)。
 - **入场动画是 Render 级 O(1)**(`AnimatedValue` + `motion.fadeTau`),不触发重新布局。
+- **Measure 与 Render 用同一个字号**:Measure 走 `EffectiveFontSize(...)`,和 Render 一致。
+  此前 Measure 读主题的 `bodySize`,`SetFontSize(24)` 后按 14 DIP 预留空间、按 24 DIP 绘制,
+  标签被 CLIP 截掉右侧和下部。由 `LabelMeasureCache.CheckBoxMeasureHonoursFontSize` 锁定。
 - **首帧不动画**:`SnapAnimationsToSettledState()` 在第一次 Arrange 时把勾直接放到终态。
   此前 `SetChecked(true)` 建出来的勾选框第一次显示时会「自己勾上」。
 

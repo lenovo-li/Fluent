@@ -3,7 +3,7 @@
 ## 概述
 
 单行文本输入框:插入符、选区、剪贴板、撤销/重做、输入法(IME)组字。多行编辑请用
-`TextArea`,密码输入请用 `PasswordBox`(它是 `TextBox` 的一个薄封装)。
+`TextArea`,密码输入请用 [`PasswordBox`](PasswordBox.md)(密码模式的 `TextBox` 加一个显示按钮)。
 
 **典型使用场景**:
 - 表单字段(姓名、股票代码、搜索关键词)
@@ -53,7 +53,15 @@ Visual
 void SetPassword(bool on);
 ```
 
-遮蔽显示。`PasswordBox` 就是预设了这个的 `TextBox`。
+密码模式:文字画成圆点,复制 / 剪切被拒绝(快捷键和右键菜单都是),获得焦点期间关闭输入法
+(与 WinUI `PasswordBox` 一致)。聚焦时切换也立即生效。需要显示按钮(眼睛)时用
+[`PasswordBox`](PasswordBox.md)。
+
+给子类的 protected 钩子(`PasswordBox` 用的就是这两个):
+
+- `virtual float ReservedRightDip() const` —— 右侧给框内按钮预留的宽度,滚动钳制、插入符
+  可见性和文字裁剪都会扣掉它。值随状态变化时,变化后调一次 `EnsureCaretVisible()`。
+- `SetMaskRevealed(bool)` —— 不离开密码模式地显示明文。剪贴板与输入法仍按密码模式拒绝。
 
 ### 事件
 
@@ -118,6 +126,24 @@ form->AddColumn(GridLength::Auto());           // 按钮按内容收缩
 
 ---
 
+## UI Automation
+
+TextBox / TextArea 的 peer（`automation/ControlPeers.h`）：
+
+| 项 | 值 |
+|---|---|
+| ControlType | Edit |
+| 模式 | Value（`ReadOnly()` 时只读）。`SetValue` 走 `ReplaceAllAsUserEdit`（等同用户全选后输入）：套用大小写/InputFilter/MaxLength，记一步撤销，并触发 `TextChanged`，所以表单填充工具和测试工具改的值会进入应用的数据模型。TextArea 不发 ValueChanged（长文本属于 TextPattern，免得每次按键复制整篇文本）；单行超过 4096 字符时也不比较 |
+| Name 来源 | `SetAutomationName`（没有自带标题） |
+| AutomationId | `SetAutomationId` |
+| HelpText | `Tooltip()` |
+
+惰性创建：只有 UIA 客户端（讲述人、Inspect.exe、测试工具）访问到这个控件时才创建 peer，没有客户端时零开销。模式操作（Invoke/Toggle/Select/SetValue）经投递消息执行，执行前重新检查控件仍在树上且已启用，所以处理函数里删除控件自身是安全的。属性变化事件（Name、IsEnabled、ToggleState、Value）在控件失效后合并检查，只有真正变化且有客户端监听时才发送。自定义方式见 inheritance-guide.md 的“UI Automation”一节。
+
+验证：`tests/unit/AutomationPeerTests.cpp`、`AutomationPeerLifetimeTests.cpp`（无头，用记录调用的假 UIA core），10 处变异全部被测试抓到；真实客户端下的表现需在真机用 Inspect.exe 检查。
+
+TextPattern（`automation/UiaTextPattern.cpp`）：讲述人按字符/单词/行/整篇朗读与移动，`Select` 经投递消息在下一次 flush 时执行，`RangeFromPoint` 用 `TextEditBase::OffsetAtPoint`。客户端持有的范围在文本变短后自动截断。`TextChanged` / `SelectionChanged` 转成 UIA 的 Text_TextChanged / Text_TextSelectionChanged，每次 flush 合并一次，没有客户端监听时不发送。限制：`GetBoundingRectangles` 返回整个控件的矩形，不按行给出；不支持格式属性（字体、颜色），只回答 IsReadOnly。密码模式没有 TextPattern。验证：`tests/unit/AutomationTextPatternTests.cpp`，6 处变异（不截断、密码暴露文本、按行移动不前进、Select 不执行、不发 TextChanged、GetText 忽略 maxLength）全部被测试抓到。
+
 ## 备注
 
 ### 性能特征
@@ -127,6 +153,13 @@ form->AddColumn(GridLength::Auto());           // 按钮按内容收缩
 - **IME 组字期间插入符位置由同一份布局计算**,所以候选窗定位和绘制不会不一致(有测试
   钉住:`CaretRectMatchesDrawnCaretWhileComposing`)。
 - **撤销栈按操作分组**,不是逐字符 —— 连续输入算一次撤销。
+
+### 修过的 bug:右键菜单的「剪切」可撤销
+
+右键菜单的「剪切」以前用的是不进撤销栈的删除,而 Ctrl+X 用的是记录删除。菜单剪切之后,撤销栈描述的
+还是剪切前的缓冲区:Ctrl+Z 按错位的偏移重放上一条记录,删掉错误的文字,被剪切的文字永远回不来。
+现在两者走同一个记录删除(在 `TextEditBase` 里,TextArea 同样受益;密码模式本来就禁用剪切)。
+由 `TextEditUndo.ContextMenuCutIsUndoable` 锁定(它调用右键菜单真正的菜单项处理器)。
 
 ### 使用注意事项
 

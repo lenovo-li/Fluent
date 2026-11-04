@@ -14,9 +14,9 @@
 // Scrolling is compositor-independent (UI thread only), through the embedded
 // ScrollViewer. The viewer supports wheel, drag, and programmatic scroll.
 //
-// NOT A TEXT EDITOR. No selection, no caret, no editing. For an editable
-// multi-line control with full text-editing features, use TextArea. For rich
-// formatting with editing, use RichTextBox (planned).
+// NOT A TEXT EDITOR. Read-only: no caret and no editing, though text can be
+// selected (drag, Shift+keys, Ctrl+A) and copied. For an editable multi-line
+// control, use TextArea; for rich formatting with editing, use RichTextBox.
 //
 // DESIGN RATIONALE:
 //   - Dynamic row height: log lines with large font sizes naturally expand the
@@ -25,9 +25,14 @@
 //   - Per-span TextLayout: each TextSpan gets its own IDWriteTextLayout,
 //     simplifying style isolation. A more memory-efficient approach (single
 //     layout + SetFontSize ranges) is possible but deferred until proven needed.
-//   - Append-optimized: AppendLine() is O(1) amortized; Y-positions are
-//     incrementally extended, and layout cache survives appends (only the
-//     changed last line is invalidated).
+//     The layouts are cached for the visible lines only (a sliding window keyed
+//     by line index), so a repaint of an unchanged view — a scrollbar fade, a
+//     selection drag — builds none, and a one-line tail-follow scroll builds the
+//     spans of the one line that came into view.
+//   - Append-optimized: AppendLine() is O(1) amortized, including once the ring
+//     buffer is full. Lines live in a deque and Y-positions are stored relative
+//     to a moving origin, so a trim pops the front and moves the origin instead
+//     of shifting and rewriting every surviving entry.
 //
 // USAGE:
 //   auto log = std::make_unique<LogViewer>();
@@ -42,6 +47,7 @@
 
 #include "../core/Control.h"
 #include "../layout/ScrollViewer.h"
+#include <deque>
 #include <vector>
 #include <string>
 
@@ -107,12 +113,29 @@ public:
     void Clear();
 
     // Set ring-buffer mode: when line count exceeds maxLines, the oldest lines
-    // are trimmed. 0 (default) = unlimited. Trimming invalidates the layout
-    // cache (lines are renumbered) and recomputes Y-positions from scratch.
+    // are trimmed. 0 (default) = unlimited. A trim costs O(lines removed): the
+    // front of the buffer is popped and the Y origin moves past it, and cached
+    // layouts for surviving lines are kept (renumbered with the lines).
     void SetMaxLines(int maxLines);
     int MaxLines() const { return maxLines_; }
 
     size_t LineCount() const { return lines_.size(); }
+    // --- For UI Automation: lines as items, keyed by a serial that survives the
+    // front trim (line i's serial is FirstLineSerial() + i; it never repeats).
+    uint64_t FirstLineSerial() const { return firstLineSerial_; }
+    // The line's text (its spans concatenated), or empty.
+    std::wstring LineText(size_t index) const {
+        return index < lines_.size() ? lines_[index].PlainText() : std::wstring();
+    }
+    // Line rect in control space, clipped to the viewport; empty when scrolled out.
+    RectDip LineRect(size_t index) const;
+    // The line under a control-space y, or SIZE_MAX.
+    size_t LineIndexAt(float dipY) const;
+    // Minimal scroll that shows the line (turns tail-following off when it scrolls up).
+    void ScrollLineIntoView(size_t index);
+    float VerticalOffset() const;
+    float MaxVerticalOffset() const;
+    void SetVerticalOffset(float dip);
 
     // Total document height in DIPs: the last line's top plus its height. Before a
     // line has been painted its height is the estimate (largest font size in the
@@ -130,6 +153,32 @@ public:
     // from its own spans — the rows' relative heights are what decide overlap.
     float LineHeightDip(size_t index) const {
         return index < lines_.size() ? lines_[index].height : 0.0f;
+    }
+    // Content-space Y (DIPs) of a line's top edge; 0 when out of range. The sum of
+    // the heights above it, which is what a trim must keep true for the survivors.
+    float LineTopDip(size_t index) const {
+        return index < lines_.size() ? LineTop(index) : 0.0f;
+    }
+
+    // --- Layout cache diagnostics ----------------------------------------
+    // Span layouts built since construction (draw, hit test and attach-time
+    // measurement all count), and how many lines currently hold cached layouts.
+    // Public for the same reason as TextArea::LineIndexRebuildCount: the cost being
+    // guarded is invisible in the output, so the counter is the observable.
+    unsigned SpanLayoutsBuilt() const { return spanLayoutsBuilt_; }
+    size_t CachedLayoutLines() const { return layoutRows_.size(); }
+    // Bring the layout cache in line with what a paint at the CURRENT scroll offset
+    // would draw — the same call Render makes before its loop, exposed because
+    // Render itself needs a device context and cannot run headless.
+    void PrepareVisibleLayoutsForTest();
+    // Width (DIPs) of line `index` as the selection highlight and hit test see it:
+    // ColumnToX at the end of the line, which reads the CACHED layout when the line
+    // is in the layout window. A row attached to the wrong line shows up here as
+    // the neighbour's width — the only headless-visible symptom, since the glyphs
+    // themselves need a device to draw. 0 when out of range.
+    float CachedLineWidthForTest(size_t index) const {
+        if (index >= lines_.size()) return 0.0f;
+        return ColumnToX(index, lines_[index].PlainText().size()) - (bounds_.x + kPadding);
     }
 
     // --- Scrolling --------------------------------------------------------
@@ -197,11 +246,14 @@ public:
 protected:
     void OnAttachedToTree() override;
     void OnDetachedFromTree() override;
+    // UI Automation peer (automation/DataPeers.h).
+    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
 
 private:
+    uint64_t firstLineSerial_ = 0;  // see FirstLineSerial
     // Render a single line at the given Y coordinate (relative to content top).
     // On first render, measures and caches the line height.
-    void RenderLine(const DrawingContext& dc, LogLine& line, float y);
+    void RenderLine(const DrawingContext& dc, size_t lineIndex, float y);
 
     // Rebuild Y-position table starting from `fromIndex`. Called when a line's
     // measured height differs from its prediction, or when lines are trimmed.
@@ -210,19 +262,36 @@ private:
     // Compute the total content height (last line Y + last line height).
     float GetContentExtent() const;
 
-    // Find the range of visible lines via binary search on lineYPositions_.
+    // Find the range of visible lines via binary search on lineY_.
     struct VisibleRange { int first; int last; };
     VisibleRange CalculateVisibleRange(float scrollTop, float viewportHeight) const;
+    // Move the layout window onto `range` and build the span layouts of every line
+    // in it that has none yet. Render calls this before drawing, so the draw loop
+    // itself only reads the cache.
+    void PrepareVisibleLayouts(const VisibleRange& range) const;
 
-    // Trim the oldest lines to enforce maxLines_ cap. Clears layout cache and
-    // rebuilds Y-positions (lines are renumbered).
+    // Trim the oldest lines to enforce maxLines_ cap. O(lines removed): pops the
+    // front, moves yOrigin_, and shifts the layout window's first index with the
+    // renumbering.
     void TrimToMaxLines();
 
     // Predict row height before measurement: max(span fontSize) × lineSpacing.
     float PredictLineHeight(const LogLine& line) const;
 
-    std::vector<LogLine> lines_;
-    std::vector<float> lineYPositions_;  // Y coordinate of each line's top edge
+    // A deque, not a vector: the ring-buffer trim pops from the front, which is
+    // O(1) here and was an O(maxLines) shift of every surviving line per append on
+    // a full buffer. Indexing and the binary searches over lineY_ work the same.
+    std::deque<LogLine> lines_;
+    // Top edge of each line in an ABSOLUTE coordinate that never moves; a line's
+    // content-space Y is lineY_[i] - yOrigin_. A trim pops the front and sets
+    // yOrigin_ to the new first line's top, so no surviving entry is rewritten.
+    // Double because the absolute value only grows: a float loses whole-DIP
+    // precision past ~16.7M DIP, which a 10k-lines/s log reaches in minutes.
+    std::deque<double> lineY_;
+    double yOrigin_ = 0.0;
+    float LineTop(size_t i) const { return static_cast<float>(lineY_[i] - yOrigin_); }
+    // Index of the last line whose top is at or above content-space `y` (0 if none).
+    size_t LineAtContentY(float y) const;
     ScrollViewer scroll_;
 
     int maxLines_ = 0;                   // 0 = unlimited
@@ -284,7 +353,7 @@ private:
 
     // X offset (window DIPs) of `column` within a line, and the line's total width.
     // Used both by the hit test and by the highlight rect.
-    float ColumnToX(const LogLine& line, size_t column) const;
+    float ColumnToX(size_t lineIndex, size_t column) const;
 
     // Paint the selection highlight for one line. Called before the glyphs so the
     // text sits on top of the fill.
@@ -297,6 +366,32 @@ private:
     // the draw path and the hit test so both agree on metrics — if they disagreed,
     // a click would select text other than the one under the pointer.
     ComPtr<IDWriteTextLayout> MakeSpanLayout(const TextSpan& span) const;
+
+    // --- Span layout cache (visible lines only) ----------------------------
+    // One row per line in [layoutFirst_, layoutFirst_ + layoutRows_.size()), each
+    // holding that line's span layouts (null for an empty span) once built. The
+    // window follows the drawn range: SyncLayoutWindow drops rows that scrolled
+    // out and opens empty rows for lines that scrolled in, so memory stays at one
+    // screenful of layouts however long the log is. Layouts carry no colour and no
+    // DPI (both are applied at draw time), so nothing but the line's own spans
+    // invalidates one — and spans never change after AppendLine.
+    struct LayoutRow {
+        bool built = false;
+        std::vector<ComPtr<IDWriteTextLayout>> spans;
+    };
+    mutable std::deque<LayoutRow> layoutRows_;
+    mutable size_t layoutFirst_ = 0;
+    mutable unsigned spanLayoutsBuilt_ = 0;
+    // Move the window to [first, last] (inclusive). Rows for lines still inside it
+    // are kept.
+    void SyncLayoutWindow(size_t first, size_t last) const;
+    // The layout for span `spanIndex` of line `lineIndex`: the cached one when the
+    // line is in the window (building the row on first use), otherwise built into
+    // `scratch`. Null for an empty span or without DWrite.
+    IDWriteTextLayout* SpanLayout(size_t lineIndex, size_t spanIndex,
+                                  ComPtr<IDWriteTextLayout>& scratch) const;
+    // Drop every cached layout (Clear, detach).
+    void ResetLayoutCache() const { layoutRows_.clear(); layoutFirst_ = 0; }
 };
 
 } // namespace fluent

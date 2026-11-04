@@ -131,6 +131,21 @@ form->AddColumn(GridLength::Star(1.0f));       // 输入框
 
 ---
 
+## UI Automation
+
+NumericUpDown 的 peer：
+
+| 项 | 值 |
+|---|---|
+| ControlType | Spinner |
+| 模式 | RangeValue，SmallChange = `Step()` |
+| AutomationId | `SetAutomationId` |
+| HelpText | `Tooltip()` |
+
+惰性创建：只有 UIA 客户端访问到这个控件时才创建 peer，没有客户端时零开销。模式操作经投递消息执行，执行前重新检查控件仍在树上且已启用。属性变化只在真正变化且有客户端监听时发送。自定义方式见 inheritance-guide.md 的“UI Automation”一节。
+
+验证：无头测试 `tests/unit/AutomationControlPeerTests.cpp` / `AutomationSelectorPeerTests.cpp`，真实 UIA 客户端自测 `FluentUITests.exe --uia-smoke`；14 处变异（如把 UIA 操作换回不发事件的 setter、去掉项缓存上限）全部被测试抓到。
+
 ## 备注
 
 ### 性能特征

@@ -417,7 +417,7 @@ TEST(TabControl, DeselectedContentNotDirtyCollected) {
     EXPECT_TRUE(!dirty.empty());
 }
 
-// --- P1-11: Close button tests -------------------------------------------
+// --- Close button tests -------------------------------------------
 
 TEST(TabControl, CloseButtonDefaultDisabled) {
     TabControl tc;
@@ -626,5 +626,26 @@ TEST(TabControl, ContentFadeEnabledRequestsTickAfterSwitch) {
         tc.OnAnimationTick(0.016f);
         ++ticks;
     }
+    EXPECT_FALSE(tc.WantsAnimationTick());
+}
+
+// With the fade off, a switch has nothing to animate at all. The indicator is drawn
+// at HeaderRect(selected) directly; a slide tween that nothing drew used to request
+// ~20 ticks after every switch, each one a full repaint of the control and its
+// content with no pixel changing. Checked right after the switch, before any tick —
+// the existing test above drains ticks first and so could not see them.
+TEST(TabControl, SwitchWithFadeOffRequestsNoTickAtAll) {
+    MockHost host;
+    TabControl tc;
+    tc.SetContentFadeEnabled(false);
+    for (int i = 0; i < 5; ++i)
+        tc.AddTab(L"Tab" + std::to_wstring(i), std::make_unique<Button>());
+    tc.AttachToContext(MakeCtx(host));
+    tc.Measure(500, 400);
+    tc.Arrange(RectDip{0, 0, 500, 400});
+
+    tc.SetSelectedIndex(4);                 // first tab -> fifth: a long way to "slide"
+    tc.Measure(500, 400);
+    tc.Arrange(RectDip{0, 0, 500, 400});
     EXPECT_FALSE(tc.WantsAnimationTick());
 }

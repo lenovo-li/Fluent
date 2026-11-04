@@ -16,11 +16,8 @@ void Border::Measure(float availW, float availH) {
         float availChildW = std::max(0.0f, availW - inset.horizontal());
         float availChildH = std::max(0.0f, availH - inset.vertical());
         content_->MeasureCached(availChildW, availChildH);
-        // Phase 3b: read the field the child just wrote. On the async path the child
-        // filled asyncDesired_ and left desired_ holding whatever the UI thread last
-        // arranged, so reading Desired() here would compose this border's size from a
-        // stale child measurement — a wrong-but-plausible size, which is the failure
-        // mode this whole design is built to avoid.
+        // Read the size the child just wrote: MeasureCached either re-ran the child's
+        // Measure or kept its still-valid desired_, and both leave Desired() current.
         const SizeDip& childSize =
             content_->Desired();
         childW = childSize.w;
@@ -47,7 +44,7 @@ void Border::Arrange(const RectDip& finalRect) {
 
 void Border::Render(const DrawingContext& dc) {
     // Paint our own chrome (background fill + border stroke) first, then the child
-    // on top (roadmap §11.5 order: Background -> BorderBrush -> content).
+    // on top (order: Background -> BorderBrush -> content).
     const RectDip& b = bounds_;
     if (b.w > 0.0f && b.h > 0.0f) {
         if (hasBg_ && bg_.a > 0.0f) {
@@ -102,7 +99,7 @@ void Border::CollectFocusables(std::vector<UIElement*>& out) {
     if (content_ && content_->IsVisible()) content_->CollectFocusables(out);
 }
 
-void Border::CollectDirtyBounds(std::vector<RectDip>& out) {
+void Border::CollectDirtyBoundsOverride(std::vector<RectDip>& out) {
     if (IsVisible() && Any(Dirty())) out.push_back(VisualBounds());
     if (content_ && content_->IsVisible()) content_->CollectDirtyBounds(out);
 }
@@ -140,18 +137,14 @@ void Border::OnDeviceRestored() {
     if (content_) content_->OnDeviceRestored();
 }
 
-bool Border::AnyDirtyInSubtree(DirtyFlags flags) const {
+bool Border::AnyDirtyInSubtreeOverride(DirtyFlags flags) const {
     if (Has(Dirty(), flags)) return true;
     return content_ && content_->AnyDirtyInSubtree(flags);
 }
 
-void Border::ClearDirtySubtree() {
+void Border::ClearDirtySubtreeOverride() {
     ClearDirty();
     if (content_) content_->ClearDirtySubtree();
 }
-
-// Phase 3b async recursion. Border owns a child but is NOT a Panel, so it does not
-// inherit Panel's overrides — it has to forward these two itself, exactly as it
-// already forwards AttachChildren / ClearDirtySubtree / AnyDirtyInSubtree.
 
 } // namespace fluent

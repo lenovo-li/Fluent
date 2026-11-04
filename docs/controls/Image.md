@@ -261,6 +261,21 @@ demo 导航 → 基础输入 → Image。当前只有四种拉伸模式的文字
 
 ---
 
+## UI Automation
+
+Image 的 peer：
+
+| 项 | 值 |
+|---|---|
+| ControlType | Image |
+| 模式 | 无；Name 只来自 `SetAutomationName`，没有名字时视为装饰，只出现在 raw view |
+| AutomationId | `SetAutomationId` |
+| HelpText | `Tooltip()` |
+
+惰性创建：只有 UIA 客户端访问到这个控件时才创建 peer，没有客户端时零开销。模式操作经投递消息执行，执行前重新检查控件仍在树上且已启用。属性变化只在真正变化且有客户端监听时发送。自定义方式见 inheritance-guide.md 的“UI Automation”一节。
+
+验证：无头测试 `tests/unit/AutomationControlPeerTests.cpp` / `AutomationSelectorPeerTests.cpp`，真实 UIA 客户端自测 `FluentUITests.exe --uia-smoke`；14 处变异（如把 UIA 操作换回不发事件的 setter、去掉项缓存上限）全部被测试抓到。
+
 ## 相关控件
 
 - [Border](Border.md) — 需要给图加边框/圆角/背景时包在外层

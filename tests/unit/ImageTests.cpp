@@ -214,7 +214,7 @@ TEST(Image, RenderWithoutBitmapIsSafe) {
     EXPECT_FALSE(img.IsLoaded());
 }
 
-// --- P1-18: failure placeholder ------------------------------------------
+// --- Failure placeholder ------------------------------------------------
 //
 // The LOAD half of this feature needs a real D2D device (WIC decode plus
 // CreateBitmapFromWicBitmap), so headless tests cover the state machine around

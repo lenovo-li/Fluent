@@ -33,8 +33,9 @@ void ToggleSwitch::Measure(float availW, float availH) {
     // the same way, and the two passes disagreeing means the label is PAINTED at a
     // size the layout never reserved room for. SetFontSize(48) on a switch used to
     // measure at bodySize (14) and draw at 48 — a label overflowing its own control,
-    // outside the reported dirty bounds. CheckBox and RadioButton always resolved it
-    // this way in both passes; this site was the odd one out.
+    // outside the reported dirty bounds. Button, CheckBox and RadioButton carried
+    // the same mismatch in their Measure and were fixed the same way; all four
+    // now resolve the size identically in both passes.
     const float fontSize = EffectiveFontSize(Theme().typography.bodySize);
     float w = TrackW();
     float h = TrackH();

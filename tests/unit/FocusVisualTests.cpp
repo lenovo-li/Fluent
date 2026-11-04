@@ -1,5 +1,5 @@
-// FocusVisualTests.cpp — unit tests for the shared focus ring geometry (WP-05
-// Stage 2, roadmap §11). Pure math: FocusRingRect is a plain function of a rect
+// FocusVisualTests.cpp — unit tests for the shared focus ring geometry.
+// Pure math: FocusRingRect is a plain function of a rect
 // + spec, no DrawingContext / D2D device needed. (The actual stroke color comes
 // from ColorTokens.focusStroke and is exercised by the color-token tests; here
 // we only pin the geometry so a control's ring stays outside its content.)

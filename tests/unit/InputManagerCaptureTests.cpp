@@ -1,4 +1,4 @@
-// InputManagerCaptureTests.cpp — pointer capture semantics (WP-03, roadmap §9.3).
+// InputManagerCaptureTests.cpp — pointer capture semantics.
 // Pure logic: capture routes move/release only to the captor; up releases;
 // window-deactivate and element-detach release with a canceling release; the base
 // click gesture presses/captures/clicks-inside/cancels-outside.
@@ -206,4 +206,42 @@ TEST(InputManagerCapture, RemovingCapturedChildFromPanelClearsCapture) {
     EXPECT_EQ(im.Captured(), static_cast<UIElement*>(nullptr));
 
     panel.DetachFromContext();
+}
+
+// A pointer move or wheel that changes nothing must request no frame. InputManager
+// used to call its invalidate target after EVERY move/wheel, and the host turned
+// that request (with an empty dirty set) into a full-window redraw — so sliding the
+// mouse over static content repainted the whole window per WM_MOUSEMOVE. Hover
+// visuals must still repaint: the enter/leave edge reaches the same host callback
+// through the element's own Invalidate (UpdateState), which is what this counts.
+// The root's callback and InputManager's both feed one counter, exactly the way
+// NativeWindowHost wires them to the same RequestFrame.
+TEST(InputManagerCapture, StaticMoveAndWheelRequestNoFrame) {
+    InputManager im;
+    ClickEl el;
+    el.SetBounds({0, 0, 20, 20});
+    WireInput(el, &im);
+    std::vector<UIElement*> roots{&el};
+    im.SetRoots(&roots);
+
+    int frames = 0;
+    auto count = [](void* ctx) { ++*static_cast<int*>(ctx); };
+    im.SetInvalidate(count, &frames);
+    el.SetInvalidateCallback(count, &frames);
+
+    im.PointerMoved(Point{5, 5}, ModifierKeys::None);    // enter: Normal -> Hover
+    EXPECT_TRUE(frames >= 1);                            // hover still repaints
+    EXPECT_EQ(el.moves, 1);
+
+    const int afterEnter = frames;
+    im.PointerMoved(Point{6, 6}, ModifierKeys::None);    // still hovering: no change
+    im.PointerMoved(Point{7, 7}, ModifierKeys::None);
+    im.PointerWheel(Point{7, 7}, 120, ModifierKeys::None, 3);  // nothing scrolls
+    EXPECT_EQ(el.moves, 3);                              // the moves were delivered
+    EXPECT_EQ(frames, afterEnter);                       // ...and scheduled nothing
+
+    im.PointerMoved(Point{50, 50}, ModifierKeys::None);  // leave: Hover -> Normal
+    EXPECT_TRUE(frames > afterEnter);                    // the leave edge repaints
+
+    el.DetachFromContext();
 }

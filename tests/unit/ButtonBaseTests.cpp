@@ -1,5 +1,5 @@
 // ButtonBaseTests.cpp — unit tests for ButtonBase / ContentControl / ToggleButton
-// state machines (WP-06 Stage 1).
+// state machines.
 //
 // All tests are headless: no GPU, no DWrite, no PopupHost. The activation /
 // toggle / state-machine paths are pure logic exercisable without a live window.

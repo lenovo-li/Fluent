@@ -1,15 +1,15 @@
-// Scenes.cpp — the FluentUIBench scenarios (roadmap §18.2).
+// Scenes.cpp — the FluentUIBench scenarios.
 //
-// Ten scenes are registered. The ones whose cost is pure CPU/logic run for real
+// Scenes are registered at the bottom of this file. The ones whose cost is pure CPU/logic run for real
 // against the FluentUI core (layout, dirty propagation, active-animation
 // ticking, measure cache, idle detection) and report timings measured with the
 // diagnostics ScopedTimer. The ones that fundamentally need a live swap chain,
 // GPU, or interactive window (visual/text raster stress, resize, popup HWND
 // churn, DPI lab, theme raster, input latency) are registered as honest stubs:
 // they describe what a real Windows+GPU run must measure and report `measured =
-// false` rather than fabricate a number (roadmap §20.4 forbids faking GPU data).
+// false` rather than fabricate a number: a made-up GPU figure is worse than none.
 //
-// As later work packages land the real pipeline, a stub is replaced by a scene
+// When the real pipeline for a stub can be driven from here, the stub is replaced by a scene
 // that drives the actual window — the harness shape does not change.
 
 #include "Bench.h"
@@ -21,6 +21,11 @@
 #include "../FluentUI/window/FrameScheduler.h"
 #include "../FluentUI/diagnostics/PerformanceCounters.h"
 #include "../FluentUI/controls/Expander.h"
+#include "../FluentUI/controls/ListBox.h"
+#include "../FluentUI/automation/AutomationHost.h"
+#include "../FluentUI/automation/AutomationPeer.h"
+#include "../FluentUI/automation/UiaCore.h"
+#include "../FluentUI/core/UIContext.h"
 
 #include <cstdio>
 #include <memory>
@@ -132,7 +137,7 @@ Result TextStress() {
 Result TreeVirtualization() {
     Result r;
     r.measured = false;
-    r.note = "Virtualization not implemented yet (roadmap WP-07). Target: 100k "
+    r.note = "Virtualization not implemented yet. Target: 100k "
              "data rows must not create 100k UIElements — visual element count "
              "should track visible rows. Scene activates once TreeView "
              "virtualizes.";
@@ -142,7 +147,7 @@ Result TreeVirtualization() {
 // ---- 4. Animation Stress: active-set tick ---------------------------------
 
 Result AnimationStress() {
-    // The roadmap's key perf property: per-frame cost is O(active animations),
+    // The framework's key perf property: per-frame cost is O(active animations),
     // not O(tree). Build a large tree where only some leaves animate, collect
     // the active set once, then tick it many times and measure.
     constexpr int kTotal = 5000;
@@ -317,7 +322,7 @@ Result ThemeLab() {
     Result r;
     r.measured = false;
     r.note = "Requires GPU raster: Light/Dark/Mica/Acrylic/high-contrast visual "
-             "regression. Theme *token* resolution timing lands with WP-05.";
+             "regression. Theme *token* resolution is not timed by this scene.";
     return r;
 }
 
@@ -327,14 +332,14 @@ Result InputLatency() {
     Result r;
     r.measured = false;
     r.note = "Requires a live window: pointer-down to corresponding Present, "
-             "measured with the frame-latency waitable object (roadmap §14.4).";
+             "measured with the frame-latency waitable object.";
     return r;
 }
 
 // ---- 10. Idle Test --------------------------------------------------------
 
 Result IdleTest() {
-    // Pure-logic proxy for the idle property (roadmap §14.2): with nothing dirty
+    // Pure-logic proxy for the idle property: with nothing dirty
     // and no active animations, the scheduler must report "no frame needed". We
     // model that here: an empty active set after Collect means the host would
     // disarm its timer and Present nothing. A real 30-second idle Present-count
@@ -361,14 +366,14 @@ Result IdleTest() {
                   idle ? "stay idle (no Present)" : "request a frame");
     r.metric = msgbuf;
     r.note = "Logic proxy for idle. Full 30s idle Present-count test needs the "
-             "window (roadmap §18.5) — verify no periodic Render/Present.";
+             "window — verify no periodic Render/Present.";
     return r;
 }
 
-// ---- 11. Frame coalescing (WP-01) -----------------------------------------
+// ---- 11. Frame coalescing -----------------------------------------
 
 Result FrameCoalescing() {
-    // The core WP-01 property (roadmap §14.3): many invalidations between two
+    // The core frame-scheduler property: many invalidations between two
     // frames merge into ONE pending frame. We simulate an input event that
     // dirties several properties, then a render turn, and confirm only one frame
     // is serviced no matter how many requests arrived.
@@ -402,9 +407,336 @@ Result FrameCoalescing() {
     return r;
 }
 
+// ---- 12. Dirty walk -------------------------------------------------------
+
+// A leaf whose Render-only invalidation the scene can trigger from outside, the
+// way a caret blink or a hover state change does from inside a real control.
+class BenchPokeLeaf : public FrameworkElement {
+public:
+    BenchPokeLeaf() { SetWidth(40.0f); SetHeight(12.0f); }
+    void Render(const DrawingContext&) override {}
+    void Poke() { Invalidate(); }
+};
+
+Result DirtyWalk() {
+    // The per-frame dirty analysis RenderNow runs on every painted frame, against a
+    // tree where exactly ONE leaf changed: the two layout queries
+    // (AnyDirtyInSubtree Measure / Arrange), the dirty-rect collection and the
+    // end-of-frame clear. Same four calls in the same order as the host, minus the
+    // paint (which is GPU work and scales with the dirty rect, not the tree).
+    //
+    // Shape: root -> 20 sections -> 10 groups -> 10 leaves = 2,221 nodes, 2,000 of
+    // them leaves. Three levels of nesting is what a settings page or a gallery
+    // looks like, and it is enough for "cost per node" and "cost per dirty path" to
+    // diverge by orders of magnitude: a walk that visits every node pays for 2,221
+    // virtual calls x 3 passes, a walk that follows the dirty path pays for ~4 nodes
+    // plus a flag test per sibling it passes on the way.
+    constexpr int kSections = 20, kGroups = 10, kLeaves = 10;
+    constexpr int kFrames = 20000;
+
+    StackPanel root;
+    std::vector<BenchPokeLeaf*> leaves;
+    leaves.reserve(kSections * kGroups * kLeaves);
+    for (int s = 0; s < kSections; ++s) {
+        auto* section = root.Emplace<StackPanel>();
+        for (int g = 0; g < kGroups; ++g) {
+            auto* group = section->Emplace<StackPanel>();
+            group->SetOrientation(StackPanel::Orientation::Horizontal);
+            for (int l = 0; l < kLeaves; ++l) leaves.push_back(group->Emplace<BenchPokeLeaf>());
+        }
+    }
+    root.UpdateLayout({0, 0, 800, 100000});
+    root.ClearDirtySubtree();
+
+    std::vector<RectDip> dirty;
+    dirty.reserve(16);
+    size_t collected = 0;   // sanity: must be exactly one rect per frame
+    int layoutFrames = 0;   // sanity: a Render-only poke must never trigger layout
+    double ms = 0.0;
+    {
+        ScopedTimer t(ms);
+        for (int f = 0; f < kFrames; ++f) {
+            // Stride through the leaves so consecutive frames hit different
+            // sections and no branch stays hot in the cache by accident.
+            leaves[(static_cast<size_t>(f) * 997u) % leaves.size()]->Poke();
+            const bool m = root.AnyDirtyInSubtree(DirtyFlags::Measure);
+            const bool a = root.AnyDirtyInSubtree(DirtyFlags::Arrange);
+            if (m || a) ++layoutFrames;
+            dirty.clear();
+            root.CollectDirtyBounds(dirty);
+            collected += dirty.size();
+            root.ClearDirtySubtree();
+        }
+    }
+
+    const size_t nodes = 1 + kSections + kSections * kGroups + leaves.size();
+    const double usPerFrame = ms * 1000.0 / kFrames;
+    Result r;
+    r.primaryMs = ms;
+    r.perFrameMs = ms / kFrames;
+    std::snprintf(msgbuf, sizeof(msgbuf),
+                  "%zu nodes, 1 leaf dirty per frame x %d frames; %.3f us/frame; "
+                  "rects/frame=%.2f (must be 1.00), layout frames=%d (must be 0)",
+                  nodes, kFrames, usPerFrame,
+                  static_cast<double>(collected) / kFrames, layoutFrames);
+    r.metric = msgbuf;
+    r.note = "Headless proxy for RenderNow's dirty analysis + clear on a caret-blink "
+             "frame. Paint cost is excluded (GPU); verify the live number with the "
+             "F12 HUD's cpu line while a TextBox caret blinks in a large page.";
+    return r;
+}
+
+// ---- 12b. UI Automation cost ---------------------------------------------------
+
+// A UIA core stand-in: counts what the host would ask of UIAutomationCore without
+// calling it. `listening` decides UiaClientsAreListening(). Nothing here creates a
+// window, so the scenes measure the framework's own UIA bookkeeping only.
+struct BenchUiaCore final : automation::IUiaCore {
+    bool listening = false;
+    size_t posts = 0, raised = 0;
+    LRESULT ReturnProvider(HWND, WPARAM, LPARAM, IUnknown*) override { return 1; }
+    HRESULT DisconnectProvider(IUnknown*) override { return S_OK; }
+    void ReleaseEventMap(HWND) override {}
+    bool InSendMessage() override { return false; }
+    bool ClientsAreListening() override { return listening; }
+    HRESULT RaiseEvent(IUnknown*, int) override { ++raised; return S_OK; }
+    HRESULT RaiseBoolChanged(IUnknown*, int, bool, bool) override { ++raised; return S_OK; }
+    HRESULT RaiseIntChanged(IUnknown*, int, int, int) override { ++raised; return S_OK; }
+    HRESULT RaiseDoubleChanged(IUnknown*, int, double, double) override { ++raised; return S_OK; }
+    HRESULT RaiseStringChanged(IUnknown*, int, const wchar_t*, const wchar_t*) override { ++raised; return S_OK; }
+    HRESULT RaiseChildrenInvalidated(IUnknown*) override { ++raised; return S_OK; }
+    void PostToHost(HWND, UINT) override { ++posts; }
+};
+struct BenchUiaWindow final : automation::IAutomationWindow {
+    UIElement* root = nullptr;
+    size_t AutomationRootCount() const override { return 1; }
+    UIElement* AutomationRootAt(size_t) const override { return root; }
+    UIElement* AutomationFocusedElement() const override { return nullptr; }
+};
+
+// The DirtyWalk frame (poke one leaf, the two layout queries, collect, clear),
+// returning us/frame. `site` null = a tree with no automation at all (baseline).
+double BenchUiaFrames(automation::IAutomationSite* site, int frames, bool touchPeers,
+                      size_t* peersOut) {
+    constexpr int kSections = 20, kGroups = 10, kLeaves = 10;
+    StackPanel root;
+    std::vector<BenchPokeLeaf*> leaves;
+    for (int s = 0; s < kSections; ++s) {
+        auto* section = root.Emplace<StackPanel>();
+        for (int g = 0; g < kGroups; ++g) {
+            auto* group = section->Emplace<StackPanel>();
+            for (int l = 0; l < kLeaves; ++l) leaves.push_back(group->Emplace<BenchPokeLeaf>());
+        }
+    }
+    UIContext ctx;
+    ctx.automation = site;
+    root.AttachToContext(ctx);
+    root.UpdateLayout({0, 0, 800, 100000});
+    root.ClearDirtySubtree();
+    // A client that walked the whole tree once: every leaf has a peer + provider.
+    if (touchPeers)
+        for (auto* l : leaves)
+            if (auto* p = l->GetOrCreateAutomationPeer()) p->Provider();
+    if (peersOut) *peersOut = automation::AutomationPeer::LiveCount();
+    std::vector<RectDip> dirty;
+    double ms = 0.0;
+    {
+        ScopedTimer t(ms);
+        for (int f = 0; f < frames; ++f) {
+            leaves[(static_cast<size_t>(f) * 997u) % leaves.size()]->Poke();
+            (void)root.AnyDirtyInSubtree(DirtyFlags::Measure);
+            (void)root.AnyDirtyInSubtree(DirtyFlags::Arrange);
+            dirty.clear();
+            root.CollectDirtyBounds(dirty);
+            root.ClearDirtySubtree();
+        }
+    }
+    root.DetachFromContext();
+    return ms * 1000.0 / frames;
+}
+
+Result UiaNoClient() {
+    // The user's requirement: UIA must not cost the UI thread anything while no
+    // client (Narrator, Inspect, a test tool) is attached. Three trees, same frame:
+    //   baseline     no automation site at all (what the framework cost before UIA);
+    //   site, idle   the window's AutomationHost wired in, no client ever connected;
+    //   peers, gone  a client walked every element (all 2,000 leaves have peers) and
+    //                then stopped listening: the worst idle case, since peers outlive
+    //                the client that created them.
+    // Each run is repeated and the best kept, so scheduler noise does not decide.
+    constexpr int kFrames = 20000, kReps = 5;
+    BenchUiaCore core;
+    BenchUiaWindow win;
+    automation::AutomationHost host(core);
+    host.Bind(&win);
+    double base = 1e9, idle = 1e9, gone = 1e9;
+    size_t peers = 0;
+    for (int r = 0; r < kReps; ++r) {
+        base = std::min(base, BenchUiaFrames(nullptr, kFrames, false, nullptr));
+        idle = std::min(idle, BenchUiaFrames(&host, kFrames, false, nullptr));
+        gone = std::min(gone, BenchUiaFrames(&host, kFrames, true, &peers));
+    }
+    host.OnWindowDestroyed(nullptr);
+    Result res;
+    res.primaryMs = gone * kFrames / 1000.0;
+    res.perFrameMs = gone / 1000.0;
+    res.budgetFraction = 0.05;  // same order-of-magnitude gate as DirtyWalk
+    std::snprintf(msgbuf, sizeof(msgbuf),
+                  "us/frame: baseline %.3f | site, no client %.3f | %zu peers, client gone %.3f; "
+                  "flush posts=%zu (must be 0), UIA calls=%zu (must be 0)",
+                  base, idle, peers, gone, core.posts, core.raised);
+    res.metric = msgbuf;
+    res.note = "Headless: the host and peers are real, UIA core is a counter. Live check: "
+               "F12 HUD CPU Max with and without Inspect running is the same.";
+    return res;
+}
+
+Result UiaListening() {
+    // A client IS listening and has walked the tree: each invalidation of a leaf
+    // with a peer queues one re-check, coalesced per flush. Measures the per-frame
+    // bookkeeping (queue + one flush per frame) against the same tree.
+    constexpr int kFrames = 20000;
+    BenchUiaCore core;
+    core.listening = true;
+    BenchUiaWindow win;
+    automation::AutomationHost host(core);
+    host.Bind(&win);
+    StackPanel root;
+    std::vector<BenchPokeLeaf*> leaves;
+    for (int i = 0; i < 2000; ++i) leaves.push_back(root.Emplace<BenchPokeLeaf>());
+    win.root = &root;
+    UIContext ctx;
+    ctx.automation = &host;
+    root.AttachToContext(ctx);
+    root.UpdateLayout({0, 0, 800, 100000});
+    // The client's first contact (WM_GETOBJECT) gives the host its HWND and root
+    // provider; a dummy handle, since BenchUiaCore never dereferences it.
+    LRESULT lr = 0;
+    host.OnGetObject(reinterpret_cast<HWND>(static_cast<uintptr_t>(0x1234)), 0,
+                     static_cast<LPARAM>(-25) /* UiaRootObjectId */, false, lr);
+    for (auto* l : leaves)
+        if (auto* p = l->GetOrCreateAutomationPeer()) p->Provider();
+    double ms = 0.0;
+    {
+        ScopedTimer t(ms);
+        for (int f = 0; f < kFrames; ++f) {
+            // A burst: 8 invalidations of the same leaf in one frame (hover + text +
+            // focus visuals), then the frame's single flush.
+            auto* leaf = leaves[(static_cast<size_t>(f) * 997u) % leaves.size()];
+            for (int k = 0; k < 8; ++k) leaf->Poke();
+            host.OnFlush();
+        }
+    }
+    root.DetachFromContext();
+    host.OnWindowDestroyed(nullptr);
+    Result res;
+    res.primaryMs = ms;
+    res.perFrameMs = ms / kFrames;
+    std::snprintf(msgbuf, sizeof(msgbuf),
+                  "%.3f us/frame for 8 invalidations + 1 flush; posts=%zu over %d frames "
+                  "(coalesced: <= 1 per frame), property raises=%zu (0: nothing changed)",
+                  ms * 1000.0 / kFrames, core.posts, kFrames, core.raised);
+    res.metric = msgbuf;
+    res.note = "Raises stay 0 because a Poke changes no reported property: the re-check "
+               "runs but finds nothing, which is the common case (hover, caret blink).";
+    return res;
+}
+
+// ---- 13. ListBox Shift+End over 1M items ------------------------------------
+
+// Event handler for the subscribed variant below. Event handlers are plain function
+// pointers; the sink travels through the void* owner. Reading size() is enough to
+// keep the payload observable without adding per-element work of its own.
+void BenchCountSelectionSet(void* owner, ListBox&, std::vector<int>& sel) {
+    *static_cast<size_t*>(owner) += sel.size();
+}
+
+Result ListBoxShiftEnd() {
+    // The input-path cost of ONE Shift+End key press on a virtualized ListBox whose
+    // SetItemCount is 1,000,000 — the gesture that turns "anchor at the top" into
+    // "every item selected". It goes through the real key handler
+    // (ListBox::OnKeyDownRouted -> Selector::RangeSelectTo -> the set hook), so it
+    // measures what a user's key press pays, not a synthetic call on the set.
+    //
+    // Each Shift+End is preceded by a Shift+Home from the same anchor, which
+    // collapses the range back to {0} so every Shift+End is a full 0 -> 999,999
+    // range build rather than a no-op re-select; the pair is timed together (see
+    // the batching note below). Two variants:
+    //   * no SelectionSetChanged subscriber: the selection model's own cost;
+    //   * one subscriber: plus building the vector<int> payload the event hands
+    //     out, which is O(selected) by its signature no matter how the set is
+    //     stored — the honest price of subscribing to the vector-valued event.
+    constexpr int kItems = 1000000;
+    // Upper bounds on the batch size, so a fast implementation does not spin for
+    // millions of iterations and a slow one stops after a few.
+    constexpr int kMaxPairsBare = 1 << 20;
+    constexpr int kMaxPairsSubscribed = 1 << 10;
+
+    auto run = [](int maxPairs, bool subscribe, size_t& selectedAfter,
+                  size_t& sink, int& pairs) -> double {
+        ListBox lb;
+        lb.SetItemCount(static_cast<size_t>(kItems));
+        lb.SetBounds({0, 0, 300, 600});
+        lb.SetSelectionMode(SelectionMode::Multiple);
+        lb.SetSelectedIndex(0);  // anchor + active at the top
+        Subscription sub;
+        if (subscribe) sub = lb.SelectionSetChanged().Subscribe(&sink, BenchCountSelectionSet);
+
+        auto press = [&lb](int vk) {
+            KeyEventArgs e;
+            e.vk = vk;
+            e.modifiers = ModifierKeys::Shift;
+            lb.OnKeyDownRouted(e);
+        };
+        // Timed in BATCHES of Shift+Home / Shift+End pairs, doubling the batch until
+        // one batch runs >= 100 ms (or `maxPairs` is reached), and reporting that
+        // batch. A per-press timer cannot resolve the range-based set: one press is
+        // far below a QPC tick, so timing each press alone reads as 0 or one tick.
+        // Both keys of a pair go through RangeSelectTo from the same anchor, so a
+        // pair is one full-range build plus one collapse back to {0} — the same
+        // work under any storage, which keeps the number comparable across
+        // implementations.
+        double ms = 0.0;
+        for (int batch = 1; ; batch *= 2) {
+            ms = 0.0;
+            {
+                ScopedTimer t(ms);
+                for (int i = 0; i < batch; ++i) { press(VK_HOME); press(VK_END); }
+            }
+            pairs = batch;
+            if (ms >= 100.0 || batch >= maxPairs) break;
+        }
+        // Sanity outside the timed region: every item must be selected.
+        selectedAfter = lb.SelectedIndices().size();
+        return ms;
+    };
+
+    size_t bareCount = 0, subCount = 0, sink = 0;
+    int barePairs = 0, subPairs = 0;
+    const double bareMs = run(kMaxPairsBare, false, bareCount, sink, barePairs);
+    const double subMs = run(kMaxPairsSubscribed, true, subCount, sink, subPairs);
+
+    Result r;
+    r.primaryMs = bareMs;
+    r.perFrameMs = bareMs / barePairs;
+    std::snprintf(msgbuf, sizeof(msgbuf),
+                  // Microseconds, not ms: with range storage a bare pair is well
+                  // under a microsecond, which a %.3f ms format rounds to 0.000.
+                  "%d items; Shift+Home+Shift+End pair: %.3f us (no subscriber, %d pairs), "
+                  "%.1f us (SelectionSetChanged subscribed, %d pairs); "
+                  "selected=%zu/%zu (must be %d)",
+                  kItems, bareMs * 1000.0 / barePairs, barePairs,
+                  subMs * 1000.0 / subPairs, subPairs,
+                  bareCount, subCount, kItems);
+    r.metric = msgbuf;
+    r.note = "One key press is one input-path event; the per-press number is what "
+             "the frame that handles it pays before it can paint.";
+    return r;
+}
+
 } // namespace
 
-// Registration (order = §18.2 order).
+// Registration (order = the numbered scene sections above).
 REGISTER_SCENE("ControlsGrid", "Layout cost for 1,000 stacked controls", ControlsGrid);
 REGISTER_SCENE("TextStress", "CJK/Latin mixed wrapping text", TextStress);
 REGISTER_SCENE("TreeVirtualization", "100k data rows", TreeVirtualization);
@@ -417,3 +749,7 @@ REGISTER_SCENE("ThemeLab", "Light/Dark/Mica/Acrylic/high-contrast", ThemeLab);
 REGISTER_SCENE("InputLatency", "Pointer-down to Present", InputLatency);
 REGISTER_SCENE("IdleTest", "Idle 30s: no periodic Present", IdleTest);
 REGISTER_SCENE("FrameCoalescing", "N invalidations merge into one frame", FrameCoalescing);
+REGISTER_SCENE("DirtyWalk", "Per-frame dirty analysis, 1 dirty leaf in 2k", DirtyWalk);
+REGISTER_SCENE("UiaNoClient", "UI Automation compiled in, no client: frame cost vs baseline", UiaNoClient);
+REGISTER_SCENE("UiaListening", "UI Automation with a listening client: invalidation flood", UiaListening);
+REGISTER_SCENE("ListBoxShiftEnd", "Shift+End range select over 1M ListBox items", ListBoxShiftEnd);

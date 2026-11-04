@@ -1,7 +1,7 @@
-// TextAreaLogAppendTests.cpp — the high-throughput log path on TextArea (§2).
+// TextAreaLogAppendTests.cpp — the high-throughput log path on TextArea.
 //
-// Phase 2 of text virtualization: AppendText, the ring-buffer line cap, and tail
-// following. What separates this from the phase-1 tests is that almost nothing here is
+// The log path of text virtualization: AppendText, the ring-buffer line cap, and tail
+// following. What separates this from the NoWrap tests (TextAreaNoWrapTests.cpp) is that almost nothing here is
 // about the rendered result — the text is correct whether or not the append took the
 // fast path. The claims are about work NOT done:
 //
@@ -239,7 +239,7 @@ TEST(TextAreaLogAppend, AppendEvictsTheCachedLayoutOfTheGrownLine) {
     // LineLayoutCoverEnd is the direct observable — 0 means "not cached".
     //
     // The caret is parked on line 0 on purpose. AppendText re-syncs the scroll extent,
-    // which warms the CARET's line (§1.5b-2's high-water-mark warming); with the caret on
+    // which warms the CARET's line (the high-water-mark warming); with the caret on
     // the last line that warming would rebuild the entry at its new length and both the
     // correct and the broken version would report 6.
     Fixture f;
@@ -290,10 +290,10 @@ TEST(TextAreaLogAppend, AppendDoesNotShrinkTheHorizontalRange) {
     // OnTextLayoutDirty resets the high-water mark (correct: an edit can delete the
     // widest line). An append cannot — it only lengthens lines or adds new ones — so
     // resetting would make the horizontal thumb shrink and regrow on every batch, the
-    // reverse-jump §1.5b deliberately avoided.
+    // reverse-jump the high-water mark exists to avoid.
     //
     // THE CARET MUST BE ON A NARROW LINE for this to test anything. AppendText re-syncs
-    // the extent, and ScrollExtentXDip warms the mark from the CARET's line (§1.5b-2, so
+    // the extent, and ScrollExtentXDip warms the mark from the CARET's line (so
     // typing at column 300 is not snapped back to column 0). With the caret left on the
     // wide line — where SetText puts it — that warming restores the mark to the same
     // value, so a version that resets it looks identical. Confirmed by mutation: the reset
@@ -529,6 +529,23 @@ TEST(TextAreaLogAppend, CapAppliesUnderWrapToo) {
     EXPECT_TRUE(newlines + 1 <= size_t{5});
 }
 
+// Lowering the cap on an EXISTING Wrap document must rebuild the wrapped model, not just
+// the text: the scroll range has to match a document that only ever held the survivors.
+// Before the fix the paragraph-height table still described all 200 lines, so the view
+// could scroll far past the end of the 10 that remained.
+TEST(TextAreaLogAppend, LoweringTheCapUnderWrapShrinksTheScrollRange) {
+    Fixture trimmed;
+    if (!trimmed.Ready()) return;
+    trimmed.Open(Lines(200), TextWrapMode::Wrap);
+    const float before = trimmed.area.MaxOffsetDip();
+    trimmed.area.SetMaxLines(10);
+
+    Fixture fresh;
+    fresh.Open(Lines(10), TextWrapMode::Wrap);
+    EXPECT_TRUE(before > fresh.area.MaxOffsetDip() + 100.0f);  // premise: it was much taller
+    EXPECT_NEAR(trimmed.area.MaxOffsetDip(), fresh.area.MaxOffsetDip(), 1.0f);
+}
+
 TEST(TextAreaLogAppend, CapOfOneKeepsOnlyTheLastLine) {
     // Degenerate cap. Worth pinning because "drop count - max" arithmetic is where an
     // off-by-one would either keep two lines or empty the buffer entirely.
@@ -539,6 +556,51 @@ TEST(TextAreaLogAppend, CapOfOneKeepsOnlyTheLastLine) {
     f.area.AppendText(L"aaa\nbbb\nccc");
     EXPECT_EQ(f.area.NoWrapLineCount(), size_t{1});
     EXPECT_TRUE(f.area.Text() == L"ccc");
+}
+
+// A trim erases the front of the buffer, so every offset in the undo history now
+// points at different text. The scenario from the review: NoWrap, "l1\nl2\nl3", type
+// "xyz" at the end (Insert(8, "xyz")), then cap to one line, which removes six
+// characters. With the history kept, Ctrl+Z clamped the stale range to the end and
+// removed nothing, so "xyz" could not be undone; with a shorter trim it deleted other
+// text. The trim clears the history instead.
+TEST(TextAreaLogAppend, SetMaxLinesTrimClearsTheUndoHistory) {
+    Fixture f;
+    if (!f.Ready()) return;
+    f.Open(L"l1\nl2\nl3");
+    f.area.TestSetCaret(8);
+    for (const wchar_t* p = L"xyz"; *p; ++p) f.area.OnTextInput(*p);
+    EXPECT_TRUE(f.area.Text() == L"l1\nl2\nl3xyz");
+    EXPECT_TRUE(f.area.CanUndo());                 // premise: the typing was recorded
+
+    f.area.SetMaxLines(1);
+    EXPECT_TRUE(f.area.Text() == L"l3xyz");
+    EXPECT_FALSE(f.area.CanUndo());
+    EXPECT_FALSE(f.area.CanRedo());
+    f.area.Undo();                                 // a no-op now, never a wrong delete
+    EXPECT_TRUE(f.area.Text() == L"l3xyz");
+}
+
+// The same through the append path: an append that overflows the cap trims, and the
+// trim is what invalidates the history. An append that stays under the cap keeps it.
+TEST(TextAreaLogAppend, AppendTrimClearsTheUndoHistory) {
+    Fixture f;
+    if (!f.Ready()) return;
+    f.Open(L"a\nb");
+    f.area.SetMaxLines(3);
+    f.area.TestSetCaret(1);
+    f.area.OnTextInput(L'Q');                      // "aQ\nb", Insert(1, "Q")
+    EXPECT_TRUE(f.area.CanUndo());
+
+    f.area.AppendText(L"\nc");                     // three lines: no trim, history kept
+    EXPECT_TRUE(f.area.Text() == L"aQ\nb\nc");
+    EXPECT_TRUE(f.area.CanUndo());
+
+    f.area.AppendText(L"\nd");                     // four lines: "aQ\n" trimmed
+    EXPECT_TRUE(f.area.Text() == L"b\nc\nd");
+    EXPECT_FALSE(f.area.CanUndo());
+    f.area.Undo();
+    EXPECT_TRUE(f.area.Text() == L"b\nc\nd");
 }
 
 // ---------------------------------------------------------------------------

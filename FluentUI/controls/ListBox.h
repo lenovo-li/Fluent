@@ -79,6 +79,24 @@ public:
     // block, which is the lifetime this is designed for. Do not stash the reference.
     const std::wstring& GetItemText(int i, std::wstring& scratch) const;
 
+    // --- Row geometry and scrolling, for UI Automation ------------------------
+    // Item i's rect in this control's coordinate space (host-client DIPs), clipped
+    // to the viewport; empty when the row is scrolled out. O(1).
+    RectDip ItemRect(int i) const;
+    // The item index at a host-DIP y, or -1 (same arithmetic as the click path).
+    int ItemIndexAt(float dipY) const { return HitItem(dipY); }
+    // Scroll so item i is fully visible (the keyboard's minimal scroll).
+    void ScrollItemIntoView(int i);
+    // The list's own scroller, read-only (UIA's Scroll pattern reports it).
+    const ScrollViewer& Scroller() const { return scroll_; }
+    // Moves the list's own scroller and repaints. scroll_ is a member, not an
+    // element, so it cannot schedule a frame itself (same as TreeView).
+    void SetScrollOffset(float dip) {
+        const float before = scroll_.Offset();
+        scroll_.SetOffset(dip);
+        if (scroll_.Offset() != before) Invalidate();
+    }
+
     // Selection: inherited from Selector. SelectionChanged event is fired when
     // the ACTIVE index changes via keyboard, mouse, or SetSelectedIndex.
     Event<ListBox, int>& SelectionChanged() { return selectionChanged_; }
@@ -123,6 +141,8 @@ public:
     void OnPointerLeft() override;
 
 protected:
+    // UI Automation peer (automation/SelectorPeers.h).
+    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
     void OnBoundsChanged() override;
     void OnFocusChanged() override { Invalidate(); }
     void OnThemeChanged() override { Invalidate(); }
@@ -135,6 +155,9 @@ protected:
     void OnSelectionChanged(int oldIndex, int newIndex) override;
     // Selector hook: the multi-select set changed via a Ctrl/Shift gesture.
     void OnSelectionSetChanged() override;
+    // The SelectionSetChanged event without the gesture's scroll-into-view; used when
+    // a data change (SetItemCount shrink, SetItems replace) altered the set.
+    void RaiseSelectionSetChanged();
 
 private:
     // Hit-test: return the item index at the given Y coordinate, or -1.

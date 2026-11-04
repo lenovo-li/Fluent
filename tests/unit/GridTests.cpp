@@ -169,6 +169,83 @@ TEST(Grid, AutoRowsWithUnboundedHeight_DoNotCollapse) {
     EXPECT_NEAR(desired.h, 0.0f, 0.01f);
 }
 
+// Regression: a Star row measured at infinite availH (a Grid inside a ScrollPanel)
+// got leftover = inf - used = inf, so the grid's desired height was infinite: the
+// ScrollPanel's extent became infinite (tiny thumb, endless empty scroll) and the
+// card owning the grid drew nothing. On an unbounded axis Star sizes to content.
+TEST(Grid, StarRowWithUnboundedHeight_SizesToContent) {
+    Grid g;
+    g.SetColumns({GridLength::Auto(), GridLength::Star()});
+    g.SetRows({GridLength::Star()});
+
+    auto* tall = g.Emplace<TestLeaf>(20.0f, 44.0f);
+    g.SetCell(tall, 0, 0);
+    auto* shortLeaf = g.Emplace<TestLeaf>(50.0f, 30.0f);
+    g.SetCell(shortLeaf, 0, 1);
+
+    g.Measure(300.0f, std::numeric_limits<float>::infinity());
+
+    EXPECT_TRUE(std::isfinite(g.Desired().h));
+    EXPECT_NEAR(g.Desired().h, 44.0f, 0.01f);  // the tallest child in the row
+}
+
+// Two Star rows on an unbounded axis: each takes its own content height, plus
+// the row spacing between them. Weights do not apply without a finite extent.
+TEST(Grid, StarRowsWithUnboundedHeight_StackContent) {
+    Grid g;
+    g.SetColumns({GridLength::Star()});
+    g.SetRows({GridLength::Star(1.0f), GridLength::Star(3.0f)});
+    g.SetRowSpacing(8.0f);
+
+    auto* a = g.Emplace<TestLeaf>(10.0f, 20.0f);
+    g.SetCell(a, 0, 0);
+    auto* b = g.Emplace<TestLeaf>(10.0f, 30.0f);
+    g.SetCell(b, 1, 0);
+
+    g.Measure(100.0f, std::numeric_limits<float>::infinity());
+
+    EXPECT_NEAR(g.Desired().h, 58.0f, 0.01f);  // 20 + 8 + 30
+}
+
+// The unbounded rule is measure-only: arranged into a finite rect, Star rows still
+// share the leftover by weight (the Auto row keeps its content height).
+TEST(Grid, StarRow_StillFillsFiniteArrange) {
+    Grid g;
+    g.SetColumns({GridLength::Star()});
+    g.SetRows({GridLength::Auto(), GridLength::Star()});
+
+    auto* top = g.Emplace<TestLeaf>();
+    top->SetHeight(28.0f);
+    top->SetVAlign(VAlign::Top);
+    g.SetCell(top, 0, 0);
+    auto* fill = g.Emplace<TestLeaf>();
+    g.SetCell(fill, 1, 0);
+
+    g.Measure(100.0f, std::numeric_limits<float>::infinity());
+    g.Arrange({0.0f, 0.0f, 100.0f, 200.0f});
+
+    EXPECT_NEAR(fill->Bounds().y, 28.0f, 0.01f);
+    EXPECT_NEAR(fill->Bounds().h, 172.0f, 0.01f);
+}
+
+// Same rule on the other axis: a Star column measured at infinite availW (a Grid
+// in a horizontal StackPanel) reports its content width, not infinity.
+TEST(Grid, StarColumnWithUnboundedWidth_SizesToContent) {
+    Grid g;
+    g.SetColumns({GridLength::Pixels(40.0f), GridLength::Star()});
+    g.SetRows({GridLength::Auto()});
+
+    auto* fixed = g.Emplace<TestLeaf>(40.0f, 10.0f);
+    g.SetCell(fixed, 0, 0);
+    auto* content = g.Emplace<TestLeaf>(70.0f, 10.0f);
+    g.SetCell(content, 0, 1);
+
+    g.Measure(std::numeric_limits<float>::infinity(), 100.0f);
+
+    EXPECT_TRUE(std::isfinite(g.Desired().w));
+    EXPECT_NEAR(g.Desired().w, 110.0f, 0.01f);  // 40 + 70
+}
+
 // Regression: All Star tracks with 0* weight caused them to get zero space,
 // making content disappear.
 TEST(Grid, AllZeroStarWeights_DistributeEqually) {
@@ -187,4 +264,30 @@ TEST(Grid, AllZeroStarWeights_DistributeEqually) {
     // After fix: leftover distributed equally -> each column gets 100 DIP
     EXPECT_NEAR(left->Bounds().w, 100.0f, 0.1f);
     EXPECT_NEAR(right->Bounds().w, 100.0f, 0.1f);
+}
+
+// Removing a child must drop its cell entry. cells_ is keyed by address, and with
+// no erase a removed child's (row, col) outlived it: a Clear()+rebuild refresh made
+// the map grow forever, and a new child allocated at the recycled address inherited
+// the old cell instead of (0,0). ColumnOf/RowOf only look the address up (they never
+// dereference it), so querying the dead pointer is how the stale entry is observed
+// without depending on when the allocator happens to reuse an address.
+TEST(Grid, RemovedChildCellEntryIsDropped) {
+    Grid g;
+    g.SetColumns({GridLength::Star(), GridLength::Star(), GridLength::Star()});
+    g.SetRows({GridLength::Star(), GridLength::Star()});
+
+    auto* keep = g.Emplace<TestLeaf>();
+    g.SetCell(keep, 1, 1);
+    auto* gone = g.Emplace<TestLeaf>();
+    g.SetCell(gone, 1, 2);
+    EXPECT_EQ(g.ColumnOf(gone), 2);
+
+    g.RemoveAt(1);                        // destroys `gone`
+    EXPECT_EQ(g.ColumnOf(gone), -1);      // its entry went with it
+    EXPECT_EQ(g.RowOf(gone), -1);
+    EXPECT_EQ(g.ColumnOf(keep), 1);       // the survivor keeps its cell
+
+    g.Clear();                            // destroys `keep`
+    EXPECT_EQ(g.ColumnOf(keep), -1);
 }

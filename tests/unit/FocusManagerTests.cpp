@@ -1,4 +1,4 @@
-// FocusManagerTests.cpp — the single focus authority (WP-03). Pure logic:
+// FocusManagerTests.cpp — the single focus authority. Pure logic:
 // SetFocus single-truth (element bits follow), Tab order with wrap, detach clears
 // focus, basic directional navigation, FocusChanged event payload.
 
@@ -93,6 +93,31 @@ TEST(FocusManager, DetachClearsFocus) {
 
     fm.OnElementDetached(&a);  // focused -> cleared
     EXPECT_EQ(fm.Focused(), static_cast<UIElement*>(nullptr));
+}
+
+// The detached element's own bit is reset too, so focusing it again after a
+// re-attach is a real transition (OnFocusChanged / GotFocus run). The bit used to
+// stay true, which made that second SetFocus a silent no-op inside SetFocused.
+TEST(FocusManager, DetachResetsElementBitSoRefocusIsATransition) {
+    struct CountingEl : FocEl {
+        int changes = 0;
+        void OnFocusChanged() override { ++changes; }
+    };
+    CountingEl a;
+    std::vector<UIElement*> roots{&a};
+    FocusManager fm;
+    fm.SetRoots(&roots);
+    fm.SetFocus(&a);
+    EXPECT_TRUE(a.IsFocused());
+    EXPECT_EQ(a.changes, 1);
+
+    fm.OnElementDetached(&a);
+    EXPECT_FALSE(a.IsFocused());
+    EXPECT_EQ(a.changes, 1);  // silent: no OnFocusChanged on the teardown path
+
+    fm.SetFocus(&a);          // re-attached and focused again
+    EXPECT_TRUE(a.IsFocused());
+    EXPECT_EQ(a.changes, 2);
 }
 
 // FocusChanged carries the old and new focus.

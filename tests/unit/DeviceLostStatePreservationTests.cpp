@@ -1,5 +1,5 @@
 // DeviceLostStatePreservationTests.cpp — proves a control's LOGICAL state
-// survives a device-loss / restore cycle (roadmap §17 acceptance: "device
+// survives a device-loss / restore cycle (the requirement: "device
 // recovery preserves control logical state"). The device-bound GPU resources are
 // released and rebuilt by the host; the element tree keeps its model (checked
 // state, selection, scroll, text) because none of that is device-bound.

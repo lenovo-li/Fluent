@@ -6,12 +6,18 @@
 //
 //   FluentUITests.exe            run all tests
 //   FluentUITests.exe Grid       run tests whose "Suite.Name" contains "Grid"
+//   FluentUITests.exe --uia-smoke real UI Automation client against a real window
+//                                (needs a desktop session + GPU; not part of the default run)
 
 #include "Test.h"
 
 #include <cstring>
 
+// tests/smoke/UiaSmoke.cpp: a real UIA client against a real window (opt-in).
+int RunUiaSmoke();
+
 int main(int argc, char** argv) {
+    if (argc > 1 && std::strcmp(argv[1], "--uia-smoke") == 0) return RunUiaSmoke();
     const char* filter = (argc > 1) ? argv[1] : nullptr;
 
     auto& cases = fltest::Registry();

@@ -110,7 +110,7 @@ public:
                stripPlacement_ == TabStripPlacement::Right;
     }
 
-    // P1-11: Close button per tab. When enabled, each header draws a small '×'
+    // Close button per tab. When enabled, each header draws a small '×'
     // button on the right. Clicking it raises TabCloseRequested with the tab index;
     // the owner decides whether to remove the tab (via RemoveTab). Default: hidden.
     void SetCloseButtonVisible(bool visible) {
@@ -130,6 +130,11 @@ public:
 
     // The currently selected content element, or null when there are no tabs.
     FrameworkElement* SelectedContent() const;
+    // UI Automation: only the selected page (unselected pages are not attached).
+    size_t LogicalChildCount() const override { return SelectedContent() ? 1 : 0; }
+    UIElement* LogicalChildAt(size_t i) const override {
+        return i == 0 ? SelectedContent() : nullptr;
+    }
 
     // Whether the content at `index` is attached to the live tree. Exposed
     // because "only the selected tab is attached" is the whole design and a test
@@ -188,7 +193,6 @@ public:
     // pixels showed through on top of another tab and its stale bounds kept
     // swallowing clicks meant for the headers.
     UIElement* HitTestDeep(float dipX, float dipY) override;
-    void CollectDirtyBounds(std::vector<RectDip>& out) override;
     void OnPointerPressed(PointerEventArgs& e) override;
     void OnPointerMoved(PointerEventArgs& e) override;
     void OnPointerLeft() override;
@@ -197,6 +201,12 @@ public:
     void OnAnimationTick(float dtSec) override;
 
 protected:
+    // UI Automation peer (automation/SelectorPeers.h).
+    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
+    // Reports only the SELECTED content (see the note on HitTestDeep above);
+    // test and clear are inherited from Panel and still cover every page.
+    void CollectDirtyBoundsOverride(std::vector<RectDip>& out) override;
+
     SizeDip MeasureOverride(float availW, float availH) override;
     void ArrangeOverride(const RectDip& content) override;
     void OnAttachedToTree() override;
@@ -250,9 +260,6 @@ private:
     float stripHeight_ = 36.0f;
     float stripWidth_ = 120.0f;
     TabStripPlacement stripPlacement_ = TabStripPlacement::Top;
-    // The selected header's indicator slides between tabs instead of jumping.
-    AnimatedValue indicatorX_{0.0f};
-    AnimatedValue indicatorW_{0.0f};
     // Content cross-fade: 0 right after a switch, eased to 1.
     AnimatedValue contentFade_{1.0f};
     bool contentFadeEnabled_ = true;

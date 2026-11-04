@@ -1,5 +1,5 @@
 // MeasureCacheTests.cpp — unit tests for the Element measure short-circuit cache
-// (M1, roadmap §6.2). Pure logic (no HWND/D2D): verifies MeasureCached reuses the
+// (MeasureCached). Pure logic (no HWND/D2D): verifies MeasureCached reuses the
 // cached desired size when the constraint is unchanged and nothing is dirty, and
 // re-runs the virtual Measure() on a constraint change, an InvalidateMeasure, or a
 // size-affecting setter. Panels re-measure when any descendant is dirty.
@@ -105,7 +105,7 @@ TEST(MeasureCache, PanelReusesWhenSubtreeClean) {
 
 // A dirty descendant forces the containing panel to re-run MeasureOverride (its
 // NeedsRemeasure sees the subtree), but only the dirty child is actually
-// re-measured — the clean sibling is a cache hit. This is the whole point of M1:
+// re-measured — the clean sibling is a cache hit. This is the whole point of the cache:
 // one changed control does not re-measure its clean neighbors.
 TEST(MeasureCache, PanelRemeasuresDirtyChildOnlySkipsCleanSibling) {
     StackPanel root;

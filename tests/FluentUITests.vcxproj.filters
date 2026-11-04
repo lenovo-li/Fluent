@@ -4,9 +4,11 @@
     <Filter Include="framework"><UniqueIdentifier>{a1111111-1111-4111-8111-111111111111}</UniqueIdentifier></Filter>
     <Filter Include="unit"><UniqueIdentifier>{a2222222-2222-4222-8222-222222222222}</UniqueIdentifier></Filter>
     <Filter Include="component"><UniqueIdentifier>{a3333333-3333-4333-8333-333333333333}</UniqueIdentifier></Filter>
+    <Filter Include="smoke"><UniqueIdentifier>{a5c1e0d2-7b3f-4a91-8e26-4f0d9b1c7a35}</UniqueIdentifier></Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="framework\TestMain.cpp"><Filter>framework</Filter></ClCompile>
+    <ClCompile Include="smoke\UiaSmoke.cpp"><Filter>smoke</Filter></ClCompile>
     <ClCompile Include="unit\GeometryTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\HangDetectorTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\StackPanelTests.cpp"><Filter>unit</Filter></ClCompile>
@@ -17,6 +19,7 @@
     <ClCompile Include="unit\CanvasZIndexTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\DockPanelTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\InvalidationTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\TooltipArmTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\DirtyFlagsTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\SubtreeDirtyTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\PopupStateTests.cpp"><Filter>unit</Filter></ClCompile>
@@ -62,10 +65,23 @@
     <ClCompile Include="unit\BorderTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ButtonTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ApplicationTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\AutomationProviderTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\AutomationPeerTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\AutomationPeerLifetimeTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\AutomationReviewFixTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\AutomationControlPeerTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\AutomationSelectorPeerTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\AutomationDataPeerTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\AutomationExtensionPeerTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\AutomationItemReviewTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\AutomationTextPatternTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\FrameWaiterTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\PerformanceCountersTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\FrameRingTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\DebugHudTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\HudFeedTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\FileDialogFilterTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\PopupDismissDispatchTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\DirtyRegionTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\DirtyBoundsOverflowTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ElementOpacityTests.cpp"><Filter>unit</Filter></ClCompile>
@@ -101,6 +117,9 @@
     <ClCompile Include="component\EmptyTextBoxCaretTests.cpp">
       <Filter>component</Filter>
     </ClCompile>
+    <ClCompile Include="component\PasswordBoxTests.cpp">
+      <Filter>component</Filter>
+    </ClCompile>
     <ClCompile Include="component\PopupOpacityTests.cpp">
       <Filter>component</Filter>
     </ClCompile>
@@ -125,6 +144,7 @@
     <ClCompile Include="unit\ListBoxTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ListBoxItemHeightGuardTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ListBoxMultiSelectTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\IndexRangeSetTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\LogViewerTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\RichTextDocumentTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\RichTextBoxTests.cpp"><Filter>unit</Filter></ClCompile>
@@ -143,6 +163,9 @@
     <ClCompile Include="unit\TextEditInputPolicyTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\TabControlTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\WizardControlTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\PageHostTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\CustomControlsTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\NavRailKeyboardTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\DataGridTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ChartTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\InfoBarMetricTests.cpp"><Filter>unit</Filter></ClCompile>
@@ -172,5 +195,8 @@
     <ClInclude Include="framework\PixelSurface.h"><Filter>framework</Filter></ClInclude>
     <ClInclude Include="framework\FakeCompositionBackend.h"><Filter>framework</Filter></ClInclude>
     <ClInclude Include="unit\LayoutTestHelpers.h"><Filter>unit</Filter></ClInclude>
+    <ClInclude Include="unit\AutomationTestHelpers.h"><Filter>unit</Filter></ClInclude>
+    <ClInclude Include="unit\ClipboardTestHelpers.h"><Filter>unit</Filter></ClInclude>
+    <ClInclude Include="unit\InheritanceExamples.h"><Filter>unit</Filter></ClInclude>
   </ItemGroup>
 </Project>

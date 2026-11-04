@@ -1,4 +1,4 @@
-// ButtonBase.h — the shared "activatable control" primitive (roadmap §WP-06).
+// ButtonBase.h — the shared "activatable control" primitive.
 //
 // Button, RadioButton and ToggleButton (CheckBox / ToggleSwitch) all opened with
 // the identical four lines
@@ -29,7 +29,7 @@ public:
         SetClickable(true);
     }
 
-    // Space/Enter activate when the control has keyboard focus (routed, §9.2).
+    // Space/Enter activate when the control has keyboard focus (routed).
     void OnKeyDownRouted(KeyEventArgs& e) override {
         if (e.vk == VK_SPACE || e.vk == VK_RETURN) {
             OnActivate();
@@ -37,7 +37,17 @@ public:
         }
     }
 
+    // Programmatic activation with the same effect as a click or Space/Enter:
+    // Button raises Click, ToggleButton flips, RadioButton selects. Used by UI
+    // Automation (Invoke/Toggle/Select, run from a posted action). Ignored when
+    // disabled, matching the user paths.
+    void PerformActivate() {
+        if (IsEnabled()) OnActivate();
+    }
+
 protected:
+    // UI Automation peer (automation/ControlPeers.h); defined in ControlPeers.cpp.
+    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
     // The single activation point: a completed pointer click (release inside after
     // a press on this clickable_ element) or a Space/Enter keypress. Subclasses
     // override to define what activation does. Not called for a disabled control

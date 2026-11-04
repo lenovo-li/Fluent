@@ -51,8 +51,14 @@
 #include "../Application.h"
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace fluent {
+
+// Posted by Window::SetRoot to its own HWND to destroy the root it just replaced;
+// see SetRoot. WM_APP+n is the application-private range; the list of the ids in
+// use is in services/PopupHost.h.
+constexpr UINT WM_FLUENT_RELEASE_RETIRED_ROOTS = WM_APP + 22;
 
 struct WindowEventArgs {};
 struct WindowClosingArgs { bool cancel = false; };
@@ -166,7 +172,35 @@ protected:
     virtual void OnTrayIconRightClick(TrayIconEventArgs&) {}
     virtual void OnTrayIconMiddleClick(TrayIconEventArgs&) {}
 
-    void SetRoot(std::unique_ptr<UIElement> root) { root_ = std::move(root); }
+    // Install (or replace) the content root. Normally called once from
+    // OnInitialize, before the HWND exists, and OnCreated registers it. Replacing
+    // the root on a live window is also supported: the old root is unregistered
+    // from the host (RemoveElement: dropped from the hit-test list, input and
+    // focus references cleared, subtree detached from the service context) BEFORE
+    // its unique_ptr is released, because the host keeps a raw pointer to it and
+    // the next frame or WM_DESTROY walk would otherwise touch freed memory. On a
+    // live window the new root is registered immediately, since OnCreated has
+    // already run and will not run again.
+    //
+    // On a live window the old root is NOT destroyed inside this call. The natural
+    // place to swap pages is an event handler inside the old page (a wizard's Next
+    // button), and that handler is running several frames deep in the old tree:
+    // InputManager -> OnPointerReleased -> Button::OnActivate -> Click.Raise ->
+    // handler -> SetRoot. Destroying the old root synchronously freed that Button
+    // and its ancestors under their own frames, and Event::Raise / the bubbling
+    // route then read freed memory on the way out. The unregistered root is parked
+    // in retiredRoots_ instead and destroyed when WM_FLUENT_RELEASE_RETIRED_ROOTS,
+    // posted here, is dispatched: by then every handler that was running has
+    // returned. It is detached and off the hit-test list in the meantime, so it
+    // receives no input, frames or services. Before the window exists (and after
+    // it is gone) nothing can be dispatching into the old root, so it is destroyed
+    // immediately, as before.
+    //
+    // One remaining hazard: a handler that calls SetRoot and then runs a nested
+    // modal loop of its own (a MessageBox, a DialogWindow::ShowDialog) before
+    // returning lets that loop dispatch the release message while the handler is
+    // still on the stack. Swap the root after such a dialog returns, not before.
+    void SetRoot(std::unique_ptr<UIElement> root);
     UIElement* Root() const { return root_.get(); }
 
     // Framework-internal lifecycle seam. Window raises WindowEventArgs flavours;
@@ -211,6 +245,11 @@ protected:
 
 private:
     std::unique_ptr<UIElement> root_;
+    // Roots replaced on a live window, waiting for WM_FLUENT_RELEASE_RETIRED_ROOTS
+    // (see SetRoot). A vector because one handler may swap the root more than once
+    // before the message is dispatched, and every one of those roots may still have
+    // a frame on the stack.
+    std::vector<std::unique_ptr<UIElement>> retiredRoots_;
     std::wstring title_ = L"FluentUI";
     float widthDip_ = 800.0f;
     float heightDip_ = 600.0f;

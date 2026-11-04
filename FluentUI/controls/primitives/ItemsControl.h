@@ -1,4 +1,4 @@
-// ItemsControl.h — template base for controls that own a list of items (WP-06).
+// ItemsControl.h — template base for controls that own a list of items.
 //
 // ItemsControl<TItem> gives any Control a typed items vector with a change hook
 // so subclasses (Selector, ComboBox, TreeView) share one definition of the item

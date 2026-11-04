@@ -1,5 +1,5 @@
 // DeviceLostController.h — the state machine + HRESULT classifier for GPU device
-// loss recovery (roadmap §17). D3D/D2D can drop the device at any time (driver
+// loss recovery. D3D/D2D can drop the device at any time (driver
 // reset, GPU TDR, remote-session transition, hybrid-GPU switch); when that
 // happens every device-bound resource (swap chains, target bitmaps, brushes)
 // must be released and rebuilt while the element tree keeps its logical state
@@ -24,7 +24,7 @@ enum class DeviceStatus {
     Transient, // a non-fatal failure (e.g. occluded / a stale target); retry next frame without a rebuild
 };
 
-// Classify a present/draw HRESULT (roadmap §17). Device-removal / reset and
+// Classify a present/draw HRESULT. Device-removal / reset and
 // D2DERR_RECREATE_TARGET are "Lost" (rebuild required). DXGI_STATUS_OCCLUDED and
 // a plain E_FAIL from a transient target are "Transient" (retry, no rebuild). S_OK
 // (and other success codes) are "Ok".
@@ -32,13 +32,24 @@ DeviceStatus ClassifyDeviceHResult(HRESULT hr);
 
 // The recovery lifecycle. A frame runs while Healthy; a Lost classification moves
 // it to Lost; the host then rebuilds the device (Rebuilding) and, on success,
-// returns to Healthy. A failed rebuild keeps it in Lost so the next frame retries
-// (bounded by the host's own retry budget).
+// returns to Healthy. A failed rebuild keeps it in Lost; the host schedules the next
+// attempt itself (DeviceRebuildRetryDelayMs), since a window without a device paints
+// no frames that could trigger one.
 enum class DeviceState {
     Healthy,
     Lost,
     Rebuilding,
 };
+
+// Delay (ms) before rebuild attempt number `failedAttempts + 1` after that many
+// consecutive failures: 250, 500, 1000, 2000, then 4000 for good. A rebuild usually
+// fails because the driver is still resetting (a TDR or a driver update), which takes
+// from a fraction of a second to several; retrying immediately in a loop would spin
+// the UI thread against it, and giving up leaves the window blank for good.
+inline unsigned DeviceRebuildRetryDelayMs(unsigned failedAttempts) {
+    const unsigned shift = failedAttempts > 4 ? 4 : (failedAttempts == 0 ? 0 : failedAttempts - 1);
+    return 250u << shift;
+}
 
 class DeviceLostController {
 public:

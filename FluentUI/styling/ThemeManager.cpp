@@ -1,7 +1,7 @@
 // ThemeManager.cpp — value-preserving token defaults + snapshot builder.
 //
 // The color defaults are the legacy MakeLight()/MakeDark() palettes copied
-// verbatim (roadmap §11 mapping): windowBg->windowBackground, panelBg->cardFill,
+// verbatim (legacy name -> token mapping): windowBg->windowBackground, panelBg->cardFill,
 // layerFill init = cardFill, controlFill->controlFillDefault, text->textPrimary,
 // textDim->textSecondary, border->controlStrokeDefault, accent* same names,
 // onAccent same, focusStroke init = accent. So a control migrated to a token
@@ -30,7 +30,7 @@ ColorTokens LightColors() {
     ColorTokens c{};
     c.windowBackground = Rgb(0xF3F3F3);
     c.cardFill = Rgb(0xFFFFFF, 0.70f);   // semi-transparent card over Mica
-    c.layerFill = c.cardFill;            // init = cardFill (roadmap §11 mapping)
+    c.layerFill = c.cardFill;            // init = cardFill (legacy token mapping)
     c.controlFillDefault = Rgb(0xFFFFFF, 0.70f);
     c.controlFillHover = Rgb(0xF9F9F9, 0.85f);
     c.controlFillPressed = Rgb(0xF0F0F0, 0.60f);

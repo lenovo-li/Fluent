@@ -1,4 +1,4 @@
-// UIElement.h — the input / layout / lifecycle layer (roadmap §5.2).
+// UIElement.h — the input / layout / lifecycle layer.
 //
 // Adds to Visual everything about *being laid out and interacted with*:
 //   * bounds (the arranged rect, DIPs) + hit-testing,
@@ -26,6 +26,16 @@
 #include <vector>
 #include <any>  // For UIElement::Tag support
 
+namespace fluent::automation {
+class AutomationPeer;
+struct AutomationState;
+// Deletes an AutomationState. Declared here, defined with the type, so UIElement's
+// inline constructors (which may destroy members on unwind) never need it complete.
+struct AutomationStateDeleter {
+    void operator()(AutomationState* p) const;
+};
+}  // namespace fluent::automation
+
 namespace fluent {
 
 enum class VisualState { Normal, Hover, Pressed, Disabled };
@@ -33,20 +43,21 @@ enum class VisualState { Normal, Hover, Pressed, Disabled };
 class UIElement : public Visual {
 public:
     // Detaches from any live context so a destroyed element never leaves a
-    // dangling registration behind (roadmap §6.1 rule 4). RAII on contextSubs_
+    // dangling registration behind. RAII on contextSubs_
     // already cancels subscriptions on destruction; this also drops the element
     // from the host's animation set. Non-virtual work only — the derived layers
     // are already gone by the time this runs, so it must not dispatch the
     // OnDetachedFromTree hook (that belongs to explicit, tree-driven detach).
     ~UIElement() override;
 
-    // The user-declared destructor suppresses the implicit move operations, and
-    // the move-only contextSubs_ member makes the copy operations ill-formed. Keep
-    // the element movable (it was before this step) so a control can still be
-    // returned/held by value in tests and builders; copy stays disabled. Moving an
-    // *attached* element is not a supported operation — this exists only for fresh
-    // (unattached) objects, whose contextSubs_ is empty and which are not yet in
-    // any animation set.
+    // Copy is deleted (the move-only contextSubs_ member makes it ill-formed anyway).
+    // The move operations are declared defaulted, but they are in fact DELETED: the
+    // Event<> members (pointerPressed_ and the rest) are non-movable by design,
+    // because a subscription captures the event's address (base/Event.h). So
+    // UIElement and every control is neither copyable nor movable; hold controls
+    // by unique_ptr or construct them in place (Panel::Emplace). The defaulted
+    // declarations are kept rather than spelled `= delete` because they are public
+    // API in every subclass's implicit declarations, and changing them buys nothing.
     UIElement() = default;
     UIElement(UIElement&&) = default;
     UIElement& operator=(UIElement&&) = default;
@@ -70,7 +81,7 @@ public:
         LayoutCostProbe::Scope probe(LayoutCostKey::BoundsChangedTotal);
         OnBoundsChanged();
         
-        // Raise SizeChanged event (Phase 1)
+        // Raise SizeChanged event
         if (sizeChanged_.HasSubscribers()) {
             RoutedEventArgs args;
             args.source = this;
@@ -108,7 +119,7 @@ public:
     // *when* the hook runs. FrameworkElement overrides it to clamp.
     virtual void ApplySizeConstraints() {}
 
-    // Measure short-circuit cache (roadmap §6.2). Panels call this on children
+    // Measure short-circuit cache. Panels call this on children
     // instead of Measure() directly: when not Measure-dirty and the constraint
     // matches the last measure, the cached desired size is reused and the
     // (possibly expensive) virtual Measure() is skipped.
@@ -156,9 +167,9 @@ public:
     }
 
     // Append the bounds (window DIPs) of every element in this subtree whose own
-    // dirty flags are set (WP-07 §S4). The host unions these into the frame's
+    // dirty flags are set. The host unions these into the frame's
     // dirty region for a partial redraw. A leaf adds itself when dirty; a Panel
-    // overrides to recurse (a Panel is included when its own flags are set, e.g.
+    // overrides CollectDirtyBoundsOverride to recurse (a Panel is included when its own flags are set, e.g.
     // a background change, and its dirty descendants are added independently).
     // Only visible elements contribute.
     //
@@ -168,8 +179,16 @@ public:
     // VisualOverflowDip(); this then reports the inflated rect automatically.
     // Under-reporting shows up as a clipped edge, and as leftover pixels once the
     // overflow stops being drawn.
-    virtual void CollectDirtyBounds(std::vector<RectDip>& out) {
-        if (IsVisible() && Any(Dirty())) out.push_back(VisualBounds());
+    //
+    // PRUNING: non-virtual, and it returns at once when the subtree mark is clear
+    // (Visual::SubtreeDirty) — nothing at or below this node has been invalidated
+    // since the last ClearDirtySubtree, so there is nothing to report. That one
+    // test is what makes the host's per-frame collection O(dirty path) instead of
+    // O(tree). Containers customize the walk in CollectDirtyBoundsOverride and
+    // recurse by calling THIS on each child, so the test applies at every level.
+    void CollectDirtyBounds(std::vector<RectDip>& out) {
+        if (!Any(SubtreeDirty())) return;
+        CollectDirtyBoundsOverride(out);
     }
 
     // How far outside bounds_ this element paints, in DIPs, on every side. Default 0
@@ -284,6 +303,38 @@ public:
     // --- State / enabled --------------------------------------------------
     VisualState State() const { return state_; }
     void SetEnabled(bool e);
+    bool IsEnabled() const { return enabled_; }
+
+    // --- UI Automation ------------------------------------------------------
+    // Name/AutomationId for screen readers and UIA test tools. Stored lazily (no
+    // memory until set) and not rendered, so the setters dirty nothing; a peer
+    // that exists is told so it can raise NameChanged.
+    void SetAutomationName(std::wstring name);
+    const std::wstring& AutomationName() const;
+    void SetAutomationId(std::wstring id);
+    const std::wstring& AutomationId() const;
+
+    // The live children this element exposes to UIA, in render/tab order. Unlike
+    // Panel::ChildAt this lists only attached content (TabControl: the selected page;
+    // Expander: content only while expanded). Default: none.
+    virtual size_t LogicalChildCount() const { return 0; }
+    virtual UIElement* LogicalChildAt(size_t i) const {
+        UNREFERENCED_PARAMETER(i);
+        return nullptr;
+    }
+    // Maps a rect from a child's coordinate space into this element's. Identity
+    // except where a container transforms its children (Viewbox scales them).
+    virtual RectDip MapChildRectToSelf(const RectDip& r) const { return r; }
+    // bounds_ mapped through every ancestor's MapChildRectToSelf: the element's
+    // rect in host-client DIPs, which is what UIA's BoundingRectangle needs.
+    RectDip BoundsInHostDip() const;
+
+    // The element's UIA peer, created on first use; null unless the element is
+    // attached to a window that has an automation site (no client = no peer).
+    automation::AutomationPeer* GetOrCreateAutomationPeer();
+    automation::AutomationPeer* AutomationPeerIfAny() const;
+    // The automation site of the window this element is attached to, else null.
+    automation::IAutomationSite* AutomationSite() const { return context_.automation; }
 
     // --- Tooltip ----------------------------------------------------------
     // Hover text shown by the window's TooltipService after a short delay.
@@ -323,15 +374,15 @@ public:
         }
     }
 
-    // --- Context menu (WP-03 follow-up) -----------------------------------
+    // --- Context menu -----------------------------------
     // The menu shown when this element is right-clicked. On a right-click the host
     // walks the Parent() chain from the hit element and opens the first element's
     // menu it finds (so a child with no menu inherits its container's).
     //
     // Two ownership modes:
-    //   1. SetContextMenu(unique_ptr) — this element owns the menu (P1-21 pre-reuse)
+    //   1. SetContextMenu(unique_ptr) — this element owns the menu
     //   2. SetContextMenuRef(raw ptr)  — menu owned elsewhere, shared by multiple
-    //                                    elements (P1-21: one MenuFlyout for 3+ elements)
+    //                                    elements (one MenuFlyout for several elements)
     //
     // If the element is already attached, the owner context is fed immediately;
     // otherwise it is fed on the next attach — no manual wiring in either mode.
@@ -369,7 +420,7 @@ public:
         UNREFERENCED_PARAMETER(dipY);
     }
 
-    // --- Routed Events (Phase 1: Expose virtual functions as Event<>) ----
+    // --- Routed Events (the OnXxx virtuals, exposed as Event<>) ----------
     // These events allow user code to subscribe to low-level interactions without
     // inheriting from controls. Handlers are invoked from the corresponding OnXxx
     // virtuals, which subclasses can still override for custom behavior.
@@ -420,6 +471,13 @@ public:
     // Set by the owning window's focus manager — do not call directly; use the
     // window's SetFocusElement so the previously focused element is cleared.
     void SetFocused(bool f);
+    // FocusManager only, when the focused element leaves the tree: reset the bit
+    // WITHOUT OnFocusChanged / LostFocus, because the element may be mid-teardown.
+    // Without it the bit stayed true after detach, so focusing the element again
+    // hit SetFocused's `focused_ == f` early return and no GotFocus, OnFocusChanged
+    // or visual-state change ran — and IsFocused() disagreed with the manager, which
+    // a UI Automation HasKeyboardFocus query would read.
+    void ClearFocusOnDetach() { focused_ = false; }
 
     // --- Drag and drop ----------------------------------------------------
     // Install a drop handler. The host (NativeWindowHost) registers ONE COM
@@ -450,7 +508,7 @@ public:
     void OnPointerEnter();
     void OnPointerLeave();
 
-    // --- Routed input (WP-03, roadmap §9.2) -------------------------------
+    // --- Routed input ---------------------------------------
     // The InputManager drives these. A pointer/key event walks the element chain
     // in two passes: Preview tunnels root->target (a parent can pre-empt), then
     // the main phase bubbles target->root (a child handles first, an unhandled
@@ -523,10 +581,14 @@ public:
         OnTextInput(ch);
     }
 
-    // Whether this element participates in hit-testing (roadmap §9.1). A false
+    // Whether this element participates in hit-testing. A false
     // value makes the pointer pass through to whatever is behind it, even though
-    // the element still renders. Disabled state is separate (a disabled element can
-    // still be hit, it just swallows the event) — both must hold for HitTest to pass.
+    // the element still renders. Enabled state is a separate gate with the same
+    // effect on hit-testing: HitTest requires visible AND hit-test-visible AND
+    // enabled, so a disabled element is not hit either and the pointer reaches
+    // whatever lies behind it (it does not swallow the event). The two flags differ
+    // elsewhere: disabled also drops pointer/pressed state and changes the visual
+    // state, while hit-test-invisible changes nothing but hit-testing.
     bool IsHitTestVisible() const { return hitTestVisible_; }
     void SetHitTestVisible(bool v) { hitTestVisible_ = v; }
 
@@ -542,7 +604,7 @@ public:
     // Per-frame animation (e.g. smooth scrolling). WantsAnimationTick() reports
     // whether motion is left; OnAnimationTick advances it. CollectAnimations
     // appends the currently-animating elements so the host ticks only the active
-    // set (roadmap §6.1), never the whole tree.
+    // set, never the whole tree.
     virtual bool WantsAnimationTick() const { return false; }
     virtual void OnAnimationTick(float dtSec) { UNREFERENCED_PARAMETER(dtSec); }
     virtual void CollectAnimations(std::vector<UIElement*>& out) {
@@ -558,14 +620,14 @@ public:
     // if there is no caret.
     virtual bool CaretRectDip(RectDip& out) const { UNREFERENCED_PARAMETER(out); return false; }
 
-    // --- Tree attachment lifecycle (roadmap §6.2 / §6.3) ------------------
+    // --- Tree attachment lifecycle ------------------
     // The framework calls AttachToContext when this element joins a live tree
     // (host root registered, or panel child added under an attached parent) and
     // DetachFromContext when it leaves. An element reads services via the
     // protected Context() only while attached, and its subscriptions +
     // animation registration are released automatically on detach.
     //
-    // Attach order (§6.3): store context -> OnAttachedToTree -> recurse to
+    // Attach order: store context -> OnAttachedToTree -> recurse to
     // children. Detach order is the reverse: recurse to children ->
     // OnDetachedFromTree -> release subscriptions + drop from the animation set
     // -> clear context. Re-attaching an already-attached element detaches it from
@@ -598,7 +660,7 @@ protected:
     // Services for the currently-attached tree. Valid only between
     // OnAttachedToTree and OnDetachedFromTree; reading it while detached returns
     // the empty default. Controls use this instead of caching raw service
-    // pointers (roadmap §6.2: no service pointer outlives the attach period).
+    // pointers (no service pointer outlives the attach period).
     const UIContext& Context() const { return context_; }
 
     // Convenience accessors for the two services controls reach for most often,
@@ -607,7 +669,7 @@ protected:
     DWriteContext* Dwrite() const { return context_.dwrite; }
     WindowServices* Window() const { return context_.window; }
 
-    // The current theme snapshot for this element's tree (roadmap §11, WP-05).
+    // The current theme snapshot for this element's tree.
     // Reads design tokens (colors / spacing / typography). While attached it
     // returns the host's stable snapshot; while detached (or in a headless test
     // that wired no theme) it returns a shared static default snapshot, so a
@@ -629,6 +691,29 @@ protected:
     // children first on detach).
     virtual void AttachChildren(const UIContext& ctx) { UNREFERENCED_PARAMETER(ctx); }
     virtual void DetachChildren() {}
+
+    // The UIA peer for this element; override to expose a control type and
+    // patterns (stable protected API, docs/controls/inheritance-guide.md). Called
+    // lazily, only while attached and only when a UIA client reaches the element.
+    // Default: a generic peer (Custom when focusable, raw-only otherwise).
+    virtual std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer();
+
+    // Overridable body of CollectDirtyBounds, called only when the subtree mark
+    // says something at or below this node may be dirty. The default reports this
+    // element's own VisualBounds() when its own flags are set. A container calls
+    // the base (or reports itself the same way) and then calls the PUBLIC
+    // CollectDirtyBounds on each child it paints — never the child's override —
+    // so the pruning test runs at every level.
+    //
+    // Every pixel this element paints must still be reported (the CONTRACT on
+    // CollectDirtyBounds). Pruning changes nothing about that for state recorded
+    // through InvalidateDirty, because every such call marks the path. State that
+    // is reported from a member flag instead (ScrollPanel's railsDirty_) must be
+    // raised together with an InvalidateDirty(DirtyFlags::None) on this element,
+    // which marks the path without setting dirty_.
+    virtual void CollectDirtyBoundsOverride(std::vector<RectDip>& out) {
+        if (IsVisible() && Any(Dirty())) out.push_back(VisualBounds());
+    }
 
     // THE ONE CALL A Measure MAKES to publish its result. A single writer for
     // desired_ rather than 25 controls assigning the field directly: it keeps the
@@ -670,7 +755,7 @@ protected:
     // default so a container (Panel/Border) on the bubble route never presses.
     void SetClickable(bool c) { clickable_ = c; }
 
-    // The single click hook for the routed gesture (WP-03): fired by the base
+    // The single click hook for the routed gesture: fired by the base
     // OnPointerReleased when a clickable element is released inside after its own
     // press. `e.position` is the up point in window DIPs (used by hit-region
     // controls like TreeView). The single click hook of the routed input model.
@@ -695,7 +780,7 @@ protected:
     SizeDip desired_;  // output of Measure
 
 private:
-    // Measure cache (roadmap §6.2). cachedDesired_ is the desired size from the
+    // Measure cache. cachedDesired_ is the desired size from the
     // last real Measure at (lastAvailW_, lastAvailH_); measureCacheValid_ gates
     // reuse. Cleared via OnMeasureInvalidated whenever Measure is invalidated.
     SizeDip cachedDesired_;
@@ -703,7 +788,7 @@ private:
     float lastAvailH_ = 0.0f;
     bool measureCacheValid_ = false;
 
-    // Tree attachment (roadmap §6.2). context_ is the injected service set while
+    // Tree attachment. context_ is the injected service set while
     // attached (empty default otherwise); attached_ gates the attach hooks so a
     // double attach/detach is a no-op. contextSubs_ owns registrations tied to the
     // current attach period — cleared on detach so nothing outlives the tree.
@@ -711,15 +796,15 @@ private:
     bool attached_ = false;
     std::vector<Subscription> contextSubs_;
 
-    // Per-element right-click menu (null = none). Two slots for two ownership modes
-    // (P1-21): contextMenu_ is the owned instance (SetContextMenu), contextMenuRef_
+    // Per-element right-click menu (null = none). Two slots for two ownership modes:
+    // contextMenu_ is the owned instance (SetContextMenu), contextMenuRef_
     // is a non-owning reference (SetContextMenuRef, shared by multiple elements).
     // Only one is non-null at a time; ContextMenu() returns whichever is set. The
     // owner context is fed on attach (and immediately when set if already attached).
     std::unique_ptr<IContextMenu> contextMenu_;
     IContextMenu* contextMenuRef_ = nullptr;
 
-    // Routed events (Phase 1). These are invoked from the corresponding OnXxx
+    // Routed events. These are invoked from the corresponding OnXxx
     // virtuals, allowing user code to subscribe without subclassing. Zero overhead
     // when no subscribers (Event<> checks HasSubscribers before building args).
     Event<UIElement, PointerEventArgs> pointerPressed_;
@@ -739,6 +824,24 @@ private:
     // Tag: arbitrary user data (WPF/WinForms parity). Stored as std::any to
     // support any type. Common usage: storing int/string/pointer identifiers.
     std::any tag_;
+
+    // UI Automation state (name/id strings and the peer), allocated on first use.
+    // One pointer for every element that no client has looked at and no app has
+    // named. Released in DetachFromContext and ~UIElement (ReleaseAutomationPeer):
+    // a peer never outlives the attach period, so its provider can always reach a
+    // live context while it is not frozen.
+    std::unique_ptr<automation::AutomationState, automation::AutomationStateDeleter> automation_;
+    // The peer base reads Context() (site, focus manager) for its owner. Peer
+    // subclasses do not inherit this; they use the owner's public API.
+    friend class automation::AutomationPeer;
+    automation::AutomationState& EnsureAutomationState();
+    void ReleaseAutomationPeer();
+    void OnObservedInvalidation() override;
+    void OnObservedChildrenChanged() override;
+    // Tells UIA that this element joined or left its parent's exposed children.
+    // A pointer check unless the parent has a peer (a client looked at it) or this
+    // is a window root of a window a client is connected to.
+    void NotifyAutomationStructure();
 };
 
 } // namespace fluent

@@ -4,6 +4,8 @@
 
 #include "../framework/Test.h"
 #include "../../FluentUI/layout/Viewbox.h"
+#include "../../FluentUI/layout/StackPanel.h"
+#include "../../FluentUI/graphics/DrawingContext.h"
 #include "../../FluentUI/core/UIContext.h"
 #include "../../FluentUI/animation/AnimationRegistry.h"
 #include "LayoutTestHelpers.h"
@@ -210,4 +212,38 @@ TEST(Viewbox, ChangingStretchInvalidatesMeasure) {
 
     vb.SetStretch(Stretch::Fill);
     EXPECT_TRUE(Has(vb.Dirty(), DirtyFlags::Measure));
+}
+
+namespace {
+// A fixed-size row that records whether it was rendered.
+class SpyRow : public FrameworkElement {
+public:
+    bool rendered = false;
+    void Render(const DrawingContext&) override { rendered = true; }
+    void Measure(float, float) override { desired_ = {100.0f, 100.0f}; }
+};
+}  // namespace
+
+// A partial-redraw hint arrives in WINDOW DIPs; the content culls in its own unscaled
+// space. Shrunk by 0.5, on-screen row 2 (y 100..150) is unscaled y 200..300. The hint
+// over it must reach row 2 — passed through unmapped it intersected unscaled row 1
+// instead, so the dirty row was cleared and never repainted.
+TEST(Viewbox, PartialRedrawHintIsMappedIntoContentSpace) {
+    Viewbox vb;
+    vb.SetStretch(Stretch::Uniform);
+    auto* stack = vb.SetChild(std::make_unique<StackPanel>());
+    SpyRow* rows[4];
+    for (auto*& r : rows) r = stack->Emplace<SpyRow>();
+
+    vb.Measure(50.0f, 200.0f);
+    vb.Arrange({0, 0, 50.0f, 200.0f});   // 100x400 content -> scale 0.5
+
+    const RectDip hint{0, 110, 50, 20};  // window DIPs, inside on-screen row 2
+    DrawingContext dc{nullptr, nullptr, 1.0f, nullptr, &hint};
+    vb.Render(dc);
+
+    EXPECT_TRUE(rows[2]->rendered);
+    EXPECT_FALSE(rows[1]->rendered);
+    EXPECT_FALSE(rows[0]->rendered);
+    EXPECT_FALSE(rows[3]->rendered);
 }

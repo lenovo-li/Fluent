@@ -1,4 +1,4 @@
-// UIContext.h — the per-tree service context injected at attach (roadmap §6.2).
+// UIContext.h — the per-tree service context injected at attach.
 //
 // The old model made every control ask its host for services by hand:
 // `SetDWrite(...)`, `Attach(WindowServices*)`, `Button::CreateOverlay(...)`. That
@@ -13,13 +13,13 @@
 // lets a plain "create control + add to tree" sequence work with no manual
 // injection, and what makes safe teardown deterministic.
 //
-// SCOPE FOR THIS STEP (WP-02 Step 2): the context carries only the services that
-// exist today — the host (WindowServices) for device / popup registration, the
-// DirectWrite context for text layout, the animation registry so a control can
-// register/deregister itself, plus the owning HWND and current DPI scale. Later
-// work packages replace these coarse handles with the finer services the guide
-// lists (DrawingService, InputManager, FocusManager, PopupService, ThemeManager,
-// FrameScheduler, Dispatcher…); the struct grows there. It is intentionally a
+// SCOPE: the context carries the services the framework provides today — the
+// host (WindowServices) for device / popup registration, the DirectWrite context
+// for text layout, the animation registry so a control can register/deregister
+// itself, input routing and focus, the resource cache, the theme snapshot, the
+// behavior settings, plus the owning HWND and current DPI scale. New services are added here as members
+// when they exist (finer-grained services such as a PopupService, FrameScheduler
+// or Dispatcher were envisioned but are not part of it). It is intentionally a
 // plain aggregate of non-owning pointers: null members mean "not provided by this
 // host / not attached", so it is trivially usable in headless layout tests.
 #pragma once
@@ -28,6 +28,9 @@
 
 namespace fluent {
 
+namespace automation {
+class IAutomationSite;
+}
 class WindowServices;
 class DWriteContext;
 class AnimationRegistry;
@@ -84,13 +87,19 @@ struct UIContext {
     // the compositor showing correctly positioned pixels) and defers the
     // RASTERIZATION until the drag ends, where one exact redraw converges.
     //
-    // Deliberately a context flag rather than each control asking the window: the
-    // controls that need it (TreeView / TextArea) already read the context on
-    // every RefreshComposition, and a headless test wires this to false by simply
-    // not setting it.
+    // Deliberately a context flag rather than each control asking the window: a
+    // control can read it wherever it already reads its context, and a headless
+    // test wires this to false by simply not setting it.
+    //
+    // No FluentUI control reads it today. The composited TreeView / TextArea that
+    // the reasoning above was written for now scroll on the UI thread and never
+    // map a surface during a drag; the one composition user (ProgressBar's sweep)
+    // does not redraw its surface per frame. The host still maintains it
+    // (WM_ENTERSIZEMOVE / WM_EXITSIZEMOVE, UpdateContextModalResize) because it is
+    // public context API for composition-backed controls in other libraries.
     bool inModalResize = false;
 
-    // Input routing services for the attached tree (roadmap §9, WP-03). `input`
+    // Input routing services for the attached tree. `input`
     // is the hit-test + pointer-capture + routing hub the host feeds translated
     // Win32 events into; a control grabs/releases capture through it (e.g. Slider
     // during a drag). `focus` is the single focus authority (Tab / directional /
@@ -99,14 +108,14 @@ struct UIContext {
     InputManager* input = nullptr;
     FocusManager* focus = nullptr;
 
-    // Shared resource caches for text layout / icon geometry / stroke styles
-    // (roadmap §13.3, WP-04). Owned by the host; a control reaches it to reuse a
+    // Shared resource caches for text layout / icon geometry / stroke styles.
+    // Owned by the host; a control reaches it to reuse a
     // per-frame-rebuilt IDWriteTextLayout or a cached glyph geometry instead of
     // building its own each frame. Non-owning; null in headless tests that don't
     // exercise caching.
     ResourceCache* resourceCache = nullptr;
 
-    // The current immutable theme snapshot (roadmap §11, WP-05). Owned by the
+    // The current immutable theme snapshot. Owned by the
     // host's ThemeManager; a STABLE pointer whose pointee is overwritten in place
     // on a theme change (the epoch bump on generation is the cache-rebuild
     // signal). A control reads design tokens (colors/spacing/typography) through
@@ -119,6 +128,11 @@ struct UIContext {
     // want to flip a behavior tree-wide (e.g. "single click opens links in
     // this app") hold a BehaviorSettings member and point this at it.
     const BehaviorSettings* behavior = nullptr;
+
+    // The window's UI Automation site (automation/AutomationSite.h). Non-owning.
+    // Null in headless tests and in popup trees (popups are not yet exposed); an
+    // element under a null site never creates an automation peer.
+    automation::IAutomationSite* automation = nullptr;
 
     // A context with no host wired in — the default for a detached element.
     bool IsValid() const { return window != nullptr; }

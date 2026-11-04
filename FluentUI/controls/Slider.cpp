@@ -11,7 +11,7 @@ namespace fluent {
 namespace {
 constexpr float kTrackH  = 4.0f;   // track height (DIP)
 constexpr float kThumbR  = 8.0f;   // thumb radius (DIP)
-constexpr float kAnimTau = 0.04f;  // fill animation time constant (s) — kept local; ProgressBar WP-06
+constexpr float kAnimTau = 0.04f;  // fill animation time constant (s) — kept local; ProgressBar defines its own (0.05)
 // Horizontal padding so the thumb never draws outside bounds_ — it must be at
 // least the thumb's visual radius (including drag scale and focus ring), or the
 // left/right edges get clipped. The old value (kThumbR = 8) was too small:
@@ -104,6 +104,14 @@ bool Slider::WantsAnimationTick() const {
 
 void Slider::OnAnimationTick(float dtSec) {
     animFill_.Approach(value_, dtSec, kAnimTau, 0.01f * (max_ - min_ + 1.0f));
+    // Mark our own bounds dirty each tick (see CheckBox::OnAnimationTick). The
+    // AnimatedValue does not mark anything itself: with no dirty rect the host
+    // falls back to a FULL-window redraw every frame of the ease, and when another
+    // element is dirty in the same frame (a caret blink, a button hover fade) the
+    // partial redraw covers only that element and clips the moving fill and thumb
+    // out, so a keyboard step stalls and then jumps. Render level only: the ease
+    // never changes layout, and VisualBounds already covers the oversized thumb.
+    Invalidate();
 }
 
 // ---------------------------------------------------------------------------
@@ -135,7 +143,7 @@ void Slider::OnPointerPressed(PointerEventArgs& e) {
     UpdateState();
     SetValue(orientation_ == Orientation::Vertical ? ValueFromY(e.position.y)
                                                   : ValueFromX(e.position.x));
-    // Phase 1B: while dragging, the fill/thumb must track the pointer 1:1. The
+    // While dragging, the fill/thumb must track the pointer 1:1. The
     // eased animFill_ (tau 0.04s) would lag behind the cursor — a rubber-band
     // stutter. Snap the animated value straight to the (coerced) target so there
     // is no easing during the drag; keyboard/programmatic SetValue still eases.
@@ -147,7 +155,7 @@ void Slider::OnPointerMoved(PointerEventArgs& e) {
     if (!dragging_) return;
     SetValue(orientation_ == Orientation::Vertical ? ValueFromY(e.position.y)
                                                   : ValueFromX(e.position.x));
-    animFill_.SetImmediate(value_);  // Phase 1B: track the pointer 1:1 (no easing)
+    animFill_.SetImmediate(value_);  // track the pointer 1:1 (no easing)
     e.handled = true;
 }
 

@@ -28,12 +28,15 @@ HRESULT TooltipService::Create(HINSTANCE hInst, HWND hwndOwner, D2DContext* d2d,
     }
     // A tooltip never takes input and is dismissed explicitly by the window.
     popup_->SetLightDismiss(false);
-    // Theme the card + injected content with the parent's stable snapshot (§11).
+    // ...and is the one popup that must not announce itself: the owner's reaction
+    // to WM_FLUENT_POPUP_OPENED is to dismiss the tooltip.
+    popup_->SetNotifyOwnerOnOpen(false);
+    // Theme the card + injected content with the parent's stable snapshot.
     // Set before SetContent so it flows into the content's UIContext.
     popup_->SetTheme(theme);
 
-    // DWrite is injected by PopupHost::SetContent via the tree UIContext now
-    // (roadmap §6.2), so the TextBlock no longer needs a manual SetDWrite.
+    // DWrite is injected by PopupHost::SetContent via the tree UIContext now,
+    // so the TextBlock no longer needs a manual SetDWrite.
     content_ = std::make_unique<TextBlock>();
     content_->SetFontSize(kFontSize);
     content_->SetWrap(true);

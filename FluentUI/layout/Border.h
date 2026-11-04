@@ -1,6 +1,6 @@
 // Border.h — a single-child decorator that draws a background fill, an optional
 // stroked border, and rounded corners, then lays its child out inside its padding
-// (roadmap §5.5 / the layout primitives list). WPF's Border.
+// (one of the layout primitives). WPF's Border.
 //
 // Border owns exactly one child (unique_ptr) and forwards the whole element
 // contract to it: attach/detach, render (after painting its own chrome), hit-test,
@@ -41,6 +41,11 @@ public:
         return raw;
     }
     UIElement* Child() const { return content_.get(); }
+    // UI Automation: the content is the one logical child (0 when empty).
+    size_t LogicalChildCount() const override { return content_ ? 1 : 0; }
+    UIElement* LogicalChildAt(size_t i) const override {
+        return i == 0 ? content_.get() : nullptr;
+    }
 
     // --- Chrome -----------------------------------------------------------
     // Background fill. Unset (the default) paints no fill (transparent). A set
@@ -65,7 +70,6 @@ public:
     UIElement* HitTestDeep(float dipX, float dipY) override;
     UIElement* HitTestDropTarget(float dipX, float dipY) override;
     void CollectFocusables(std::vector<UIElement*>& out) override;
-    void CollectDirtyBounds(std::vector<RectDip>& out) override;
     void CollectAnimations(std::vector<UIElement*>& out) override;
     void OnVisibilityChanged(bool visible) override;
     void OnAncestorVisibilityChanged() override;
@@ -73,12 +77,17 @@ public:
     void OnDpiChanged(float dpiScale) override;
     void OnDeviceLost() override;
     void OnDeviceRestored() override;
-    bool AnyDirtyInSubtree(DirtyFlags flags) const override;
-    void ClearDirtySubtree() override;
     bool NeedsRemeasure() const override { return AnyDirtyInSubtree(DirtyFlags::Measure); }
 
 protected:
-    // Propagate the tree context to the single child (roadmap §6.3).
+    // Dirty-walk hooks: self, then the single content child through its PUBLIC
+    // entry point (CollectDirtyBounds / AnyDirtyInSubtree / ClearDirtySubtree),
+    // which is where the subtree-mark pruning happens.
+    void CollectDirtyBoundsOverride(std::vector<RectDip>& out) override;
+    bool AnyDirtyInSubtreeOverride(DirtyFlags flags) const override;
+    void ClearDirtySubtreeOverride() override;
+
+    // Propagate the tree context to the single child.
     void AttachChildren(const UIContext& ctx) override {
         if (content_) content_->AttachToContext(ctx);
     }

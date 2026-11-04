@@ -261,6 +261,20 @@ Event<RichTextBox, SelectionChangedArgs>& SelectionChanged();
 `SetDrawingEffect` 需要画刷在 layout 生命期内保持有效，所以 `runBrushes` 和 layout
 在同一个 `ParagraphLayoutInfo` 里，一起创建、一起销毁。
 
+画刷在帧之间复用，只在 layout 重建、淡化不透明度变化或 D2D 设备变化时重建
+（`brushDevice`）。缓存按设备而不是按设备上下文判断命中：纯色画刷是设备资源，
+同一设备上的任何上下文都能用；而上下文每帧来自 `IDCompositionSurface::BeginDraw`，
+不保证每次是同一个对象，按上下文判断的话，每帧换一个上下文就每帧都不命中。
+设备丢失后设备会换，旧画刷随之作废，这正是需要重建的情况。设备是持有引用而不只是比较地址：
+被释放的设备的地址可能被新设备复用。以前每次绘制（包括每次光标闪烁）都给每个 run 新建一个 COM 画刷。
+
+**run 颜色跟随元素透明度。** 这些画刷绕过了 `DrawingContext` 的类型化绘制方法（元素透明度在那里应用），
+所以创建时用 `dc.Faded(run.color)`；以前淡化的 RichTextBox 里彩色 run 仍然完全不透明。
+
+未验证：画刷缓存和淡化都需要真实的设备上下文，headless 测试没有设备，覆盖不到。请在真机上看：
+demo 的 RichTextBox 页里聚焦编辑器、不打字，F12 HUD 上光标闪烁帧的 CPU 不应随 run 数增长；
+把含彩色文字的 RichTextBox 放进一个淡入淡出的页面，彩色文字应和其他文字一起淡化。
+
 ### 光标闪烁
 
 `WantsBlink()` 返回 `IsFocused()`，窗口的闪烁定时器驱动 `OnBlink()` 翻转
@@ -302,6 +316,21 @@ Event<RichTextBox, SelectionChangedArgs>& SelectionChanged();
 ## 备注
 
 ### 已修复的设计坑
+
+**没有选区时 Ctrl+X 不再清掉重做历史。** 以前 `Cut` 无论有没有选区都先 `PushUndo()`：压入一个与当前状态相同的
+快照（之后一次 Ctrl+Z 看起来什么都没做），同时清空重做栈，撤销几步后误按一下 Ctrl+X 就丢掉了全部重做历史。
+现在没有选区时直接返回。由 `RichTextBox.CutWithNoSelectionKeepsTheRedoHistory` 锁定。
+
+**粘贴的 CRLF 规范成段落分隔。** 文档只按 `'\n'` 分段，而几乎所有 Windows 来源的剪贴板文本都是 CRLF。
+留在 run 里的 `'\r'` 不是无害的：DirectWrite 把它当硬换行，每个粘贴的段落多一条视觉行，光标要多按一次才能跨过
+看不见的字符，再复制出去变成 CRLF 加段落分隔符。现在 `InsertText` 把 CRLF 和单独的 CR 都换成 `'\n'`
+（放在 `InsertText` 而不是 `Paste` 里，所以 IME 上屏串和以后的调用者也得到同样处理）；不含 `'\r'` 的普通输入
+不复制字符串。由 `RichTextBox.PasteNormalizesCrLfToParagraphBreaks` 锁定。
+
+**段首的输入法组合不再错位格式。** 判断「组合在这一段里」用的是「段内偏移 > 0」，而偏移 0 是真实位置（光标在段首，
+每个新段落都是）。结果组合串拼进去了却没有下划线，各个 run 的格式按未平移的偏移应用，落到了组合字符上。现在用单独的
+标志判断，绘制时从光标位置开始的 run 也被组合串向右推。由 `RichTextBox.CompositionAtParagraphStartShiftsTheRunsFormatting`
+锁定（通过新增的 `TestSetComposition`，它设置与 IME 路径相同的状态）。
 
 **撤销快照必须含段落向量**：早期版本快照的是扁平 run 列表，撤销后段落格式（对齐、
 行距、缩进）全部丢失——因为 run 里没有这些字段。现在快照是 `std::vector<Paragraph>`，

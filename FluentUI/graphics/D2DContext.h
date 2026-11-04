@@ -3,8 +3,10 @@
 // One D2D device context is shared by the whole UI. Each window's DirectComposition
 // device is created from THIS D2D device (see DCompHost) — that is required, not
 // stylistic: a DComp device built from the DXGI device hands back an IDXGISurface from
-// surface BeginDraw instead of an ID2D1DeviceContext (E_NOINTERFACE). SetDpi() must be
-// called whenever the target DPI changes so D2D scales DIPs to pixels.
+// surface BeginDraw instead of an ID2D1DeviceContext (E_NOINTERFACE). DPI is not set
+// on the context: each frame's owner folds its DPI scale into the transform it sets
+// after BeginDraw (Scale(dpi) * Translation(atlas offset); see DCompHost), so one
+// shared context serves windows on monitors with different DPIs.
 #pragma once
 
 #include "../fl_common.h"
@@ -28,7 +30,7 @@ public:
 
     bool Valid() const { return d2dContext_ != nullptr; }
 
-    // Release the whole device stack (device-loss recovery, roadmap §17). Called
+    // Release the whole device stack (device-loss recovery). Called
     // by the host before re-Initialize()ing IN PLACE so borrowers that hold this
     // D2DContext* (PopupHost / TooltipService) keep a valid pointer across the
     // rebuild — only the COM objects inside are swapped, not the D2DContext.
@@ -41,7 +43,7 @@ public:
         d3dDevice_.Reset();
     }
 
-    // Read the reason a device was removed, for the recovery trace (roadmap §17).
+    // Read the reason a device was removed, for the recovery trace.
     // S_OK if the device is still valid or not yet created.
     HRESULT DeviceRemovedReason() const {
         return d3dDevice_ ? d3dDevice_->GetDeviceRemovedReason() : S_OK;

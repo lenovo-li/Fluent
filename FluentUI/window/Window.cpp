@@ -111,6 +111,31 @@ void Window::RaiseClosed() {
     closed_.Raise(*this, args);
 }
 
+void Window::SetRoot(std::unique_ptr<UIElement> root) {
+    if (root.get() == root_.get()) return;
+    // Unregister first, destroy second: the host's elements_ holds a raw pointer.
+    // RemoveElement is a no-op if the old root was never registered (the usual
+    // pre-creation call from OnInitialize).
+    if (root_) {
+        RemoveElement(root_.get());
+        // Deferred destruction on a live window; see SetRoot in Window.h for the
+        // handler-inside-the-old-root use-after-free this avoids. If the post
+        // fails (no HWND yet, or the window is going away) nothing can be
+        // dispatching into the old root, so it is released immediately.
+        if (Hwnd() && PostMessageW(Hwnd(), WM_FLUENT_RELEASE_RETIRED_ROOTS, 0, 0))
+            retiredRoots_.push_back(std::move(root_));
+        else
+            root_.reset();
+    }
+    root_ = std::move(root);
+    if (root_ && IsOpen()) {
+        AddElement(root_.get());
+        // The new tree has never been measured; without this it would sit unlaid-out
+        // until an unrelated resize or input event scheduled a frame.
+        RequestFrame(FrameReason::Layout);
+    }
+}
+
 void Window::OnCreated() {
     // Register the root first so the service context reaches it, then let the
     // subclass add anything that lives outside the root tree. Order matters: a
@@ -203,6 +228,15 @@ void Window::OnDestroyed() {
 
 bool Window::OnAppMessage(UINT msg, WPARAM wp, LPARAM lp, LRESULT& result) {
     UNREFERENCED_PARAMETER(wp);
+    if (msg == WM_FLUENT_RELEASE_RETIRED_ROOTS) {
+        // Move out before destroying: a destructor in the old tree could, in
+        // principle, reach SetRoot again and push onto the vector being cleared.
+        std::vector<std::unique_ptr<UIElement>> retired;
+        retired.swap(retiredRoots_);
+        retired.clear();
+        result = 0;
+        return true;
+    }
     if (msg == WM_CLOSE) {
         // Route the system close button through the cancelable path rather than
         // letting DefWindowProc destroy the window behind the app's back.

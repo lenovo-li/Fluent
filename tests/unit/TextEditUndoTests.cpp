@@ -9,6 +9,8 @@
 
 #include "../framework/Test.h"
 #include "../../FluentUI/controls/TextBox.h"
+#include "ClipboardTestHelpers.h"
+#include <vector>
 
 using namespace fluent;
 
@@ -177,6 +179,36 @@ TEST(TextEditUndo, DeletingASelectionIsOneUndoableStep) {
 
     tb.Undo();
     EXPECT_EQ(tb.Text(), std::wstring(L"abcdef"));
+}
+
+namespace {
+// BuildEditMenuItems is protected; this is the one-line door to it. The items are the
+// real ones the context menu shows, so invoking one runs the shipping handler.
+class MenuTextBox : public TextBox {
+public:
+    std::vector<MenuItem> Items() { return BuildEditMenuItems(); }
+};
+} // namespace
+
+TEST(TextEditUndo, ContextMenuCutIsUndoable) {
+    // The menu's Cut used the unrecorded DeleteSelection while Ctrl+X used the
+    // recorded one. After a menu cut the stack still described the uncut buffer, so
+    // Ctrl+Z replayed the typing entry against it — deleting "hello " — and the cut
+    // text was gone for good. Cut writes the clipboard, which the guard puts back.
+    testclip::ClipboardTextGuard guard;
+    MenuTextBox tb;
+    Type(tb, L"hello world");
+    tb.Select(6, 5);                                  // "world"
+
+    std::vector<MenuItem> items = tb.Items();
+    items[0].RaiseInvoked();                          // 剪切
+    if (tb.Text() == L"hello world") return;          // clipboard held elsewhere: skip
+    EXPECT_EQ(tb.Text(), std::wstring(L"hello "));
+
+    tb.Undo();
+    EXPECT_EQ(tb.Text(), std::wstring(L"hello world"));
+    tb.Undo();
+    EXPECT_TRUE(tb.Text().empty());
 }
 
 // --- SetText / history lifetime -------------------------------------------

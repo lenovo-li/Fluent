@@ -28,6 +28,8 @@ namespace fluent {
 
 class NumericUpDown : public RangeBase {
 public:
+    // UI Automation peer (automation/RangeAndContainerPeers.h).
+    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
     NumericUpDown();
 
     // Min/Max/Value inherited from RangeBase. Value is clamped to [Min, Max] and

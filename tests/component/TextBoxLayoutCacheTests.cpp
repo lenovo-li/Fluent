@@ -1,6 +1,6 @@
 // TextBoxLayoutCacheTests.cpp — component tests proving TextBox routes its
-// per-frame IDWriteTextLayout through the shared ResourceCache (roadmap §13.3,
-// WP-04). TextBox used to rebuild an identical layout 4-6 times per frame
+// per-frame IDWriteTextLayout through the shared ResourceCache.
+// TextBox used to rebuild an identical layout 4-6 times per frame
 // (Render + CaretX + HitIndex + ClampScroll); centralizing it means the same
 // (text, size, height) is built once and reused.
 //

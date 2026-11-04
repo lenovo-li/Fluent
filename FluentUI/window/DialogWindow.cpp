@@ -14,7 +14,9 @@ namespace {
 // dialog chrome ever becomes themeable these move into ThemeTokens together.
 constexpr float kDialogPadDip = 16.0f;      // left/right inset
 constexpr float kDialogTopGapDip = 8.0f;    // gap below the title bar
-constexpr float kDialogBottomPadDip = 24.0f;
+// Same as the side inset. It was 24, which next to a 16 DIP side inset and an 8 DIP
+// gap under the title left a visibly empty band under the buttons of every dialog.
+constexpr float kDialogBottomPadDip = 16.0f;
 
 // Width an auto-sized dialog offers its content before measuring. Text wraps to
 // this, so it sets the shape of every auto-sized dialog: wide enough for a
@@ -180,9 +182,26 @@ DialogResult DialogWindow::ShowDialog(NativeWindowHost& owner) {
     } else {
         // Legacy path for hosts without an Application. Each window drives itself
         // via the self-frame timer (UsesExternalFramePump() == false).
+        //
+        // GetMessageW blocks for as long as no message arrives, which for a dialog
+        // the user is reading can be far past the hang watchdog's threshold. Mark
+        // the dialog and its owner idle first, each only if it has no frame of its
+        // own pending and no running animation (the per-window rule
+        // Application::PumpOneTurn uses too, see window/HangDetector.h): a busy
+        // window gets its self-frame WM_TIMER within milliseconds, and that
+        // message beats it. The
+        // beat after the wait clears the mark for both, so a handler that then
+        // hangs is still reported. ownerWindow_ outlives the modal loop: the owner
+        // is disabled, cannot close, and its destruction would have to come from a
+        // handler running inside this loop.
         MSG msg;
         while (IsOpen()) {
+            if (!NeedsFrame() && !IsAnimating()) NoteLoopIdle();
+            if (ownerWindow_ && !ownerWindow_->NeedsFrame() && !ownerWindow_->IsAnimating())
+                ownerWindow_->NoteLoopIdle();
             const int state = GetMessageW(&msg, nullptr, 0, 0);
+            NoteLoopAwake();
+            if (ownerWindow_) ownerWindow_->NoteLoopAwake();
             if (state <= 0) {
                 if (state == 0) PostQuitMessage(static_cast<int>(msg.wParam));
                 break;
@@ -191,18 +210,43 @@ DialogResult DialogWindow::ShowDialog(NativeWindowHost& owner) {
             DispatchMessageW(&msg);
         }
     }
-    // RestoreOwner() removed: owner re-enabling and SetForegroundWindow are now
-    // done in RaiseClosing, so they happen for every dismiss path (modal loop exit,
-    // non-modal Show, owner-initiated close).
+    // Owner re-enabling and the foreground hand-back are done in RaiseClosing
+    // (through RestoreOwner), so they happen for every dismiss path (modal loop
+    // exit, non-modal Show, owner-initiated close).
     return result_;
 }
 
+DialogWindow::OwnerRestorePlan DialogWindow::PlanOwnerRestore(bool disabledByThisDialog,
+                                                              bool ownerEnabledNow) {
+    OwnerRestorePlan plan;
+    // Only the dialog that disabled the owner may re-enable it. ownerWasEnabled_ is
+    // recorded by ShowDialog just before it disables the owner, so it is false for
+    // a non-modal Show (which never touches the owner's enabled state) and for a
+    // modal dialog opened while the owner was ALREADY disabled — by an outer modal
+    // dialog still running its loop, or by the application itself. Re-enabling in
+    // those cases hands the user an owner the outer modal loop believes is locked.
+    plan.enable = disabledByThisDialog;
+    // The foreground hand-back is what avoids the Z-order flicker (see
+    // RaiseClosing), so it is wanted whenever the owner will be usable afterwards:
+    // the owner this dialog re-enables, or an owner that was never disabled (the
+    // non-modal Show case keeps the hand-back it always had). An owner that stays
+    // disabled is not activated, because the window that should come forward then
+    // is whatever disabled it (the outer modal dialog), not the locked owner.
+    plan.activate = disabledByThisDialog || ownerEnabledNow;
+    return plan;
+}
+
 void DialogWindow::RestoreOwner() {
-    if (ownerWindow_ && ownerWasEnabled_ && ownerWindow_->Hwnd()) {
-        EnableWindow(ownerWindow_->Hwnd(), TRUE);
-        SetForegroundWindow(ownerWindow_->Hwnd());
-    }
+    HWND owner = ownerWindow_ ? ownerWindow_->Hwnd() : nullptr;
+    const bool disabledByThisDialog = ownerWasEnabled_;
+    // Cleared first so every later dismiss stage (RaiseUnloaded's safety net) sees
+    // the owner as already handled, whichever branch runs below.
     ownerWasEnabled_ = false;
+    if (!owner) return;
+    const OwnerRestorePlan plan =
+        PlanOwnerRestore(disabledByThisDialog, IsWindowEnabled(owner) != FALSE);
+    if (plan.enable) EnableWindow(owner, TRUE);
+    if (plan.activate) SetForegroundWindow(owner);
 }
 
 bool DialogWindow::Close(DialogResult result) {
@@ -232,11 +276,11 @@ bool DialogWindow::RaiseClosing() {
     // itself (often a background app) during the gap, causing visible Z-order flicker
     // (the owner disappears briefly as the background app is raised above it, then
     // reappears when we call SetForegroundWindow later).
-    if (ownerWindow_ && ownerWindow_->Hwnd()) {
-        EnableWindow(ownerWindow_->Hwnd(), TRUE);
-        SetForegroundWindow(ownerWindow_->Hwnd());
-        ownerWasEnabled_ = false;  // Mark as already restored
-    }
+    //
+    // RestoreOwner re-enables the owner only if THIS dialog disabled it; an
+    // unconditional EnableWindow(TRUE) here used to unlock an owner that an outer
+    // modal dialog was still holding disabled (PlanOwnerRestore has the cases).
+    RestoreOwner();
     
     return true;
 }
@@ -244,11 +288,7 @@ bool DialogWindow::RaiseClosing() {
 void DialogWindow::RaiseUnloaded() {
     // Owner was already re-enabled and activated in RaiseClosing (before any teardown),
     // so the check here is just a safety net for non-standard dismiss paths (if any).
-    if (ownerWindow_ && ownerWasEnabled_ && ownerWindow_->Hwnd()) {
-        EnableWindow(ownerWindow_->Hwnd(), TRUE);
-        SetForegroundWindow(ownerWindow_->Hwnd());
-        ownerWasEnabled_ = false;
-    }
+    if (ownerWasEnabled_) RestoreOwner();
     Window::RaiseUnloaded();
 }
 
@@ -265,12 +305,10 @@ void DialogWindow::RaiseClosed() {
     dialogClosed_.Raise(*this, args);
 }
 
-// Deliberately synchronous, unlike Window::OnLayout which measures on a worker.
-// A dialog's tree is small (a message, a few buttons) and its layout cost is far
-// below the ~7ms that motivated async layout, so handing it to a worker would add
-// thread-handoff latency and a timeout path to guard, for no measurable win. It
-// also never participates in a modal resize drag — the case async layout exists
-// for. If a dialog ever grows a large scrolling document, revisit this.
+// Synchronous, like Window::OnLayout (the async layout worker that Window once used
+// for resize drags was removed; see the measurements in Window.cpp). A dialog differs
+// from Window only in geometry: its content sits inside fixed padding below the
+// title bar instead of filling the client area.
 void DialogWindow::OnLayout() {
     UIElement* root = Root();
     if (!root) return;
@@ -302,6 +340,10 @@ bool DialogWindow::OnAppMessage(UINT msg, WPARAM wp, LPARAM lp, LRESULT& result)
         result = 0;
         return true;
     }
+    // A dialog's content root can be swapped too (SetRoot), and the old root's
+    // deferred destruction is Window's business.
+    if (msg == WM_FLUENT_RELEASE_RETIRED_ROOTS)
+        return Window::OnAppMessage(msg, wp, lp, result);
     return false;
 }
 

@@ -58,12 +58,14 @@ void DatePicker::OpenCalendar() {
         // Create the calendar content.
         calendar_ = std::make_shared<Calendar>();
         popup_->SetContent(calendar_.get());
-        popup_->SetOnClose([this]() {
-            popupOpen_ = false;
-        });
+        // Every close path funnels through OnPopupClosed, including the popup
+        // closing ITSELF when a click lands on its card padding (PopupHost light
+        // dismiss). That path used to clear only the flag, so CalendarClosed did not
+        // fire and the window's dismiss hook stayed registered until detach.
+        popup_->SetOnClose([this]() { OnPopupClosed(); });
 
         // Wire SelectionChanged: calendar picks a date → close, update, fire event.
-        AddContextSubscription(
+        calendarSelectionSub_ = (
             calendar_->SelectionChanged().Subscribe(this, [](void* owner, Calendar&, RoutedEventArgs&) {
                 auto* self = static_cast<DatePicker*>(owner);
                 self->SetSelectedDate(self->calendar_->SelectedYear(),
@@ -99,14 +101,20 @@ void DatePicker::OpenCalendar() {
     // Calendar's internal metrics changed. Measure with unbounded space so
     // the calendar reports its ideal size.
     calendar_->Measure(1e6f, 1e6f);
-    float popupW = calendar_->Desired().w;
-    float popupH = calendar_->Desired().h;
+    // + the card inset on both sides: PopupHost arranges content inside it, so the
+    // natural size alone left the last column and row ~8 DIP short (ComboBox and
+    // MenuFlyout already add it).
+    const float pad = PopupHost::kContentPadding * 2.0f;
+    float popupW = calendar_->Desired().w + pad;
+    float popupH = calendar_->Desired().h + pad;
 
     if (SUCCEEDED(popup_->Open(anchor, popupW, popupH))) {
         popupOpen_ = true;
 
-        // Register light-dismiss callback (click outside closes popup).
-        AddContextSubscription(
+        // Register light-dismiss callback (click outside closes popup). Held for the
+        // open period only (released by OnPopupClosed), not as a context
+        // subscription: those accumulate one per open until detach.
+        dismissSub_ = (
             window_->RegisterActivePopupDismiss(
                 [this](PopupDismissReason reason, HWND otherHwnd, int screenX, int screenY) {
                     UNREFERENCED_PARAMETER(otherHwnd);
@@ -135,8 +143,23 @@ void DatePicker::OpenCalendar() {
 
 void DatePicker::CloseCalendar() {
     if (!popup_ || !popupOpen_) return;
-    popup_->Close();
+    // Same shape as ComboBox::ClosePopup. PopupHost::Close runs the SetOnClose
+    // callback (OnPopupClosed, which raises CalendarClosed) last, with the popup
+    // already Closed, so a handler can reopen the calendar; nothing here may run
+    // after it. (A handler must still not destroy this DatePicker synchronously —
+    // the event's own Raise is on the stack; see PopupState.h.) The direct call is the fallback
+    // for a Close() that would be a no-op (popup not in the steady Open state).
+    if (popup_->IsOpen()) {
+        popup_->Close();
+        return;
+    }
+    OnPopupClosed();
+}
+
+void DatePicker::OnPopupClosed() {
+    if (!popupOpen_) return;  // already done (CloseCalendar's fallback call)
     popupOpen_ = false;
+    dismissSub_.reset();
 
     RoutedEventArgs args;
     args.source = this;
@@ -257,6 +280,12 @@ void DatePicker::OnAttachedToTree() {
 void DatePicker::OnDetachedFromTree() {
     ButtonBase::OnDetachedFromTree();
     CloseCalendar();
+    // popup_ and calendar_ are deliberately KEPT. This detach can run synchronously
+    // from inside the calendar's own dispatch — picking a date raises DateChanged, and
+    // an app handler that switches the TabControl page detaches this picker before the
+    // popup's WndProc and the calendar's Event::Raise have returned. Destroying them
+    // here freed both mid-call. The selection subscription is member-held
+    // (calendarSelectionSub_), so a kept calendar still works after re-attach.
     window_ = nullptr;
 }
 

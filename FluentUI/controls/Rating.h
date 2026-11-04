@@ -67,13 +67,15 @@ public:
     void OnKeyDownRouted(KeyEventArgs& e) override;
 
     // The focus ring is stroked outside bounds_, so the dirty rect must cover it
-    // (WP-07 §S4) — declared unconditionally, including while unfocused, so the
+    // — declared unconditionally, including while unfocused, so the
     // frame where focus LEAVES still clears those pixels.
     float VisualOverflowDip() const override {
         return FocusRingPadDip(FocusRingSpec{});
     }
 
 protected:
+    // UI Automation peer (automation/RangeAndContainerPeers.h).
+    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
     // A completed click commits the star under the pointer. Using the click gesture
     // (rather than OnPointerPressed) means a press that drags off and releases
     // outside does not commit, which is what every other button here does.

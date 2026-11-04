@@ -340,7 +340,7 @@ void Image::RaiseOpened() {
 }
 
 // ---------------------------------------------------------------------------
-// LoadFallback — the P1-18 placeholder path.
+// LoadFallback — the failure-placeholder path.
 //
 // Deliberately NOT recursive into LoadImage: routing the fallback through the
 // same function would re-raise ImageFailed for the fallback's own failure (the

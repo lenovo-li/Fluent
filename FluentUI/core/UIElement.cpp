@@ -2,6 +2,7 @@
 // machine, and the tree attachment lifecycle.
 
 #include "UIElement.h"
+#include "../automation/AutomationPeer.h"
 #include "../animation/AnimationRegistry.h"
 #include "../styling/ThemeManager.h"
 #include "../input/InputManager.h"
@@ -28,6 +29,9 @@ UIElement::~UIElement() {
     // context-scoped subscriptions. contextSubs_ would release on its own during
     // member destruction anyway; doing it before we clear the animation pointer
     // keeps the order explicit.
+    // UIA peer: freeze its provider and queue the UIA disconnect while the site
+    // pointer in context_ is still valid. Non-virtual (see ReleaseAutomationPeer).
+    ReleaseAutomationPeer();
     if (context_.animations) context_.animations->Remove(this);
     contextSubs_.clear();
 }
@@ -41,16 +45,17 @@ void UIElement::AttachToContext(const UIContext& ctx) {
     context_ = ctx;
     attached_ = true;
     // Feed the context menu the tree services so it can render/position without any
-    // manual wiring (same "attach injects services" rule, §6.2). Covers both
-    // ownership modes: the owned instance and a shared reference (P1-21). With a
+    // manual wiring (same "attach injects services" rule). Covers both
+    // ownership modes: the owned instance and a shared reference. With a
     // shared menu the last-attached element's context wins, which is correct —
     // ShowAt re-feeds the context at open time (see Button::OpenFlyout), so the menu
     // always positions against whichever element actually invoked it.
     if (IContextMenu* menu = ContextMenu()) menu->SetOwnerContext(context_);
-    // §6.3 attach order: self first, then recurse to children so a parent's
+    // Attach order: self first, then recurse to children so a parent's
     // OnAttachedToTree runs before its descendants'.
     OnAttachedToTree();
     AttachChildren(ctx);
+    NotifyAutomationStructure();
 }
 
 void UIElement::DetachFromContext() {
@@ -63,11 +68,17 @@ void UIElement::DetachFromContext() {
     // so nested elements need this notification to happen during DetachFromContext.
     if (context_.input) context_.input->OnElementDetached(this);
 
-    // §6.3 detach order (reverse of attach): children first, then self, then
+    // Detach order (reverse of attach): children first, then self, then
     // release this element's own registrations and drop it from the animation set,
     // finally clear the context so Context() reads empty while detached.
     DetachChildren();
     OnDetachedFromTree();
+    // While context_ (the automation site) is still valid.
+    NotifyAutomationStructure();
+    // After the subclass hook, before context_ is cleared: the peer needs the
+    // context's automation site to queue its provider's disconnect. Children
+    // were released first (DetachChildren), matching the detach order.
+    ReleaseAutomationPeer();
     contextSubs_.clear();
     if (context_.animations) context_.animations->Remove(this);
     context_ = UIContext{};
@@ -89,7 +100,7 @@ void UIElement::SetFocused(bool f) {
     focused_ = f;
     OnFocusChanged();
     
-    // Raise GotFocus / LostFocus events (Phase 1)
+    // Raise GotFocus / LostFocus events
     if (f) {
         if (gotFocus_.HasSubscribers()) {
             RoutedEventArgs args;
@@ -114,7 +125,7 @@ void UIElement::OnPointerEnter() {
     pointerInside_ = true;
     UpdateState();
     
-    // Raise PointerEntered event (Phase 1)
+    // Raise PointerEntered event
     if (pointerEntered_.HasSubscribers()) {
         RoutedEventArgs args;
         args.source = this;
@@ -128,7 +139,7 @@ void UIElement::OnPointerLeave() {
     pointerInside_ = false;
     pointerDown_ = false;
     
-    // Raise PointerExited event (Phase 1)
+    // Raise PointerExited event
     if (pointerExited_.HasSubscribers()) {
         RoutedEventArgs args;
         args.source = this;
@@ -140,7 +151,7 @@ void UIElement::OnPointerLeave() {
     UpdateState();
 }
 
-// --- Routed click gesture (WP-03) ------------------------------------------
+// --- Routed click gesture ------------------------------------------
 // The base pressed/released pair implements the shared click behavior for
 // `clickable_` controls (Button/CheckBox/Radio/Toggle/ComboBox header/...): on a
 // left-press we enter the Pressed state and capture the pointer so a drag beyond
@@ -150,7 +161,7 @@ void UIElement::OnPointerLeave() {
 // with custom press/drag semantics overrides these without chaining to the base.
 
 void UIElement::OnPointerPressed(PointerEventArgs& e) {
-    // Raise PointerPressed event first (Phase 1)
+    // Raise PointerPressed event first
     if (pointerPressed_.HasSubscribers()) {
         pointerPressed_.Raise(*this, e);
         if (e.handled) return;  // Subscriber prevented default behavior
@@ -166,7 +177,7 @@ void UIElement::OnPointerPressed(PointerEventArgs& e) {
 }
 
 void UIElement::OnPointerReleased(PointerEventArgs& e) {
-    // Raise PointerReleased event first (Phase 1)
+    // Raise PointerReleased event first
     if (pointerReleased_.HasSubscribers()) {
         pointerReleased_.Raise(*this, e);
         if (e.handled) return;  // Subscriber prevented default behavior

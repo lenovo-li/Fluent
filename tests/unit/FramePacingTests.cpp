@@ -2,8 +2,8 @@
 // (window/FramePacing.h).
 //
 // Context: the window content used to be a swap chain whose Present1 blocked on
-// vsync, so the message loop got pacing for free and passed timeout=0. Route 2
-// replaced it with a DComp virtual surface and Commit() does not block, so a loop
+// vsync, so the message loop got pacing for free and passed timeout=0. The DComp
+// content surface replaced it with a DComp virtual surface and Commit() does not block, so a loop
 // still passing 0 spins — a real 36s session logged 69762 frames on a 120Hz panel
 // (~1927 fps). These tests pin the replacement arithmetic.
 
@@ -448,4 +448,79 @@ TEST(FramePacing, CadenceClassificationIsIndependentOfGapSize) {
         EXPECT_TRUE(FrameIntervalIsCadenceSample(true, true));
         EXPECT_TRUE(!FrameIntervalIsCadenceSample(true, false));
     }
+}
+
+// --- ModalTickShouldYieldToInput ----------------------------------------------
+//
+// The modal heartbeat's posted ticks outrank input in GetMessage. When frames run
+// past the refresh interval the next tick is always already queued, so without this
+// rule the mouse is never read and the drag freezes (measured: 310-335ms per pane
+// animation in a consumer app, the animation's full duration).
+
+TEST(FramePacing, ModalTickNeverYieldsWithoutPendingInput) {
+    // A motionless drag has no input queued: the tick is the ONLY paint driver and must
+    // never skip, however recently the last frame ended.
+    for (double since : {0.0, 1.0, 8.0, 100.0})
+        EXPECT_FALSE(ModalTickShouldYieldToInput(false, true, since, 120));
+}
+
+TEST(FramePacing, ModalTickYieldsToInputRightAfterAFrame) {
+    // The freeze case: a slow frame just returned, the next tick was queued during it,
+    // and a mouse move is waiting behind that tick. Yield so the mouse is read.
+    EXPECT_TRUE(ModalTickShouldYieldToInput(true, true, 0.0, 120));
+    EXPECT_TRUE(ModalTickShouldYieldToInput(true, true, 0.5, 120));
+    EXPECT_TRUE(ModalTickShouldYieldToInput(true, true, 8.0, 120));
+}
+
+TEST(FramePacing, ModalTickYieldIsBoundedToTwoRefreshes) {
+    // Input pending but no WM_SIZE following it (dragging against the minimum size):
+    // once the last frame is two refreshes old the tick paints anyway, so a running
+    // animation is never starved by a mouse that keeps moving.
+    const double interval120 = RefreshIntervalMs(120);
+    EXPECT_TRUE(ModalTickShouldYieldToInput(true, true, interval120 * 2.0 - 0.01, 120));
+    EXPECT_FALSE(ModalTickShouldYieldToInput(true, true, interval120 * 2.0, 120));
+    EXPECT_FALSE(ModalTickShouldYieldToInput(true, true, 1000.0, 120));
+    // The window scales with the panel: 25ms is past the bound at 120Hz, inside it at
+    // 60Hz (2 x 16.67ms).
+    EXPECT_FALSE(ModalTickShouldYieldToInput(true, true, 25.0, 120));
+    EXPECT_TRUE(ModalTickShouldYieldToInput(true, true, 25.0, 60));
+    // Unknown refresh falls back to the 60Hz interval, like every other pacing helper.
+    EXPECT_TRUE(ModalTickShouldYieldToInput(true, true, 25.0, 0));
+}
+
+TEST(FramePacing, ModalTickPaintsBeforeTheFirstFrame) {
+    // Nothing painted yet: there is no frame end to measure from, and the first frame
+    // of a drag must not be deferred.
+    EXPECT_FALSE(ModalTickShouldYieldToInput(true, false, 0.0, 120));
+}
+
+TEST(FramePacing, ModalTickYieldWindowIsMeasuredFromFrameEnd) {
+    // A 15ms frame on a 120Hz panel. Measured from its START the window (16.67ms) would
+    // be all but spent by the time the paint returns, and a tick arriving 2ms later
+    // would paint ahead of the mouse again — the freeze. From its END the same tick is
+    // 2ms in and yields. The caller passes time since the frame END; pin that the rule
+    // does not secretly need the frame's cost folded in.
+    const double frameCost = 15.0, tickAfterEnd = 2.0;
+    EXPECT_TRUE(ModalTickShouldYieldToInput(true, true, tickAfterEnd, 120));
+    EXPECT_FALSE(ModalTickShouldYieldToInput(true, true, frameCost + tickAfterEnd, 120));
+}
+
+// The message loop ticks animations only on a turn that paints. A turn ends on any
+// input, so ticking every turn ran OnAnimationTick once per mouse report (~8x per
+// painted frame for a 1000Hz mouse on a 120Hz panel).
+TEST(FramePacing, AnimationTickWaitsForADueFrame) {
+    // Woken by input 3ms before the deadline: no tick, no paint.
+    EXPECT_FALSE(AnimationTickIsDue(/*framePending*/ true, /*remainingMs*/ 3.0));
+    // At the deadline: tick, then paint.
+    EXPECT_TRUE(AnimationTickIsDue(true, 0.0));
+    EXPECT_TRUE(AnimationTickIsDue(true, -2.0));
+    // Nothing pending: never tick, whatever the clock says.
+    EXPECT_FALSE(AnimationTickIsDue(false, 0.0));
+}
+
+// The tick and the paint use one threshold, so neither can happen without the other.
+TEST(FramePacing, AnimationTickAgreesWithFrameIsDue) {
+    const double probes[] = {-1.0, 0.0, kFrameDueEpsilonMs, kFrameDueEpsilonMs + 0.01, 0.5, 8.0};
+    for (double r : probes)
+        EXPECT_EQ(AnimationTickIsDue(true, r), FrameIsDue(r));
 }

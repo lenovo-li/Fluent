@@ -1,0 +1,14 @@
+- [Untested NativeWindowHost behavior](untested-nativewindowhost-behavior.md) — RenderNow/setter/WM_DESTROY-order changes rarely have tests; only the extracted pure helper does
+- [Tick without dirty rect = full redraw](animation-tick-without-dirty-rect.md) — PumpAnimations requests frames anyway; a skipped Invalidate while still ticking repaints everything
+- [Detach teardown frees a dispatching popup](detach-destroys-dispatching-popup.md) — synchronous subtree teardown (popup reset, live SetRoot) UAFs when reached from the subtree's own event
+- [Hidden child dirty bit lost](hidden-child-dirty-bit-lost.md) — containers that skip hidden pages in Measure lose dirty bits to ClearDirtySubtree
+- [Animation tests skip when effects off](animation-tests-skip-when-effects-off.md) — transition tests early-return with system animations off; green is vacuous
+- [Index-keyed cache tests count only](index-keyed-cache-tests-count-only.md) — renumbered line caches tested by build counts with identical lines; misattached rows pass
+- [Unrecorded text mutation vs undo](unrecorded-text-mutation-vs-undo.md) — text_ writes that skip Record*/Clear make Ctrl+Z delete wrong text (menu Cut, TextArea trim)
+- [Public event raised inside PopupHost::Close](public-event-inside-popup-close.md) — reopen via dismiss hook loses the new hook (host nulls slot); destroy-in-handler UAF via Event::Raise
+- [Propagation tests masked by container invalidate](propagation-tests-masked-by-container-invalidate.md) — attach via Panel::Add/SetChild marks the path itself; only bare SetParent tests the fix
+- [Pump fixes miss multi-window and legacy loop](pump-fixes-miss-multiwindow-and-legacy-loop.md) — PumpOneTurn hooks keyed on loop-global state; legacy GetMessage loops skipped
+- [Programmatic path skips user events](programmatic-path-skips-user-events.md) — automation/scripted actions call SetText-style setters that skip TextChanged/MaxLength
+- [UIA item changes only on removal](uia-item-changes-only-on-removal.md) — same-count shifts (capped log, re-sort) raise nothing; ItemAtPoint past last item
+- [Text unit boundary at document end](text-unit-boundary-at-document-end.md) — Expand/Move at pos == n give empty ranges or no move; CRLF splits
+- [Idle gate checked only at creation](idle-gate-checked-only-at-creation.md) — "zero without client" checked when a peer is made; its invalidation hook keeps costing after the client leaves

@@ -36,6 +36,10 @@
 #include "../framework/Test.h"
 #include "../../FluentUI/controls/Button.h"
 #include "../../FluentUI/controls/CheckBox.h"
+#include "../../FluentUI/controls/RadioButton.h"
+#include "../../FluentUI/controls/InfoBar.h"
+#include "../../FluentUI/controls/Metric.h"
+#include "../framework/PixelSurface.h"
 #include "../../FluentUI/controls/TabControl.h"
 #include "../../FluentUI/controls/ToggleSwitch.h"
 #include "../../FluentUI/layout/GroupBox.h"
@@ -348,6 +352,49 @@ TEST(LabelMeasureCache, ToggleSwitchTallLabelStillGrowsHeight) {
     EXPECT_TRUE(tall.Desired().w > bare.Desired().w);
 }
 
+// Button, CheckBox and RadioButton Measure must read the same font size Render
+// draws with. They used to measure at the raw theme bodySize while Render used
+// EffectiveFontSize(), so SetFontSize(24) reserved a 14 DIP label: Button's
+// centred, unclipped text spilled past its bounds (ghosting next to it), and the
+// clipped CheckBox/RadioButton labels were cut off. A larger font must produce a
+// wider desired size, and a taller one for the two toggles whose height derives
+// from the font.
+template <class T>
+static void ExpectFontSizeWidensMeasure(bool expectTaller) {
+    auto& dw = Ctx();
+    if (!dw.Valid()) return;
+
+    ResourceCache cache;
+    cache.Initialize(&dw, nullptr);
+    UIContext uictx = MakeCtx(dw, cache);
+
+    T normal;
+    normal.AttachToContext(uictx);
+    normal.SetText(L"Save changes");
+    normal.Measure(400.0f, 200.0f);
+
+    T big;
+    big.AttachToContext(uictx);
+    big.SetText(L"Save changes");
+    big.SetFontSize(24.0f);
+    big.Measure(400.0f, 200.0f);
+
+    EXPECT_TRUE(big.Desired().w > normal.Desired().w + 20.0f);
+    if (expectTaller) EXPECT_TRUE(big.Desired().h > normal.Desired().h);
+}
+
+TEST(LabelMeasureCache, ButtonMeasureHonoursFontSize) {
+    ExpectFontSizeWidensMeasure<Button>(false);
+}
+
+TEST(LabelMeasureCache, CheckBoxMeasureHonoursFontSize) {
+    ExpectFontSizeWidensMeasure<CheckBox>(true);
+}
+
+TEST(LabelMeasureCache, RadioButtonMeasureHonoursFontSize) {
+    ExpectFontSizeWidensMeasure<RadioButton>(true);
+}
+
 TEST(LabelMeasureCache, ToggleSwitchNoCacheStillMeasures) {
     auto& dw = Ctx();
     if (!dw.Valid()) return;
@@ -448,4 +495,58 @@ TEST(LabelMeasureCache, GroupBoxNoCacheStillMeasures) {
     gb.SetHeader(L"Fallback header");
     gb.Measure(400.0f, 300.0f);
     EXPECT_TRUE(gb.Desired().h > 0.0f);
+}
+
+// --- InfoBar / Metric -------------------------------------------------------
+// Both used to build a throwaway IDWriteTextLayout per text block on EVERY Measure
+// and, worse, on every Render, only to read a line height and advance y. Through the
+// shared cache, a second Measure and a Render at the measured width must build
+// nothing new. The Render half needs a real device context (Render returns early
+// on a null one), so it runs on the offscreen PixelSurface and skips without D2D.
+
+template <class T, class Setup>
+static void ExpectMeasureAndRenderHitCache(Setup setup, const char* name) {
+    auto& dw = Ctx();
+    if (!dw.Valid()) return;
+    fltest::PixelSurface surface(400, 200);
+
+    ResourceCache cache;
+    cache.Initialize(&dw, nullptr);
+    UIContext uictx = MakeCtx(dw, cache);
+
+    T el;
+    el.AttachToContext(uictx);
+    setup(el);
+    el.Measure(360.0f, 200.0f);
+    el.Arrange(RectDip{0, 0, 360.0f, el.Desired().h});
+    const uint32_t built = cache.Stats().misses;
+    EXPECT_TRUE(built >= 2u);                    // the text blocks were laid out
+
+    el.Measure(360.0f, 200.0f);                  // a resize-drag re-measure
+    EXPECT_EQ(cache.Stats().misses, built);
+
+    if (fltest::SkipIfNoDevice(surface, name)) return;
+    const uint32_t hitsBefore = cache.Stats().hits;
+    surface.Paint(fltest::Pixel{255, 255, 255, 255},
+                  [&](const DrawingContext& dc) { el.Render(dc); });
+    // Both halves matter: no miss means Render keyed the SAME entry Measure built
+    // (a drifted width would miss), and a hit means Render went through the cache at
+    // all — a direct CreateTextLayout bypasses the counters and would add neither.
+    EXPECT_EQ(cache.Stats().misses, built);
+    EXPECT_TRUE(cache.Stats().hits > hitsBefore);
+}
+
+TEST(LabelMeasureCache, InfoBarMeasureAndRenderReuseLayouts) {
+    ExpectMeasureAndRenderHitCache<InfoBar>([](InfoBar& b) {
+        b.SetTitle(L"Update available");
+        b.SetMessage(L"Restart the application to finish installing the update.");
+    }, "InfoBarMeasureAndRenderReuseLayouts");
+}
+
+TEST(LabelMeasureCache, MetricMeasureAndRenderReuseLayouts) {
+    ExpectMeasureAndRenderHitCache<Metric>([](Metric& m) {
+        m.SetLabel(L"Revenue");
+        m.SetValue(L"$12,400");
+        m.SetDelta(L"+4.2%", Metric::Trend::Up);
+    }, "MetricMeasureAndRenderReuseLayouts");
 }

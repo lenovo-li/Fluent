@@ -114,6 +114,21 @@ void Viewbox::Render(const DrawingContext& dc) {
         D2D1::Matrix3x2F::Translation(bounds_.x, bounds_.y);
     TransformGuard xform(dc.Dc(), m);
 
+    // The clip hint is in WINDOW DIPs (the dirty-rect union, mapped forward by
+    // CollectDirtyBounds below), but the content culls against its children's
+    // UNSCALED bounds. Passing it through unmapped culled the wrong children on a
+    // partial redraw — a shrunk Viewbox skipped rows that were dirty and on screen,
+    // leaving them cleared and unpainted. Map it back through the inverse scale,
+    // widened by a pixel for the same rounding reason as CollectDirtyBounds. An
+    // unbounded hint (full frame) stays unbounded.
+    const RectDip& h = dc.ClipHint();
+    const bool unbounded = h.w >= 1e9f || h.h >= 1e9f;
+    const DrawingContext inner = (unbounded || scaleX_ == 0.0f || scaleY_ == 0.0f)
+        ? dc
+        : dc.WithMappedClipHint(RectDip{bounds_.x + (h.x - bounds_.x) / scaleX_,
+                                        bounds_.y + (h.y - bounds_.y) / scaleY_,
+                                        h.w / scaleX_, h.h / scaleY_}.inflated(1.0f));
+
     // UniformToFill scales past at least one edge by construction, so the overflow
     // has to be clipped or it paints over the Viewbox's siblings. Clipping is
     // applied under the transform, so the rect is expressed in the child's
@@ -123,10 +138,10 @@ void Viewbox::Render(const DrawingContext& dc) {
                        D2D1::RectF(bounds_.x, bounds_.y,
                                    bounds_.x + bounds_.w / scaleX_,
                                    bounds_.y + bounds_.h / scaleY_));
-        content_->RenderWithOpacity(dc);
+        content_->RenderWithOpacity(inner);
         return;
     }
-    content_->RenderWithOpacity(dc);
+    content_->RenderWithOpacity(inner);
 }
 
 // Hit-testing has to undo what Render's transform did: the pointer arrives in
@@ -166,7 +181,13 @@ void Viewbox::CollectFocusables(std::vector<UIElement*>& out) {
     if (content_ && content_->IsVisible()) content_->CollectFocusables(out);
 }
 
-void Viewbox::CollectDirtyBounds(std::vector<RectDip>& out) {
+RectDip Viewbox::MapChildRectToSelf(const RectDip& r) const {
+    // The content lays out unscaled from bounds_'s origin; Render scales about it.
+    return {bounds_.x + (r.x - bounds_.x) * scaleX_, bounds_.y + (r.y - bounds_.y) * scaleY_,
+            r.w * scaleX_, r.h * scaleY_};
+}
+
+void Viewbox::CollectDirtyBoundsOverride(std::vector<RectDip>& out) {
     if (IsVisible() && Any(Dirty())) out.push_back(VisualBounds());
     // The child reports its dirty rects in UNSCALED space, which is not where the
     // pixels are. Reporting them unmapped would clear the wrong region and leave
@@ -183,10 +204,7 @@ void Viewbox::CollectDirtyBounds(std::vector<RectDip>& out) {
     content_->CollectDirtyBounds(out);
     for (size_t i = first; i < out.size(); ++i) {
         RectDip& r = out[i];
-        r = {bounds_.x + (r.x - bounds_.x) * scaleX_,
-             bounds_.y + (r.y - bounds_.y) * scaleY_,
-             r.w * scaleX_, r.h * scaleY_};
-        r = r.inflated(1.0f);
+        r = MapChildRectToSelf(r).inflated(1.0f);
     }
 }
 
@@ -219,12 +237,12 @@ void Viewbox::OnDeviceRestored() {
     if (content_) content_->OnDeviceRestored();
 }
 
-bool Viewbox::AnyDirtyInSubtree(DirtyFlags flags) const {
+bool Viewbox::AnyDirtyInSubtreeOverride(DirtyFlags flags) const {
     if (Has(Dirty(), flags)) return true;
     return content_ && content_->AnyDirtyInSubtree(flags);
 }
 
-void Viewbox::ClearDirtySubtree() {
+void Viewbox::ClearDirtySubtreeOverride() {
     ClearDirty();
     if (content_) content_->ClearDirtySubtree();
 }

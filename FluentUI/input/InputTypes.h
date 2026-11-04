@@ -1,4 +1,4 @@
-// InputTypes.h — value types shared by the input-routing layer (roadmap §9).
+// InputTypes.h — value types shared by the input-routing layer.
 //
 // These are the primitives the window translates raw Win32 messages into before
 // handing them to the InputManager: a modifier-key bitset (sampled from

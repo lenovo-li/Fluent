@@ -1,15 +1,15 @@
-// InputManager.h — hit-testing, event routing, and pointer capture (roadmap §9).
+// InputManager.h — hit-testing, event routing, and pointer capture.
 //
 // The window's job shrinks to translating raw Win32 messages into DIP points +
 // modifier bits and feeding them here (PointerMoved / PointerPressed / ...); this
 // class decides everything else, so the host contains no control-type knowledge.
 //
-// Routing (§9.2): a pointer event hit-tests to the deepest element, builds the
+// Routing: a pointer event hit-tests to the deepest element, builds the
 // target..root chain, tunnels Preview root->target, then bubbles the main phase
 // target->root; a handler setting args.handled stops the remaining route. Key
 // events route the same way over the focused element's chain.
 //
-// Pointer capture (§9.3): a control (e.g. Button on press, Slider on drag) grabs
+// Pointer capture: a control (e.g. Button on press, Slider on drag) grabs
 // the pointer so subsequent moves/releases go only to it regardless of position;
 // capture is released on up, explicit release, window-deactivate, or the captured
 // element detaching — every path also delivers a canceling release so the control
@@ -19,10 +19,13 @@
 //   The InputManager, the root element list it walks, and the invalidate target
 //   MUST outlive any single event it dispatches. A PointerXxx/KeyDown call routes
 //   into arbitrary control handlers and then touches its own members again (e.g.
-//   the trailing RequestInvalidate — needed because some input changes visible
-//   state without the element self-invalidating, such as a scrollbar rail's hover
-//   fade). So a handler MUST NOT synchronously destroy the InputManager (nor its
-//   host, nor the invalidate target) from inside a dispatched event.
+//   the trailing RequestInvalidate on press/release/key, kept because a few of
+//   those visuals change without the element self-invalidating — GridSplitter's
+//   pressed fill, TextBlock's thumb on release). Pointer MOVE and WHEEL make no
+//   such request: an unconditional one made every mouse move a full-window
+//   redraw, so move/wheel visuals must invalidate themselves (see PointerMoved).
+//   So a handler MUST NOT synchronously destroy the InputManager (nor its host,
+//   nor the invalidate target) from inside a dispatched event.
 //
 //   The one place this bites: a popup whose own content closes it (a menu item's
 //   onInvoke). MenuFlyout must NOT free a PopupHost (which owns an InputManager)
@@ -108,7 +111,7 @@ public:
     // across roots, then HitTestDeep within. (The old NativeWindowHost::ElementAt.)
     UIElement* HitTest(Point p) const;
 
-    // Right-click target resolution (WP-03 follow-up): hit-test the deepest
+    // Right-click target resolution: hit-test the deepest
     // element at `p`, then walk the Parent() chain and return the first element
     // that owns a context menu (so a child with none inherits its container's).
     // Null if nothing under the point has a menu anywhere up its chain.

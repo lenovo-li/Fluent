@@ -74,7 +74,8 @@ protected:
     // The selection moved but the text did not, so a Render-only Invalidate() is enough.
     //
     // Text is unchanged, so the line index and every cached line layout stay valid; this
-    // costs one surface redraw of the visible band, not a relayout.
+    // costs one surface redraw of the visible band, not a relayout. Forwards to the
+    // base so SelectionChanged() still fires.
     void OnSelectionChanged() override;
     void EnsureCaretVisible() override;
     bool OnNavigationKey(UINT vk, bool shift) override;
@@ -139,7 +140,7 @@ public:
         return lines_.LineCount();
     }
 
-    // --- Wrapped virtualization surface (§3) ---------------------------------
+    // --- Wrapped virtualization surface ---------------------------------
     // How many paragraphs have had their real wrapped height measured, versus how many
     // exist. Exposed because "cost is O(visible), not O(document)" is a claim about work
     // NOT done, and nothing in the rendered output can show it: a version that measured
@@ -202,7 +203,7 @@ public:
     // The line height in DIPs (font metric, DPI-independent). Always > 0.
     float LineHeightDip() const { return LineHeight(); }
 
-    // --- High-throughput log append (§2) -------------------------------------
+    // --- High-throughput log append -------------------------------------
     // Append to the end of the buffer without touching anything that describes the
     // text already there. This is the whole log path: a hardware source producing
     // thousands of lines a second calls this (via LogSink, off-thread), and the cost
@@ -256,7 +257,7 @@ public:
     void SetMaxLines(size_t n);
     size_t MaxLines() const { return maxLines_; }
 
-    // --- Tail following (§2.4) ------------------------------------------------
+    // --- Tail following ------------------------------------------------
     // When enabled and the view is at the bottom, an append scrolls to the new bottom
     // (classic `tail -f`). Scrolling up detaches; scrolling back to the bottom
     // re-attaches. Default off, so no existing TextArea changes behaviour.
@@ -330,7 +331,7 @@ public:
     // the line is not cached. Public because it is the ONLY observable that proves the
     // prefix clip actually bounded the layout: the draw loop is unreachable headless
     // (null DC), so without this a regression that built the full 50 KB layout every
-    // frame would leave the suite green — the exact failure mode §1.5b-3 guards.
+    // frame would leave the suite green — the exact failure mode the prefix-clip test guards.
     size_t LineLayoutCoverEnd(size_t lineNumber) const {
         return lineLayouts_.GetCoverEnd(lineNumber);
     }
@@ -362,6 +363,13 @@ public:
     // into a 28 MB document stalled for seconds while every test stayed green.
     unsigned LineIndexRebuildCount() const { return lineIndexRebuilds_; }
     unsigned LineCacheClearCount() const { return lineCacheClears_; }
+    // Height and baseline of the first line box in the layout the control would draw
+    // for logical line / paragraph `i` (the caret's one is the uncached composition
+    // layout while composing). False before DWrite or a width. Diagnostic: the caret
+    // rectangle does not reflect a layout's line spacing, so without this nothing
+    // shows whether the composition layout got the same uniform line box as the
+    // cached ones — the difference is a sub-DIP shift on screen.
+    bool LineBoxForTest(size_t i, float& height, float& baseline) const;
     // The characters the index says line `i` holds. Diagnostic: it makes "the index
     // describes text_" directly checkable, which matters because the index is built
     // over text_ while an IME composition may make the DISPLAYED string longer. Build
@@ -422,6 +430,11 @@ private:
     // before DWrite or a real width. Positions inside it are paragraph-local: add
     // WrapParagraphTopDip(p) for content space.
     IDWriteTextLayout* WrapParagraphLayout(size_t p) const;
+    // Force LineHeight() as a uniform line box on `layout` (null-safe). Every layout this
+    // control draws goes through it — cached lines, cached paragraphs, and the uncached
+    // composition line — so the caret's line keeps its height and baseline when an IME
+    // composition moves it from the cached path to the uncached one.
+    void ApplyUniformLineSpacing(IDWriteTextLayout* layout) const;
 
     // Caret geometry (DIP, relative to the text origin, pre-scroll).
     void CaretMetrics(UINT32 index, float& x, float& y, float& height) const;
@@ -491,7 +504,7 @@ private:
     // positions inside it are line-local: add LineTopDip(i) to get content space.
     // `minCover` is the minimum character count the layout must span; pass kFullLine
     // (default) for a complete layout, or a smaller value in draw paths that only
-    // need the visible prefix (§1.5b-3).
+    // need the visible prefix.
     IDWriteTextLayout* LineLayout(size_t lineNumber,
                                   size_t minCover = LineLayoutCache::kFullLine) const;
     // A line's characters as a slice of text_ — no copy, at any document size.
@@ -555,7 +568,7 @@ private:
     mutable float compositionLayoutWidth_ = -1.0f;
     mutable std::wstring compositionLayoutText_;
 
-    // --- Log state (§2) ------------------------------------------------------
+    // --- Log state ------------------------------------------------------
     // Line cap for the ring buffer; 0 = uncapped. See SetMaxLines.
     size_t maxLines_ = 0;
     // Is tail following armed at all (the caller's setting)?
@@ -567,7 +580,7 @@ private:
     // a manual gesture before it works, which nobody expects.
     bool followingTail_ = true;
 
-    // --- Wrap virtualization state (§3) --------------------------------------
+    // --- Wrap virtualization state --------------------------------------
     // Visual-line count per paragraph: measured where a paragraph has been drawn,
     // estimated elsewhere. This is what replaced the whole-document layout's measured
     // height as the source of the scroll extent.

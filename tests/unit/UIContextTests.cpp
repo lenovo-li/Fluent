@@ -1,5 +1,5 @@
-// UIContextTests.cpp — unit tests for the tree attachment lifecycle (WP-02
-// Step 2, roadmap §6.2 / §6.3). Pure logic: no HWND, no D2D, no DWrite. A
+// UIContextTests.cpp — unit tests for the tree attachment lifecycle.
+// Pure logic: no HWND, no D2D, no DWrite. A
 // UIContext is a plain aggregate of (here null) service pointers plus the
 // animation registry, so the whole attach/detach protocol is testable headless.
 //

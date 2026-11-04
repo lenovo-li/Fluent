@@ -53,6 +53,7 @@ ProgressBar();
 ```cpp
 void  SetValue(float v);      // 同时切回确定态
 float Value() const;
+float Fraction() const;       // 填充比例 0~1 = (Value - Min) / (Max - Min)
 void  SetMinimum(float v);  void SetMaximum(float v);
 ```
 
@@ -96,6 +97,9 @@ void SetProgressPercent(ProgressBar* bar, float percent) {
 
 **注意:** 无论用哪种方式，传给 `SetValue` 的值都会被限制在 `[Minimum, Maximum]` 范围内。
 超出范围的值不会报错，而是被自动截断。
+
+填充长度按 `(Value - Minimum) / (Maximum - Minimum)` 计算，所以任意范围都能正确显示；
+`Minimum == Maximum` 时不填充。当前填充比例可用 `Fraction()` 读取(0~1)。
 
 **脏标记等级:Render**。
 
@@ -149,12 +153,30 @@ sub_ = slider->ValueChanged().Subscribe(this,
 
 ---
 
+## UI Automation
+
+ProgressBar 的 peer：
+
+| 项 | 值 |
+|---|---|
+| ControlType | ProgressBar |
+| 模式 | RangeValue，只读（`SetValue` 返回 `UIA_E_ELEMENTNOTENABLED`） |
+| AutomationId | `SetAutomationId` |
+| HelpText | `Tooltip()` |
+
+惰性创建：只有 UIA 客户端访问到这个控件时才创建 peer，没有客户端时零开销。模式操作经投递消息执行，执行前重新检查控件仍在树上且已启用。属性变化只在真正变化且有客户端监听时发送。自定义方式见 inheritance-guide.md 的“UI Automation”一节。
+
+验证：无头测试 `tests/unit/AutomationControlPeerTests.cpp` / `AutomationSelectorPeerTests.cpp`，真实 UIA 客户端自测 `FluentUITests.exe --uia-smoke`；14 处变异（如把 UIA 操作换回不发事件的 setter、去掉项缓存上限）全部被测试抓到。
+
 ## 备注
 
 ### 性能特征
 
 - **Render**:两个圆角矩形(轨道槽 + 已填充)。无文本布局。
-- **确定态的填充变化是 Render 级 O(1)**,不触发重新布局。
+- **确定态的填充变化是 Render 级 O(1)**,不触发重新布局。UI 线程上的两个 tick 分支
+  (确定态缓动、无合成器时的不确定态扫动)每帧都对自身 `Invalidate()`。缺了它,回落路径的
+  不确定态会让宿主因脏区为空而无限期每帧整窗重绘。由
+  `ProgressBarComposition.UiThreadTicksMarkRenderDirty` 锁定。
 - **不确定态在有合成器时不消耗 UI 线程 tick**:`WantsAnimationTick()` 在
   `indeterminate_` 分支返回 `!compositorActive_`,也就是只有回落路径(没有合成设备)才要
   每帧 tick。

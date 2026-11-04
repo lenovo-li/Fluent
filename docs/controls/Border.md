@@ -107,6 +107,12 @@ border->SetPadding(Thickness{20.0f}); // ✓ 也可以用容器自己的 Padding
   `hasBg_` / `hasBorder_` 默认为 false，Render 直接跳过填充与描边；
   `borderThickness_` 与 `cornerRadius_` 默认也都是 0。
 - `SetBorderThickness(0)` 会**跳过**描边绘制,不是画一条 0 宽的线。
+- **脏区遍历按子树脏标记剪枝**:内容没有被失效过时,`CollectDirtyBounds` /
+  `ClearDirtySubtree` 在 Border 这一层就返回,不往下走。Border、GroupBox、Viewbox、Expander
+  这几个单子元素容器的写法相同:重写 protected 的 `...Override` 钩子,通过子元素的公开入口
+  递归。Viewbox 对子元素脏矩形的缩放映射不受影响,由
+  `SubtreeDirtyPruning.ViewboxScalingStillAppliesToPrunedCollection` 和
+  `SubtreeDirtyPruning.ContentContainersForwardThroughTheMark` 锁定。
 
 ### 使用注意事项
 

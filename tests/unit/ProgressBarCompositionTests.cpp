@@ -1,5 +1,5 @@
 // ProgressBarCompositionTests.cpp — headless tests that an indeterminate
-// ProgressBar drives the composition backend correctly (Phase 2).
+// ProgressBar drives the composition backend correctly.
 //
 // The PoC proved the sweep on real hardware; these lock the state machine that
 // wires it, without a GPU: a MockHost hands the ProgressBar a
@@ -209,4 +209,33 @@ TEST(ProgressBarComposition, AncestorCollapseStopsAndRemovesSweep) {
     EXPECT_EQ(backend.RootCount(), 1);
     EXPECT_FALSE(pb->WantsAnimationTick());
     root.DetachFromContext();
+}
+
+// Both UI-thread tick branches must mark the bar Render-dirty. An AnimatedValue
+// marks nothing itself, so a tick without Invalidate leaves an empty dirty set:
+// the host then redraws the whole window every frame (forever, for the fallback
+// sweep), and beside another dirty element the partial redraw clips the bar out.
+TEST(ProgressBarComposition, UiThreadTicksMarkRenderDirty) {
+    MockHost host(nullptr);  // no compositor: the sweep runs on the UI thread
+    AnimationRegistry anims;
+
+    ProgressBar pb;
+    pb.SetIndeterminate(true);
+    pb.AttachToContext(MakeCtx(host, anims));
+    // A real Arrange, not SetBounds: the determinate ease only runs once the first
+    // Arrange has primed the control (before that a value change snaps, by design).
+    pb.Measure(200.0f, 20.0f);
+    pb.Arrange(RectDip{0, 0, 200, 20});
+
+    pb.ClearDirty();
+    pb.OnAnimationTick(1.0f / 60.0f);
+    EXPECT_TRUE(Has(pb.Dirty(), DirtyFlags::Render));   // fallback sweep branch
+
+    pb.SetValue(0.8f);           // determinate: fill eases toward 0.8
+    EXPECT_TRUE(pb.WantsAnimationTick());
+    pb.ClearDirty();
+    pb.OnAnimationTick(1.0f / 60.0f);
+    EXPECT_TRUE(Has(pb.Dirty(), DirtyFlags::Render));   // fill-ease branch
+
+    pb.DetachFromContext();
 }

@@ -81,7 +81,24 @@ void InputManager::PointerMoved(Point p, ModifierKeys mods) {
         args.source = captured_;
         args.originalSource = captured_;
         captured_->DispatchPointerMoved(args);
-        RequestInvalidate();
+        // No RequestInvalidate here (nor at the end of the uncaptured path below).
+        // A move is the hottest input event there is, and an unconditional frame
+        // request turned every WM_MOUSEMOVE over static content into a full-window
+        // redraw: the request reaches RenderNow with an EMPTY dirty set, and
+        // PlanRedraw treats empty as "redraw everything". Every move-driven visual
+        // change reaches the scheduler by itself instead:
+        //   * hover enter/leave -> UIElement::UpdateState -> Invalidate();
+        //   * per-control hover (list rows, menu items, NavRail, PasswordBox eye,
+        //     ComboBox) and every drag path Invalidate themselves when the value
+        //     they paint actually changes;
+        //   * the embedded ScrollViewer scrollbars (whose own Invalidate has no
+        //     route to the host) only change animation TARGETS on a move; the
+        //     host re-collects animations after every move (UpdateAnimationTimer
+        //     in NativeWindowHost, RequestAnimationUpdate from PopupHost), and each
+        //     owner's OnAnimationTick invalidates itself.
+        // Press, release and key paths keep their request: they are discrete, and
+        // a few press/release visuals (GridSplitter's pressed fill, TextBlock's
+        // thumb alpha on release) still rely on it.
         return;
     }
 
@@ -92,7 +109,6 @@ void InputManager::PointerMoved(Point p, ModifierKeys mods) {
         args.originalSource = hot_;
         RoutePointer(route, args, nullptr, &UIElement::DispatchPointerMoved);
     }
-    RequestInvalidate();
 }
 
 void InputManager::PointerPressed(Point p, PointerButton button, ModifierKeys mods,
@@ -101,7 +117,11 @@ void InputManager::PointerPressed(Point p, PointerButton button, ModifierKeys mo
 
     // Click-to-focus (matches the old window behavior): a focusable hit gets
     // focus; anything else (non-focusable hit or empty space) clears focus.
-    if (focus_) {
+    //
+    // Not for the middle button. A middle press is a pan — a navigation gesture, like
+    // the wheel — and panning a log view while typing in a search box must not yank
+    // focus out of the box (or clear it, if the press lands on a non-focusable panel).
+    if (focus_ && button != PointerButton::Middle) {
         if (target && target->IsFocusable()) focus_->SetFocus(target);
         else focus_->ClearFocus();
     }
@@ -154,7 +174,11 @@ void InputManager::PointerWheel(Point p, int delta, ModifierKeys mods,
         args.wheelScrollLines = wheelScrollLines;
         RoutePointer(route, args, nullptr, &UIElement::DispatchPointerWheelChanged);
     }
-    RequestInvalidate();
+    // No RequestInvalidate, for the same reason as PointerMoved: a wheel over
+    // content that cannot scroll changed nothing, and every wheel handler that
+    // does scroll (ListBox, TreeView, DataGrid, LogViewer, TextArea, RichTextBox,
+    // TextBlock, ComboBox's list, ScrollPanel via SyncScrollArrange) invalidates
+    // itself or starts a tween the host collects right after the wheel message.
 }
 
 void InputManager::PointerLeftWindow() {
@@ -220,7 +244,7 @@ void InputManager::CapturePointer(UIElement* e) {
     captured_ = e;
     // Take OS-level capture so WM_LBUTTONUP still arrives when the pointer leaves
     // the window: without it, a press-drag-outside-release never delivers the up
-    // and the control stays stuck in Pressed state (§9.3 completion).
+    // and the control stays stuck in Pressed state.
     if (hwnd_) ::SetCapture(hwnd_);
 }
 
@@ -238,7 +262,7 @@ void InputManager::ReleaseCapture(UIElement* e) {
 void InputManager::OnWindowDeactivated() {
     if (captured_) {
         // Deliver a canceling release off-bounds so the control leaves its pressed
-        // state without registering a click (roadmap §9.3), then drop capture.
+        // state without registering a click, then drop capture.
         UIElement* c = captured_;
         captured_ = nullptr;
         // Release OS capture too. Don't check GetCapture() here — deactivation

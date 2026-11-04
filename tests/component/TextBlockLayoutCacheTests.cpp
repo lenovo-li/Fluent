@@ -1,5 +1,5 @@
 // TextBlockLayoutCacheTests.cpp — component tests for TextBlock's cached
-// IDWriteTextLayout (M2, roadmap §6.3). Needs a real DirectWrite factory (no
+// IDWriteTextLayout (M2). Needs a real DirectWrite factory (no
 // D3D / HWND), so this is a "component" test like DWriteFormatTests.
 //
 // CreateLayout() memoizes the layout keyed on the full set of inputs (text,
@@ -11,6 +11,9 @@
 #include "../framework/Test.h"
 #include "../../FluentUI/controls/TextBlock.h"
 #include "../../FluentUI/graphics/DWriteContext.h"
+
+#include <cmath>
+#include <cwchar>
 
 using namespace fluent;
 
@@ -34,10 +37,10 @@ DWriteContext& Ctx() {
 }
 
 // A configured TextBlock with a valid layout width (CreateLayout needs bounds).
-// DWrite is now injected through the tree UIContext (roadmap §6.2) instead of a
+// DWrite is now injected through the tree UIContext instead of a
 // manual SetDWrite: build a context carrying the DWrite pointer and attach it.
 // Returns a pointer to avoid moving the TextBlock: UIElement now has Event<>
-// members which are not movable (Phase 1), so TextBlock is also not movable.
+// members which are not movable, so TextBlock is also not movable.
 std::unique_ptr<TextBlock> MakeBlock(DWriteContext& ctx) {
     auto tb = std::make_unique<TextBlock>();
     UIContext uictx;
@@ -103,4 +106,43 @@ TEST(TextBlockLayoutCache, EmptyTextClearsCache) {
     EXPECT_TRUE(TextBlockTestPeer::Layout(*tb).Get() != nullptr);
     tb->SetText(L"");
     EXPECT_TRUE(TextBlockTestPeer::Layout(*tb).Get() == nullptr);
+}
+
+// THE GALLERY BUG. A status line that switches between a pure-Chinese message and one
+// containing a Latin word changed height, because DWrite's default line spacing takes
+// each line's height from whichever font its glyphs fell back to (Microsoft YaHei for
+// pure CJK, Segoe UI Variable once a Latin glyph appears). Both strings below are from
+// the ContentDialog page. The premise check makes sure the test machine really has the
+// fallback difference, so a pass is not vacuous.
+TEST(TextBlockLayoutCache, PureCjkAndMixedTextMeasureTheSameHeight) {
+    auto& ctx = Ctx();
+    if (!ctx.Valid()) return;
+
+    // Premise: with DWrite's default spacing the two strings differ in height.
+    IDWriteTextFormat* fmt = ctx.Format(14.0f, DWRITE_FONT_WEIGHT_NORMAL,
+                                        DWRITE_TEXT_ALIGNMENT_LEADING,
+                                        DWRITE_PARAGRAPH_ALIGNMENT_NEAR,
+                                        DWRITE_WORD_WRAPPING_WRAP);
+    auto rawHeight = [&](const wchar_t* s) {
+        ComPtr<IDWriteTextLayout> l;
+        ctx.Factory()->CreateTextLayout(s, static_cast<UINT32>(wcslen(s)), fmt, 1e5f, 1e5f,
+                                        l.GetAddressOf());
+        DWRITE_TEXT_METRICS m{};
+        if (l) l->GetMetrics(&m);
+        return m.height;
+    };
+    const wchar_t* cjk = L"结果：非模态已打开（主窗口仍可交互）";
+    const wchar_t* mixed = L"结果：非模态关闭 Cancel（取消）";
+    if (std::fabs(rawHeight(cjk) - rawHeight(mixed)) < 0.01f) return;  // no fallback gap here
+
+    auto measure = [&](const wchar_t* s) {
+        auto tb = std::make_unique<TextBlock>();
+        UIContext uictx;
+        uictx.dwrite = &ctx;
+        tb->AttachToContext(uictx);
+        tb->SetText(s);
+        tb->Measure(600.0f, 100.0f);
+        return tb->Desired().h;
+    };
+    EXPECT_NEAR(measure(cjk), measure(mixed), 0.01f);
 }

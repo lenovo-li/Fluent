@@ -1,8 +1,8 @@
 // FrameRing.h — Fixed-size ring buffer of per-frame CPU timings for P95/P99
-// latency export (roadmap §18.3, WP-07).
+// latency export.
 //
-// WP-00's PerformanceCounters.h noted: "The host may keep a small ring of
-// recent frames for P95/P99 export (WP-07)." This is that ring.
+// PerformanceCounters.h notes that the host may keep a small ring of recent
+// frames for P95/P99 export. This is that ring.
 //
 // Design:
 //   * Template parameter N is the ring capacity (caller picks a window size;

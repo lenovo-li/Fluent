@@ -100,7 +100,7 @@ TEST(Opacity, ThemeCardFillFlattensOpaqueInBothModes) {
     }
 }
 
-// --- ResolveBaseFill: the §12.2 ladder's missing half --------------------
+// --- ResolveBaseFill: the backdrop ladder's missing half -----------------
 
 // Bug 1, directly: a pre-Win11 build resolves to a solid fallback, and the window
 // must then paint an OPAQUE base. Before the fix nothing was painted at all.

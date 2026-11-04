@@ -12,7 +12,7 @@ void InputHost::Initialize(HWND hwnd, UIContext* context,
     context->input = &input_;
     context->focus = &focus_;
 
-    // Wire the input routing (WP-03): both managers walk the registered roots; the
+    // Wire the input routing: both managers walk the registered roots; the
     // InputManager repaints via Render and tells the FocusManager who to focus.
     input_.SetRoots(roots);
     input_.SetFocusManager(&focus_);

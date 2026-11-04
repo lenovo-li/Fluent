@@ -30,7 +30,10 @@ void CheckBox::OnAnimationTick(float dtSec) {
 void CheckBox::Measure(float availW, float availH) {
     UNREFERENCED_PARAMETER(availH);
     // Width = box + gap + label; height = the box (label centers within it).
-    const float fontSize = Theme().typography.bodySize;
+    // EffectiveFontSize, the same resolution Render uses: measuring the raw theme
+    // token meant SetFontSize(24) reserved a 14 DIP label and Render's clipped
+    // DrawText cut the larger glyphs off at the right and bottom.
+    const float fontSize = EffectiveFontSize(Theme().typography.bodySize);
     const float labelGap = Theme().spacing.spacingMedium;
     // Same weight Render draws with, so SetFontWeight(SEMI_BOLD) widens the measured
     // label instead of overflowing it.

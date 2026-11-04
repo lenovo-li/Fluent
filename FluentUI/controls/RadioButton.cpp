@@ -37,7 +37,9 @@ void RadioButton::OnAnimationTick(float dtSec) {
 
 void RadioButton::Measure(float availW, float availH) {
     UNREFERENCED_PARAMETER(availH);
-    const float fontSize = Theme().typography.bodySize;
+    // EffectiveFontSize, matching Render (see CheckBox::Measure): the raw theme
+    // token under-measured any label the caller had SetFontSize'd larger.
+    const float fontSize = EffectiveFontSize(Theme().typography.bodySize);
     // Same weight Render draws with (see the label DrawText), so a user-set weight
     // widens the measurement instead of overflowing the arranged box.
     float labelW = MeasureLabelWidth(fontSize, availW, RingSize(),

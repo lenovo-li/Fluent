@@ -1,10 +1,10 @@
 // FrameSchedulerTests.cpp — unit tests for the FrameScheduler.
 //
-// Two halves (roadmap §14):
+// Two halves:
 //   * the animation clock (arm/disarm edges + framerate-independent dt), now on
 //     the QPC clock: timestamps are QPC ticks, converted via QpcFrequency();
 //   * frame-request coalescing (RequestFrame / NeedsFrame / BeginFrame / EndFrame
-//     + FrameReason merge), added in WP-01.
+//     + FrameReason merge).
 // Pure logic: no window, no GPU.
 
 #include "../framework/Test.h"
@@ -95,7 +95,7 @@ TEST(FrameScheduler, ReArmResetsDtClock) {
     EXPECT_NEAR(dt, FrameScheduler::kIntervalMs / 1000.0f, 1e-6f);
 }
 
-// ---- frame-request coalescing (WP-01) -------------------------------------
+// ---- frame-request coalescing -------------------------------------
 
 // A fresh scheduler wants no frame.
 TEST(FrameScheduler, StartsWithNoPendingFrame) {

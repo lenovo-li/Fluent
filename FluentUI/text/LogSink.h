@@ -1,6 +1,6 @@
 // LogSink.h — thread-safe staging buffer between a data source and a text view.
 //
-// The producer half of the high-throughput log path (§2.3). A hardware acquisition
+// The producer half of the high-throughput log path. A hardware acquisition
 // thread, a serial reader, a subprocess pipe — none of them run on the UI thread,
 // and none of them may touch a control's text buffer, because single-threaded UI is
 // an architectural premise of this framework, not a convention to be careful around.

@@ -1,5 +1,5 @@
 // ResourceCache.h — centralized, epoch-versioned caches for the frequently
-// rebuilt drawing resources the roadmap calls out (§13.3): IDWriteTextLayout,
+// rebuilt drawing resources: IDWriteTextLayout,
 // icon path geometry, and stroke styles. One instance is owned by the host and
 // injected into the tree through UIContext, so any attached control reaches the
 // same caches instead of rebuilding a layout / geometry every frame.
@@ -12,18 +12,17 @@
 //     frame. A GeometryCache builds a device-independent ID2D1PathGeometry once,
 //     keyed by glyph id + size, and the control positions it with a transform.
 //
-// Versioning (roadmap §13.3 "key must include DPI/theme"): TextLayout geometry
-// is DIP-space and theme-independent (color is applied at draw time, never baked
-// in), so for the WP-04 input set neither DPI nor theme actually changes a
-// layout. We still expose a coarse `epoch` bumped on OnThemeChanged/OnDpiChanged:
-// a stale-epoch lookup misses and rebuilds. It is a cheap, forward-looking
-// backstop that becomes genuinely load-bearing in WP-05, when typography tokens
-// make font size/weight theme-driven — then a theme change really does change
-// layout inputs. Documented as belt-and-suspenders for now.
+// Versioning (a cache key must account for DPI and theme): TextLayout geometry
+// is DIP-space and color-independent (color is applied at draw time, never
+// baked in), so DPI alone never changes a layout. We still expose a coarse
+// `epoch` bumped on OnThemeChanged/OnDpiChanged: a stale-epoch lookup misses
+// and rebuilds. The epoch is load-bearing once typography tokens make font
+// size/weight theme-driven — then a theme change really does change layout
+// inputs — and is a cheap belt-and-suspenders backstop otherwise.
 //
 // Lifetime / device loss: everything cached here is a *factory* resource
 // (IDWriteTextLayout from the DWrite factory, ID2D1PathGeometry / stroke style
-// from the ID2D1Factory) — these survive a D3D device loss. WP-04's DeviceLost
+// from the ID2D1Factory) — these survive a D3D device loss. The DeviceLost
 // path still calls Clear() defensively so a rebuilt device starts from a known
 // empty cache.
 #pragma once
@@ -42,7 +41,7 @@ namespace fluent {
 class DWriteContext;
 
 // Cache hit/miss/size counters, sampled into FrameStats each frame. Plain fields
-// (single-threaded UI, roadmap §16); no allocation on the hot path.
+// (single-threaded UI); no allocation on the hot path.
 struct CacheStats {
     uint32_t hits = 0;     // served from an existing entry
     uint32_t misses = 0;   // built a new entry (a real resource creation)
@@ -155,7 +154,7 @@ struct GeometryKeyHash {
     }
 };
 
-// Stable ids for the shared icon glyphs converted to cached geometry (WP-04).
+// Stable ids for the shared icon glyphs converted to cached geometry.
 // Only static, single-part, single-color glyphs are cached this way; animated /
 // parametric glyphs (checkbox tick growth, radio dot, toggle knob, slider thumb)
 // stay parametric and are NOT in this cache.
@@ -163,6 +162,7 @@ enum class GlyphId : uint32_t {
     ChevronDown = 1,   // ComboBox collapsed indicator
     ChevronRight = 2,  // MenuFlyout submenu indicator
     CheckMark = 3,     // MenuFlyout checked-item glyph
+    EyeOutline = 4,    // PasswordBox reveal button: the lens outline (pupil is a FillEllipse)
 };
 
 // The host-owned resource cache injected into the tree via UIContext. Holds the
@@ -194,7 +194,7 @@ public:
         const std::function<void(ID2D1GeometrySink*)>& build);
 
     // Get (or build) a stroke style for the given properties. Infrastructure for
-    // dashed borders / focus rects (roadmap §13.3); no caller in WP-04 yet, but
+    // dashed borders / focus rects; no caller yet, but
     // built + tested so a future dashed style reuses one object.
     ComPtr<ID2D1StrokeStyle> GetStrokeStyle(const D2D1_STROKE_STYLE_PROPERTIES& props);
 

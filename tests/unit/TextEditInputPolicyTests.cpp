@@ -1,4 +1,4 @@
-// TextEditInputPolicyTests.cpp — P1-2: CharacterCasing + InputFilter.
+// TextEditInputPolicyTests.cpp — input policy: CharacterCasing + InputFilter.
 //
 // Both policies live in TextEditBase::InsertText, applied after SanitizeInput and
 // before the MaxLength clamp. That ordering is the contract: casing runs first so a

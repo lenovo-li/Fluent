@@ -1,5 +1,5 @@
 // CompositionBackendTests.cpp — unit tests for the ICompositionBackend contract
-// exercised through the headless FakeCompositionBackend (Phase 2).
+// exercised through the headless FakeCompositionBackend.
 //
 // These pin the semantics a real backend must honour and the product code relies
 // on: CreateVisual hands back independent nodes, offset/opacity/clip round-trip,

@@ -1,4 +1,4 @@
-// ScrollMath.h — pure scroll-offset helpers shared by list-like controls (WP-06).
+// ScrollMath.h — pure scroll-offset helpers shared by list-like controls.
 //
 // ComboBox's dropdown list and TreeView both carried a byte-identical
 // "scroll the given item into the viewport" computation (ComboListView::EnsureVisible

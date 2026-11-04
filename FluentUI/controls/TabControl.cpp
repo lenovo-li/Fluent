@@ -20,7 +20,7 @@ constexpr float kIndicatorInsetX = 12.0f;
 // real widths arrive on the first attached Measure.
 constexpr float kFallbackCharWidth = 8.0f;
 constexpr float kHeaderFontSize = 13.0f;
-// P1-11: Close button dimensions and insets. The button is a small circular hit
+// Close button dimensions and insets. The button is a small circular hit
 // target on the right edge of the header; the '×' glyph is centered inside it.
 constexpr float kCloseBtnSize = 16.0f;      // full hit target
 constexpr float kCloseBtnInsetRight = 8.0f; // from header right edge
@@ -282,7 +282,7 @@ void TabControl::Render(const DrawingContext& dc) {
 
             IDWriteTextFormat* itemFmt = selected ? (fmtSel ? fmtSel : fmt) : fmt;
             if (itemFmt && !headers_[i].empty()) {
-                // P1-11: when close buttons are visible, the text rect must leave
+                // When close buttons are visible, the text rect must leave
                 // room for the button. The text is still CENTERED (that's what
                 // DWRITE_TEXT_ALIGNMENT_CENTER does), so a naïve "draw into the full
                 // hr" would center it across the button. Instead narrow the rect by
@@ -306,7 +306,7 @@ void TabControl::Render(const DrawingContext& dc) {
                             D2D1_DRAW_TEXT_OPTIONS_CLIP);
             }
 
-            // P1-11: Close button. A '×' glyph on a circular hover target, drawn
+            // Close button. A '×' glyph on a circular hover target, drawn
             // only when enabled. The hover fill is subtle (same as a Subtle Button
             // at rest → controlFillHover), so it appears only when the pointer is
             // actually over the button, not the whole header.
@@ -347,8 +347,9 @@ void TabControl::Render(const DrawingContext& dc) {
     // events; a programmatic SetSelectedIndex can leave the animated value frozen
     // at the old header even though selectedIndex_ already moved, so the indicator
     // would sit under the wrong tab. Anchoring to the derived rect is always
-    // correct. (The slide tween can be reintroduced once the registry collects
-    // programmatic animations — see RenderNow.)
+    // correct. There is no slide tween at all: one that only ticked, without being
+    // drawn, cost a full repaint per frame after every switch, so a slide would have
+    // to come back together with its use here.
     if (selectedIndex_ >= 0) {
         const RectDip hr = HeaderRect(selectedIndex_);
 
@@ -429,7 +430,7 @@ UIElement* TabControl::HitTestDeep(float dipX, float dipY) {
     return this;
 }
 
-void TabControl::CollectDirtyBounds(std::vector<RectDip>& out) {
+void TabControl::CollectDirtyBoundsOverride(std::vector<RectDip>& out) {
     if (IsVisible() && Any(Dirty())) out.push_back(VisualBounds());
     // Detached (unselected) contents are never repainted, so their dirty flags
     // must not inflate the redraw region either.
@@ -440,7 +441,7 @@ void TabControl::CollectDirtyBounds(std::vector<RectDip>& out) {
 void TabControl::OnPointerPressed(PointerEventArgs& e) {
     if (e.button != PointerButton::Left) return;
 
-    // P1-11: Close button wins over selection. A click on the '×' of tab 3 while
+    // Close button wins over selection. A click on the '×' of tab 3 while
     // tab 1 is selected must close 3, not select it. Test the close button first
     // for that reason.
     const int closeHit = CloseButtonIndexAt(e.position.x, e.position.y);
@@ -508,21 +509,17 @@ void TabControl::OnKeyDownRouted(KeyEventArgs& e) {
 }
 
 bool TabControl::WantsAnimationTick() const {
+    // The content fade is the only animation. The indicator is drawn at
+    // HeaderRect(selectedIndex_) (see Render), so there is no slide to tick: an
+    // indicator tween that nothing read used to keep this true for ~0.3 s after every
+    // switch, repainting the whole control — selected content included — each frame
+    // with no pixel changing, even with the fade turned off.
     if (selectedIndex_ < 0) return false;
-    const RectDip hr = HeaderRect(selectedIndex_);
-    if (indicatorX_.Animating(hr.x, 0.25f)) return true;
-    if (indicatorW_.Animating(hr.w, 0.25f)) return true;
-    // Only tick content fade when fade-in is enabled.
-    if (contentFadeEnabled_ && contentFade_.Animating(1.0f, 0.01f)) return true;
-    return false;
+    return contentFadeEnabled_ && contentFade_.Animating(1.0f, 0.01f);
 }
 
 void TabControl::OnAnimationTick(float dtSec) {
     if (selectedIndex_ < 0) return;
-    const RectDip hr = HeaderRect(selectedIndex_);
-    const float tau = Theme().motion.fadeTau;
-    indicatorX_.Approach(hr.x, dtSec, tau, 0.25f);
-    indicatorW_.Approach(hr.w, dtSec, tau, 0.25f);
     // Use the configurable fade duration instead of the theme token.
     if (contentFadeEnabled_) {
         contentFade_.Approach(1.0f, dtSec, contentFadeTau_, 0.01f);
@@ -579,15 +576,7 @@ SizeDip TabControl::MeasureOverride(float availW, float availH) {
 }
 
 void TabControl::ArrangeOverride(const RectDip& content) {
-    // The strip occupies one edge; the selected content gets the rest. Seed the
-    // indicator on the first arrange so it does not slide in from x=0 on the very
-    // first frame.
-    if (selectedIndex_ >= 0 && indicatorW_ <= 0.0f) {
-        const RectDip hr = HeaderRect(selectedIndex_);
-        indicatorX_.SetImmediate(hr.x);
-        indicatorW_.SetImmediate(hr.w);
-    }
-
+    // The strip occupies one edge; the selected content gets the rest.
     if (FrameworkElement* child = SelectedContent()) {
         const float topGap = 8.0f;
         const float sideInset = 8.0f;
@@ -674,7 +663,7 @@ void TabControl::MeasureHeaders() {
     constexpr DWRITE_FONT_WEIGHT kWeights[] = {DWRITE_FONT_WEIGHT_NORMAL,
                                                DWRITE_FONT_WEIGHT_SEMI_BOLD};
 
-    // Prefer the shared cache (roadmap §13.3) when the tree has one: two tab
+    // Prefer the shared cache when the tree has one: two tab
     // controls showing the same header text, or a re-measure after an AddTab that
     // only appended, then cost a hash lookup instead of a DWrite build. Falls back
     // to building directly when detached from a cache-carrying host.

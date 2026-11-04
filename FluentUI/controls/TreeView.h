@@ -1,6 +1,6 @@
 // TreeView.h — Lightweight Fluent tree/list control for value-owned row data.
 //
-// TreeView is a Selector<TreeViewRow> (roadmap §WP-06): the row vector lives in
+// TreeView is a Selector<TreeViewRow>: the row vector lives in
 // the ItemsControl base as items_, and the selection index lives in the Selector
 // base as selectedIndex_ (a *row* index into items_). TreeView keeps its own
 // tree-specific derived state (visible rows, id→index maps, expand/collapse,
@@ -78,7 +78,7 @@ public:
     // restores the selection by id. Kept as SetRows for API compatibility.
     void SetRows(std::vector<TreeViewRow> rows);
 
-    // --- Incremental mutation API (WP-06 ergonomics) ---------------------------
+    // --- Incremental mutation API -------------------------------------------
     // Add/remove/modify individual nodes without reading/writing the whole vector.
     // All methods preserve the selection by id and trigger OnItemsChanged (which
     // rebuilds indices + visible rows). The caller still supplies id/parentId, but
@@ -107,12 +107,33 @@ public:
     void SetSelectedIndex(int visibleIndex) override;
     const TreeViewRow* SelectedRow() const { return SelectedItem(); }
 
+    // --- Visible rows, for UI Automation (O(1) each) ------------------------
+    // The rows currently shown (collapsed subtrees excluded), in display order.
+    int VisibleRowCount() const { return static_cast<int>(visibleRows_.size()); }
+    // Row index (into the row vector) of visible row v, or -1.
+    int RowIndexAtVisible(int v) const {
+        return v >= 0 && v < VisibleRowCount() ? visibleRows_[v] : -1;
+    }
+    // Visible position of a row id, or -1 when hidden (inside a collapsed parent).
+    int VisibleIndexOfId(int id) const;
+    // Visible row v's rect in host-client DIPs, clipped to the viewport; empty when
+    // scrolled out.
+    RectDip VisibleRowRect(int v) const;
+    int VisibleRowAt(float dipY) const;
+    void ScrollVisibleRowIntoView(int v);
+    const ScrollViewer& Scroller() const { return scroll_; }
+    void SetScrollOffset(float dip) {
+        scroll_.SetOffset(dip);
+        Invalidate();
+    }
+
     // Selection mode + the multi-select API live in Selector now
     // (SetSelectionMode / GetSelectionMode / SelectedIndices / IsSelected /
     // ToggleSelection / RangeSelectTo). The four names below are kept as thin
     // row-flavoured aliases: they read better at a tree call site, and they are
     // what the existing tests and demo call. The indices are ROW indices (into
     // items_), not visible indices — same as before the hoist.
+
     std::vector<int> SelectedRowIndices() const { return SelectedIndices(); }
     bool IsRowSelected(int rowIndex) const { return IsSelected(rowIndex); }
     void ToggleRowSelection(int rowIndex) { ToggleSelection(rowIndex); }
@@ -125,7 +146,7 @@ public:
     // Shift+click, or programmatic ToggleRowSelection / RangeSelectTo).
     Event<TreeView, std::vector<int>>& SelectionSetChanged() { return selectionSetChanged_; }
 
-    // Fired when a row is double-clicked (Phase 2). The default behavior (when
+    // Fired when a row is double-clicked. The default behavior (when
     // args.handled is false) toggles expansion for rows with children. Set
     // handled=true to prevent the toggle and implement custom behavior (e.g., open
     // a file). Control the default behavior via SetDoubleClickTogglesExpansion.
@@ -157,6 +178,8 @@ public:
     void OnPointerReleased(PointerEventArgs& e) override;
 
 protected:
+    // UI Automation peer (automation/SelectorPeers.h).
+    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
     void OnAttachedToTree() override;
     void OnDetachedFromTree() override;
     void OnBoundsChanged() override;
@@ -172,6 +195,9 @@ protected:
     // Selector hook: the multi-select set changed via ToggleSelection /
     // RangeSelectTo. Raise SelectionSetChanged.
     void OnSelectionSetChanged() override;
+    // Selector hook: a Shift range selects the VISIBLE rows between its ends, not
+    // every row index — rows inside a collapsed node are skipped (see Selector).
+    void AddRangeToSelectionSet(int lo, int hi) override;
 
 private:
     // The scroll offset currently shown. Kept as a named accessor (rather than
@@ -216,6 +242,10 @@ private:
 
     // Derived tree state (items_ + selectedIndex_ live in the Selector base).
     std::vector<int> visibleRows_;
+    // Inverse of visibleRows_: row index -> visible position, -1 when hidden.
+    // Rebuilt with visibleRows_ so a row's position is O(1) (UIA asks it per
+    // navigation step; a linear search made a full walk quadratic).
+    std::vector<int> visiblePos_;
     std::unordered_map<int, int> idToIndex_;
     std::vector<int> parentIndex_;
     int pendingSelectedId_ = -1;   // captured across a SetRows to restore selection
@@ -227,12 +257,12 @@ private:
     Event<TreeView, std::vector<int>> selectionSetChanged_;
     Event<TreeView, TreeViewItemDoubleClickArgs> itemDoubleClick_;
     
-    // Double-click detection state (Phase 2)
+    // Double-click detection state
     DWORD lastClickTime_ = 0;
     int lastClickRow_ = -1;
     bool doubleClickTogglesExpansion_ = true;
     
-    // Multi-select state (selectionMode_ / selectedIndices_ / selectionAnchor_)
+    // Multi-select state (selectionMode_ / selectedSet_ / selectionAnchor_)
     // lives in the Selector base — see primitives/Selector.h for the invariants.
     
     // Hover tracking: which row the pointer is currently over, or -1.

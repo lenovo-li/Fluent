@@ -1,5 +1,5 @@
 // ResourceCacheTests.cpp — pure-logic tests for the LRU cache, cache keys, and
-// epoch versioning that back ResourceCache (roadmap §13.3, WP-04). These exercise
+// epoch versioning that back ResourceCache. These exercise
 // the caching machinery with trivial types and stand-in values — no D2D/DWrite
 // device — so they run headless. The device-backed builders (GetTextLayout /
 // GetGeometry) are covered separately by a component test that needs DWrite.

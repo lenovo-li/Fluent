@@ -1,4 +1,4 @@
-// Subscription.h — RAII handle for a registered callback (roadmap §10.3).
+// Subscription.h — RAII handle for a registered callback.
 //
 // A registrar (e.g. WindowServices' active-popup dismiss / key hooks, or any
 // future event source) hands back a Subscription that owns the un-registration.

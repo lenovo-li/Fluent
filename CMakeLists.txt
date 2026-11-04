@@ -98,6 +98,20 @@ set(FLUENTUI_SOURCES
     FluentUI/window/GraphicsHost.cpp
     FluentUI/window/InputHost.cpp
     FluentUI/window/FrameHost.cpp
+    FluentUI/window/HudOverlay.cpp
+    FluentUI/automation/AutomationHost.cpp
+    FluentUI/automation/UiaProvider.cpp
+    FluentUI/automation/AutomationPeer.cpp
+    FluentUI/automation/AutomationTree.cpp
+    FluentUI/automation/ControlPeers.cpp
+    FluentUI/automation/UiaElementProvider.cpp
+    FluentUI/automation/ItemPeers.cpp
+    FluentUI/automation/UiaPatterns.cpp
+    FluentUI/automation/RangeAndContainerPeers.cpp
+    FluentUI/automation/SelectorPeers.cpp
+    FluentUI/automation/UiaCaptionButtons.cpp
+    FluentUI/automation/DataPeers.cpp
+    FluentUI/automation/UiaTextPattern.cpp
     FluentUI/window/ThemeHost.cpp
     FluentUI/window/DiagnosticsHost.cpp
     FluentUI/window/DialogHost.cpp
@@ -121,7 +135,8 @@ target_compile_definitions(FluentUI PUBLIC UNICODE _UNICODE WIN32_LEAN_AND_MEAN 
 # once per translation unit. Keep FluentUI/pch.h in sync between both paths.
 target_precompile_headers(FluentUI PRIVATE FluentUI/pch.h)
 target_link_libraries(FluentUI PUBLIC
-    d3d11 d2d1 dxgi dcomp dwrite dwmapi user32 shcore imm32 psapi shell32)
+    d3d11 d2d1 dxgi dcomp dwrite dwmapi user32 shcore imm32 psapi shell32
+    uiautomationcore)
 
 if(MSVC)
     target_compile_options(FluentUI PRIVATE /W3 /permissive- /MP)
