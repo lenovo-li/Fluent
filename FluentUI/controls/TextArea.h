@@ -57,10 +57,39 @@ enum class TextWrapMode { Wrap, NoWrap };
 
 class TextArea : public TextEditBase {
 public:
+    // --- View zoom (Ctrl+Wheel / Ctrl+0) -------------------------------------
+    // A per-control VIEW magnification of the text, the same idea as zoom in VS Code,
+    // Notepad or a browser's text view: the document, the font size the app set, and
+    // the control's own layout size are all unchanged; only the glyphs (and therefore
+    // line height and the scroll extent) are drawn larger or smaller.
+    //
+    // Why a multiplier and not SetFontSize: SetFontSize is the app's styling decision
+    // and invalidates Measure, so in an Auto-height layout the control would grow and
+    // push its siblings around on every wheel notch. Zoom is the user's reading
+    // preference and must not move the page. The multiplier is applied wherever the
+    // control asks DirectWrite for a format (ZoomedFontSize), so it composes with
+    // SetFontSize instead of overwriting it.
+    //
+    // Clamped to [kMinZoom, kMaxZoom]; 1.0 = 100%. Ctrl+Wheel steps by 10% of the
+    // current value; Ctrl+0 resets. SetZoomEnabled(false) turns the gestures off for
+    // an app that wants to own zoom itself (the wheel then scrolls as before), while
+    // SetZoom still works programmatically.
+    static constexpr float kMinZoom = 0.5f;
+    static constexpr float kMaxZoom = 4.0f;
+    void SetZoom(float factor);
+    float Zoom() const { return zoom_; }
+    void SetZoomEnabled(bool on) { zoomEnabled_ = on; }
+    bool ZoomEnabled() const { return zoomEnabled_; }
+    // Fired after the zoom actually changes (gesture or SetZoom). Payload: new factor.
+    // An app that persists the user's zoom subscribes here.
+    Event<TextArea, float>& ZoomChanged() { return zoomChanged_; }
+
     // Element overrides.
     void Render(const DrawingContext& dc) override;
     bool CaretRectDip(RectDip& out) const override;
     void OnPointerWheelChanged(PointerEventArgs& e) override;
+    // Ctrl+0 (zoom reset), then everything else goes to TextEditBase.
+    void OnKeyDownRouted(KeyEventArgs& e) override;
     bool WantsAnimationTick() const override;
     void OnAnimationTick(float dtSec) override;
     // The caret blink is driven by the window's 530 ms blink timer.
@@ -596,9 +625,17 @@ private:
     ScrollViewer scroll_;
     mutable bool layoutDirty_ = true;
     // LineHeight() builds a probe layout, and the tick path calls it often; memoize
-    // per (fontSize, dpiScale).
+    // per (zoomed font size, dpiScale). Keyed on ZoomedFontSize(), so a zoom change
+    // misses the memo by itself.
     mutable float lineHeightCache_ = 0.0f;
     mutable float lineHeightForFont_ = 0.0f;
+
+    // View zoom (see SetZoom). The font size every DirectWrite format in this control
+    // is built at: EffectiveFontSize() * zoom_.
+    float ZoomedFontSize() const { return EffectiveFontSize() * zoom_; }
+    float zoom_ = 1.0f;
+    bool zoomEnabled_ = true;
+    Event<TextArea, float> zoomChanged_;
     // Drag-select auto-scroll: Windows stops sending WM_MOUSEMOVE once the pointer
     // holds still, so the scroll has to be driven from the animation tick using the
     // last known pointer Y (otherwise holding the mouse outside the edge stalls).

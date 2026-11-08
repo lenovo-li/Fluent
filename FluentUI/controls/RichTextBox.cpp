@@ -421,7 +421,7 @@ void RichTextBox::RebuildLayout(float outerWidth) {
         // If the paragraph is empty (only a newline), use the default style.
         const TextRun baseStyle = para.runs.empty() ? DefaultStyle() : para.runs[0];
         IDWriteTextFormat* fmt = dw->Format(
-            baseStyle.fontSize, baseStyle.weight,
+            baseStyle.fontSize * zoom_, baseStyle.weight,
             DWRITE_TEXT_ALIGNMENT_LEADING,  // will override with para.style.alignment
             DWRITE_PARAGRAPH_ALIGNMENT_NEAR,
             wordWrap_ ? DWRITE_WORD_WRAPPING_WRAP : DWRITE_WORD_WRAPPING_NO_WRAP);
@@ -467,7 +467,7 @@ void RichTextBox::RebuildLayout(float outerWidth) {
             // which requires asking DWrite what that height actually is first.
             DWRITE_LINE_METRICS probe{};
             UINT32 probeCount = 0;
-            float naturalHeight = baseStyle.fontSize * 1.3f;   // fallback if the probe fails
+            float naturalHeight = baseStyle.fontSize * zoom_ * 1.3f;   // fallback if the probe fails
             float naturalBaseline = naturalHeight * 0.8f;
             if (SUCCEEDED(layout->GetLineMetrics(&probe, 1, &probeCount)) && probeCount > 0) {
                 naturalHeight = probe.height;
@@ -527,7 +527,7 @@ void RichTextBox::RebuildLayout(float outerWidth) {
             auto styleRange = [&](UINT32 layoutStart, UINT32 len) {
                 if (len == 0) return;
                 const DWRITE_TEXT_RANGE range{layoutStart, len};
-                layout->SetFontSize(run.fontSize, range);
+                layout->SetFontSize(run.fontSize * zoom_, range);
                 layout->SetFontWeight(run.weight, range);
                 if (run.underline) layout->SetUnderline(TRUE, range);
             };
@@ -915,13 +915,34 @@ void RichTextBox::Arrange(const RectDip& finalRect) {
 }
 
 bool RichTextBox::WantsAnimationTick() const {
-    return scrollViewer_->NeedsTick() || scrollViewer_->IsAutoscrolling();
+    return scrollViewer_->NeedsTick() || scrollViewer_->IsAutoscrolling() || dragOutsideEdge_;
 }
 
 void RichTextBox::OnAnimationTick(float dtSec) {
     scrollViewer_->Tick(dtSec);
     if (scrollViewer_->IsAutoscrolling()) {
         scrollViewer_->TickAutoscroll(dtSec);
+    }
+    if (dragOutsideEdge_ && selecting_) {
+        // Keep scrolling every frame while the pointer is held outside the control
+        // during a drag-select. Without this the selection cannot extend beyond one
+        // screenful: the pointer move would deliver the outside position once and
+        // then stop, leaving the view frozen.
+        constexpr float kAutoScrollMaxStepDip = 20.0f;
+        const float above = bounds_.y - dragPointerY_;
+        const float below = dragPointerY_ - bounds_.bottom();
+        if (above > 0.0f || below > 0.0f) {
+            const float over = std::max(above, below);
+            const float step = std::min(over, kAutoScrollMaxStepDip);
+            const float scrollY = scrollViewer_->Offset();
+            scrollViewer_->SetOffset(scrollY + (above > 0.0f ? -step : step));
+            // Re-resolve the selection end against the newly scrolled view.
+            const float scrollX = scrollViewer_->OffsetX();
+            const float contentX = dragPointerX_ - bounds_.x - kPadding + scrollX;
+            const float contentY = dragPointerY_ - bounds_.y - kPadding + scrollViewer_->Offset();
+            const UINT32 index = IndexAtPoint(contentX, contentY);
+            ExtendDragSelection(index);
+        }
     }
     Invalidate();
 }
@@ -938,7 +959,7 @@ RectDip RichTextBox::CaretRectContentRelative() const {
 
     // Nothing laid out at all — an empty document with no composition.
     if (paragraphLayouts_.empty() || (PlainText().empty() && composition_.empty())) {
-        return RectDip{0.0f, 0.0f, kCaretWidth, currentStyle_.fontSize * 1.3f};
+        return RectDip{0.0f, 0.0f, kCaretWidth, currentStyle_.fontSize * zoom_ * 1.3f};
     }
 
     const auto& paragraphs = doc_.Paragraphs();
@@ -957,7 +978,7 @@ RectDip RichTextBox::CaretRectContentRelative() const {
             const auto& paraInfo = paragraphLayouts_[paraIdx];
             if (!paraInfo.layout) {
                 // Paragraph has no layout (shouldn't happen), return default.
-                return RectDip{0.0f, 0.0f, kCaretWidth, currentStyle_.fontSize * 1.3f};
+                return RectDip{0.0f, 0.0f, kCaretWidth, currentStyle_.fontSize * zoom_ * 1.3f};
             }
 
             // Convert document-global caret to paragraph-relative position.
@@ -975,7 +996,7 @@ RectDip RichTextBox::CaretRectContentRelative() const {
             float caretX = 0.0f, caretY = 0.0f;
             DWRITE_HIT_TEST_METRICS htm{};
             if (FAILED(paraInfo.layout->HitTestTextPosition(layoutPos, FALSE, &caretX, &caretY, &htm))) {
-                return RectDip{0.0f, 0.0f, kCaretWidth, currentStyle_.fontSize * 1.3f};
+                return RectDip{0.0f, 0.0f, kCaretWidth, currentStyle_.fontSize * zoom_ * 1.3f};
             }
 
             // Calculate Y offset to this paragraph's top edge.
@@ -1008,7 +1029,7 @@ RectDip RichTextBox::CaretRectContentRelative() const {
         yOffset += paraInfo.spaceAfter;
     }
 
-    return RectDip{0.0f, yOffset, kCaretWidth, currentStyle_.fontSize * 1.3f};
+    return RectDip{0.0f, yOffset, kCaretWidth, currentStyle_.fontSize * zoom_ * 1.3f};
 }
 
 bool RichTextBox::CaretRectDip(RectDip& out) const {
@@ -1319,6 +1340,13 @@ void RichTextBox::OnTextInput(wchar_t ch) {
 void RichTextBox::OnKeyDownRouted(KeyEventArgs& e) {
     const bool ctrl = (e.modifiers & ModifierKeys::Ctrl) == ModifierKeys::Ctrl;
     const bool shift = (e.modifiers & ModifierKeys::Shift) == ModifierKeys::Shift;
+
+    // Ctrl+0: reset zoom. Same binding as TextArea and LogViewer.
+    if (ctrl && (e.vk == '0' || e.vk == VK_NUMPAD0) && zoomEnabled_ && zoom_ != 1.0f) {
+        SetZoom(1.0f);
+        e.handled = true;
+        return;
+    }
 
     if (e.vk == VK_BACK) {
         Backspace();
@@ -1697,7 +1725,10 @@ void RichTextBox::OnPointerMoved(PointerEventArgs& e) {
         constexpr float kAutoScrollMaxStepDip = 20.0f;
         const float above = bounds_.y - e.position.y;
         const float below = e.position.y - bounds_.bottom();
-        if (above > 0.0f || below > 0.0f) {
+        dragOutsideEdge_ = (above > 0.0f || below > 0.0f);
+        dragPointerX_ = e.position.x;
+        dragPointerY_ = e.position.y;
+        if (dragOutsideEdge_) {
             const float over = std::max(above, below);
             const float step = std::min(over, kAutoScrollMaxStepDip);
             scrollViewer_->SetOffset(scrollY + (above > 0.0f ? -step : step));
@@ -1739,6 +1770,7 @@ void RichTextBox::OnPointerReleased(PointerEventArgs& e) {
 
     if (selecting_) {
         selecting_ = false;
+        dragOutsideEdge_ = false;
         // Reset the drag granularity so the NEXT press starts fresh. Without this a
         // double-click-then-release leaves Word granularity armed, and a later plain
         // drag elsewhere would keep snapping to word boundaries and re-anchoring to
@@ -1750,8 +1782,42 @@ void RichTextBox::OnPointerReleased(PointerEventArgs& e) {
     }
 }
 
+void RichTextBox::SetZoom(float factor) {
+    const float clamped = std::clamp(factor, kMinZoom, kMaxZoom);
+    if (clamped == zoom_) return;
+    zoom_ = clamped;
+    // Every paragraph layout was built at the old zoom; mark stale and let the
+    // next Render / Measure rebuild them.
+    layoutDirty_ = true;
+    InvalidateDirty(DirtyFlags::Measure);
+    Invalidate();
+    zoomChanged_.Raise(*this, zoom_);
+}
+
 void RichTextBox::OnPointerWheelChanged(PointerEventArgs& e) {
     if (!bounds_.contains(e.position.x, e.position.y)) return;
+
+    // Ctrl+Wheel: zoom. Zoom takes priority over scroll, same as TextArea.
+    const bool ctrl  = (e.modifiers & ModifierKeys::Ctrl)  != ModifierKeys::None;
+    const bool shift = (e.modifiers & ModifierKeys::Shift) != ModifierKeys::None;
+    if (ctrl && zoomEnabled_) {
+        const float factor = (e.wheelDelta > 0) ? 1.1f : (1.0f / 1.1f);
+        SetZoom(zoom_ * factor);
+        e.handled = true;
+        return;
+    }
+
+    // Shift+Wheel: horizontal scroll (NoWrap only: Wrap has no X extent).
+    if (shift) {
+        if (scrollViewer_->MaxOffsetX() <= 0.0f) return;  // bubble up if nothing to scroll
+        const float lines = e.WheelScrollLines();
+        scrollViewer_->SetOffsetX(scrollViewer_->OffsetX() - lines * kWheelStepDip);
+        Invalidate();
+        e.handled = true;
+        return;
+    }
+
+    // Plain Wheel: vertical scroll.
     // Only scroll if content actually overflows (prevents phantom scrollbar when
     // the text fits comfortably in one screen).
     if (scrollViewer_->MaxOffset() > 0.0f || scrollViewer_->MaxOffsetX() > 0.0f) {

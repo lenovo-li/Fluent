@@ -49,15 +49,10 @@ LogViewer::LogViewer() {
     // the same sense in which a read-only list is focusable.
     SetFocusable(true);
     scroll_.SetKeepVisibleWhenOverflow(true);
-    // White rail, not the theme's textPrimary.
-    //
-    // ScrollViewer's default ink assumes the scrolled surface follows the theme. A log
-    // view does not: it is dark in a light theme, because that is what a log is
-    // supposed to look like. Under the default the rail was near-black at 35% alpha on
-    // near-black — drawn every frame, provably present in the geometry, and completely
-    // invisible on screen. This is the fix for that, and it is why the ink is a
-    // property rather than derived from the theme alone.
-    scroll_.SetScrollbarColor(D2D1::ColorF(D2D1::ColorF::White));
+    // Scrollbar color: let it follow the theme instead of hard-coding white. The old
+    // hard-coded white was needed when the background was forced black in every theme,
+    // but now that the background follows light/dark, the scrollbar reads fine at the
+    // theme's default (textPrimary @ 35% alpha, which adapts per theme).
     // A log's scrollbar is navigational rather than incidental — it is how a reader
     // judges position in a large file — so it lingers longer than the 1.2 s default.
     scroll_.SetIdleHideDelay(3.0f);
@@ -174,7 +169,54 @@ float LogViewer::PredictLineHeight(const LogLine& line) const {
     for (const auto& span : line.spans)
         maxFontSize = std::max(maxFontSize, span.fontSize);
     if (maxFontSize <= 0.0f) maxFontSize = 12.0f;
-    return maxFontSize * kLineSpacing;
+    // Zoomed: the estimate must describe the row as it will be drawn, or the extent
+    // jumps by the zoom factor the first time each row is painted.
+    return maxFontSize * zoom_ * kLineSpacing;
+}
+
+void LogViewer::SetZoom(float factor) {
+    const float clamped = std::clamp(factor, kMinZoom, kMaxZoom);
+    if (clamped == zoom_) return;
+
+    // Keep the line at the top of the viewport anchored across the zoom, the way an
+    // editor does: remember which line is there and how far into it the view sits
+    // (as a fraction, since the line's height is about to change).
+    size_t anchorLine = 0;
+    float anchorFrac = 0.0f;
+    const bool wasAtTail = !lines_.empty() && scroll_.Offset() >= scroll_.MaxOffset() - 0.5f;
+    if (!lines_.empty()) {
+        anchorLine = LineAtContentY(scroll_.Offset());
+        const float h = lines_[anchorLine].height;
+        if (h > 0.0f) anchorFrac = (scroll_.Offset() - LineTop(anchorLine)) / h;
+    }
+
+    zoom_ = clamped;
+
+    // Every cached span layout was built at the old size, and every row height (both
+    // estimates and measurements) scales with it. Re-estimate all rows and rebuild the
+    // absolute Y table in one O(lines) pass; the visible rows are measured exactly again
+    // on the next paint, just as after an append. O(lines) is acceptable here: zoom is a
+    // discrete user gesture, not a per-frame or per-append path.
+    layoutRows_.clear();
+    double y = yOrigin_;
+    for (size_t i = 0; i < lines_.size(); ++i) {
+        lines_[i].height = PredictLineHeight(lines_[i]);
+        lines_[i].heightMeasured = false;
+        lineY_[i] = y;
+        y += lines_[i].height;
+    }
+    scroll_.SetContentHeight(GetContentExtent());
+
+    if (!lines_.empty()) {
+        // A reader parked at the bottom stays at the bottom (tail -f keeps following);
+        // anyone else keeps the line they were reading at the top of the view.
+        if (wasAtTail)
+            scroll_.SetOffset(scroll_.MaxOffset());
+        else
+            scroll_.SetOffset(LineTop(anchorLine) + anchorFrac * lines_[anchorLine].height);
+    }
+    Invalidate();
+    zoomChanged_.Raise(*this, zoom_);
 }
 
 float LogViewer::GetContentExtent() const {
@@ -308,7 +350,9 @@ ComPtr<IDWriteTextLayout> LogViewer::MakeSpanLayout(const TextSpan& span) const 
     // Left-aligned, top-anchored, no wrapping: a log line is a single visual line
     // and the spans must butt up against each other. The cached-format defaults
     // (centered) would place every span in the middle of its own box.
-    IDWriteTextFormat* fmt = dw->Format(span.fontSize, span.weight,
+    // Built at the zoomed size (see SetZoom). The cache holding these layouts is
+    // dropped on every zoom change, so a cached layout is always at the current zoom.
+    IDWriteTextFormat* fmt = dw->Format(span.fontSize * zoom_, span.weight,
                                         DWRITE_TEXT_ALIGNMENT_LEADING,
                                         DWRITE_PARAGRAPH_ALIGNMENT_NEAR,
                                         DWRITE_WORD_WRAPPING_NO_WRAP);
@@ -329,6 +373,7 @@ ComPtr<IDWriteTextLayout> LogViewer::MakeSpanLayout(const TextSpan& span) const 
 void LogViewer::RenderLine(const DrawingContext& dc, size_t lineIndex, float y) {
     DWriteContext* dw = Dwrite();
     if (!dw || !dw->Factory()) return;
+    const ColorTokens& pal = Theme().colors;
 
     LogLine& line = lines_[lineIndex];
     float x = bounds_.x + kPadding;
@@ -343,7 +388,14 @@ void LogViewer::RenderLine(const DrawingContext& dc, size_t lineIndex, float y) 
         IDWriteTextLayout* layout = SpanLayout(lineIndex, s, scratch);
         if (!layout) continue;
 
-        dc.DrawTextLayout(D2D1::Point2F(x, y), layout, span.color);
+        // Resolve color: negative alpha is a sentinel for "use theme textPrimary".
+        // This lets spans without explicit color follow the theme (light/dark), while
+        // explicit colors (like DeviceCommunicate's ERR/INFO coloring) stay fixed.
+        D2D1_COLOR_F effectiveColor = span.color;
+        if (effectiveColor.a < 0.0f)
+            effectiveColor = pal.textPrimary;
+
+        dc.DrawTextLayout(D2D1::Point2F(x, y), layout, effectiveColor);
 
         DWRITE_TEXT_METRICS tm{};
         if (SUCCEEDED(layout->GetMetrics(&tm))) {
@@ -370,10 +422,20 @@ void LogViewer::Render(const DrawingContext& dc) {
     const ColorTokens& pal = Theme().colors;
     const D2D1_RECT_F box = D2D1::RectF(bounds_.x, bounds_.y,
                                        bounds_.right(), bounds_.bottom());
-    // Use EffectiveBackground so SetBackground() works (Control's override system).
-    // Default fallback is controlFillDefault, but LogViewer semantically wants a
-    // darker terminal-like fill, so pass black as the fallback token.
-    dc.FillRect(box, EffectiveBackground(D2D1::ColorF(D2D1::ColorF::Black)));
+    // Background follows the theme's layer fill (adapts light/dark automatically).
+    // EffectiveBackground lets SetBackground() override it.
+    const D2D1_COLOR_F bg = EffectiveBackground(pal.layerFill);
+    dc.FillRect(box, bg);
+
+    // Auto-adjust scrollbar color to contrast with the background. If the user called
+    // SetScrollbarColor explicitly, that wins (hasCustomScrollbarColor_ would be true).
+    // Otherwise: dark backgrounds get a light scrollbar, light backgrounds get a dark one.
+    // This keeps the scrollbar visible when SetBackground(black) is used in a light theme.
+    const float lum = 0.2126f * bg.r + 0.7152f * bg.g + 0.0722f * bg.b;  // sRGB luminance
+    const D2D1::ColorF autoScrollbar = (lum < 0.5f)
+        ? D2D1::ColorF(0.85f, 0.87f, 0.90f)  // light scrollbar for dark bg
+        : D2D1::ColorF(pal.textPrimary.r, pal.textPrimary.g, pal.textPrimary.b);  // dark for light bg
+    scroll_.SetScrollbarColor(autoScrollbar);
 
     if (lines_.empty()) {
         scroll_.Render(dc);
@@ -441,6 +503,14 @@ void LogViewer::Render(const DrawingContext& dc) {
 // ---------------------------------------------------------------------------
 
 void LogViewer::OnPointerWheelChanged(PointerEventArgs& e) {
+    const bool ctrl = (e.modifiers & ModifierKeys::Ctrl) != ModifierKeys::None;
+    if (ctrl && zoomEnabled_) {
+        const float factor = (e.wheelDelta > 0) ? 1.1f : (1.0f / 1.1f);
+        SetZoom(zoom_ * factor);
+        e.handled = true;
+        return;
+    }
+
     if (scroll_.MaxOffset() <= 0.0f) return;
 
     scroll_.Wake();
@@ -559,7 +629,9 @@ void LogViewer::OnPointerMoved(PointerEventArgs& e) {
         // when you want to cross thousands of lines.
         const float above = bounds_.y - dipY;
         const float below = dipY - bounds_.bottom();
-        if (above > 0.0f || below > 0.0f) {
+        dragOutsideEdge_ = (above > 0.0f || below > 0.0f);
+        dragPointerY_ = dipY;
+        if (dragOutsideEdge_) {
             const float over = std::max(above, below);
             const float step = std::min(over, kAutoScrollMaxStepDip);
             scroll_.SetOffset(scroll_.Offset() + (above > 0.0f ? -step : step));
@@ -588,6 +660,7 @@ void LogViewer::OnPointerReleased(PointerEventArgs& e) {
     }
     if (draggingSelection_) {
         draggingSelection_ = false;
+        dragOutsideEdge_ = false;
         // Reset the drag granularity so the NEXT press starts fresh. Without this a
         // double-click-then-release leaves Word granularity armed, and a later plain
         // drag elsewhere would keep snapping to word boundaries and re-anchoring to
@@ -639,7 +712,7 @@ HCURSOR LogViewer::Cursor() const {
 // ---------------------------------------------------------------------------
 
 bool LogViewer::WantsAnimationTick() const {
-    return scroll_.NeedsTick() || scroll_.IsAutoscrolling();
+    return scroll_.NeedsTick() || scroll_.IsAutoscrolling() || dragOutsideEdge_;
 }
 
 void LogViewer::OnAnimationTick(float dtSec) {
@@ -647,6 +720,26 @@ void LogViewer::OnAnimationTick(float dtSec) {
     if (scroll_.IsAutoscrolling()) {
         scroll_.TickAutoscroll(dtSec);
         autoScrollToTail_ = scroll_.TargetOffset() >= scroll_.MaxOffset() - 1.0f;
+    }
+    if (dragOutsideEdge_ && draggingSelection_) {
+        // Keep scrolling every frame while the pointer is held outside the control
+        // during a drag-select. Without this the selection cannot extend beyond one
+        // screenful: the pointer move would deliver the outside position once and
+        // then stop, leaving the view frozen.
+        const float dipY = dragPointerY_;
+        const float above = bounds_.y - dipY;
+        const float below = dipY - bounds_.bottom();
+        if (above > 0.0f || below > 0.0f) {
+            const float over = std::max(above, below);
+            const float step = std::min(over, kAutoScrollMaxStepDip);
+            scroll_.SetOffset(scroll_.Offset() + (above > 0.0f ? -step : step));
+            // Re-resolve the selection end against the newly scrolled view. The X
+            // coordinate is clamped to the content left since we only track Y across
+            // frames — HitTestPosition would clamp it anyway, and this makes it explicit.
+            const float dipX = bounds_.x + kPadding;
+            selCurrent_ = HitTestPosition(dipX, dipY);
+            autoScrollToTail_ = scroll_.Offset() >= scroll_.MaxOffset() - 1.0f;
+        }
     }
     // scroll_ is a member, not a tree node: the Invalidate() inside its Tick has no
     // path to the frame scheduler, so its fade/expand steps would only appear on
@@ -1081,6 +1174,14 @@ void LogViewer::OnKeyDownRouted(KeyEventArgs& e) {
     }
     if (ctrl && e.vk == 'A') {
         SelectAll();
+        e.handled = true;
+        return;
+    }
+    // Ctrl+0 resets the view zoom (main-row '0' and numpad 0), the binding browsers
+    // and VS Code use. Only consumed when zoom is enabled and actually not at 100%,
+    // so an app-level Ctrl+0 shortcut still fires otherwise.
+    if (ctrl && (e.vk == '0' || e.vk == VK_NUMPAD0) && zoomEnabled_ && zoom_ != 1.0f) {
+        SetZoom(1.0f);
         e.handled = true;
         return;
     }

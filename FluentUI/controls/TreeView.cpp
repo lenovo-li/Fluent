@@ -84,6 +84,47 @@ void DrawIcon(const DrawingContext& dc, TreeViewIcon icon, float x, float y,
 
 } // namespace
 
+float TreeView::RowTextWidth(int rowIndex, IDWriteTextFormat* fmt)
+{
+    if (rowIndex < 0 || rowIndex >= static_cast<int>(items_.size())) return 0.0f;
+    if (rowTextWidth_.empty() || rowIndex >= static_cast<int>(rowTextWidth_.size()))
+        return 0.0f;
+    if (rowTextWidth_[rowIndex] >= 0.0f)
+        return rowTextWidth_[rowIndex];  // cached
+
+    const TreeViewRow& row = items_[rowIndex];
+    if (row.text.empty()) {
+        rowTextWidth_[rowIndex] = 0.0f;
+        return 0.0f;
+    }
+
+    // Measure via DirectWrite layout. One CreateTextLayout per row, the first time
+    // it scrolls into view; steady-state frames build zero layouts.
+    ComPtr<IDWriteTextLayout> layout;
+    if (FAILED(Dwrite()->Factory()->CreateTextLayout(
+            row.text.c_str(), static_cast<UINT32>(row.text.size()), fmt,
+            100000.0f, 100.0f, layout.GetAddressOf()))) {
+        rowTextWidth_[rowIndex] = 0.0f;
+        return 0.0f;
+    }
+    DWRITE_TEXT_METRICS m{};
+    if (FAILED(layout->GetMetrics(&m))) {
+        rowTextWidth_[rowIndex] = 0.0f;
+        return 0.0f;
+    }
+    rowTextWidth_[rowIndex] = m.widthIncludingTrailingWhitespace;
+    return rowTextWidth_[rowIndex];
+}
+
+void TreeView::UpdateVerticalExtent()
+{
+    // The horizontal rail, when live, covers the bottom 16 DIP of content; inflate
+    // the vertical extent by that strip so the last row scrolls fully above the
+    // rail instead of resting under it (same rule as ScrollPanel::UpdateScrollExtent).
+    const float hRail = (scroll_.MaxOffsetX() > 0.0f) ? 16.0f : 0.0f;
+    scroll_.SetContentHeight(rowHeight_ * visibleRows_.size() + hRail);
+}
+
 void TreeView::SetRows(std::vector<TreeViewRow> rows)
 {
     // Capture the selected row's id so it can be restored after the store is
@@ -263,12 +304,20 @@ void TreeView::OnItemsChanged()
     // different row (or none) — see Selector::ReseedSelectionSet for why this
     // re-seeds rather than only clearing.
     ReseedSelectionSet();
-    
+
     // Clear hover: the row set changed, so the old index no longer points to the
     // same row (or may now be out of range).
     hoverRowIndex_ = -1;
-    
-    scroll_.SetContentHeight(rowHeight_ * visibleRows_.size());
+
+    // Reset horizontal extent: drop the width cache and mark stale. The next Render
+    // measures every visible row from scratch. Clearing the cache means the FIRST
+    // frame after SetRows does N CreateTextLayout calls (N = visible capacity), but
+    // that is still much cheaper than doing it for the entire tree in SetRows.
+    rowTextWidth_.assign(items_.size(), -1.0f);
+    maxSeenContentWidth_ = 0.0f;
+    extentStale_ = true;
+
+    UpdateVerticalExtent();
     Invalidate();
 }
 
@@ -339,7 +388,10 @@ void TreeView::OnBoundsChanged()
 {
     LayoutCostProbe::Scope probe(LayoutCostKey::TreeViewBoundsChanged);
     scroll_.SetBounds(bounds_);
-    scroll_.SetContentHeight(rowHeight_ * visibleRows_.size());
+    // SetBounds re-clamps both offsets against the new viewport; whether the
+    // horizontal rail is live may have flipped with the width, so the vertical
+    // extent (which reserves the rail's strip) is recomputed after it.
+    UpdateVerticalExtent();
 }
 
 int TreeView::VisibleCapacity() const
@@ -460,7 +512,7 @@ void TreeView::ToggleRow(int rowIndex)
     selectedIndex_ = RowIndexById(selectedId);
     if (selectedIndex_ >= 0 && VisibleIndexByRow(selectedIndex_) < 0)
         selectedIndex_ = rowIndex;
-    scroll_.SetContentHeight(rowHeight_ * visibleRows_.size());
+    UpdateVerticalExtent();
     Invalidate();
 }
 
@@ -469,18 +521,24 @@ void TreeView::OnPointerMoved(PointerEventArgs& e)
     float dipX = e.position.x, dipY = e.position.y;
     lastPointerPos_ = e.position;
     pointerInside_ = true;
-    
-    // scroll_ is an internal member with no invalidate callback of its own, so
-    // its SetOffset can't repaint us — drive the repaint from here.
+
+    // Vertical scrollbar drag.
     if (scroll_.IsDragging()) {
         scroll_.DragTo(dipY);
         Invalidate(); e.handled = true; return;
     }
+    // Horizontal scrollbar drag.
+    if (scroll_.IsHDragging()) {
+        scroll_.HDragTo(dipX);
+        Invalidate(); e.handled = true; return;
+    }
+
     // Any move over the control keeps the thin rail visible; nearing the right
-    // edge expands it to a pill (WinUI-11 style).
+    // edge expands the vertical rail, nearing the bottom expands the horizontal rail.
     scroll_.Wake();
     scroll_.SetBarHover(scroll_.HitBarRegion(dipX, dipY));
-    
+    scroll_.SetHBarHover(scroll_.HitHBarRegion(dipX, dipY));
+
     // Row hover: update hoverRowIndex_ for visual feedback (subtle fill on the row).
     int newHover = HitRow(dipY);
     if (newHover != hoverRowIndex_) {
@@ -493,7 +551,8 @@ void TreeView::OnPointerPressed(PointerEventArgs& e)
 {
     if (e.button != PointerButton::Left) return;
     float dipX = e.position.x, dipY = e.position.y;
-    // Scrollbar drag: press anywhere in the hover strip (16 DIP), not just the
+
+    // Vertical scrollbar drag: press anywhere in the hover strip (16 DIP), not just the
     // visible thumb (3-7 DIP). A rail that lights up on hover but ignores clicks
     // outside the narrow thumb reads as broken, and 3 DIP is not a real target.
     if (scroll_.HitBarRegion(dipX, dipY)) {
@@ -510,10 +569,27 @@ void TreeView::OnPointerPressed(PointerEventArgs& e)
         }
         scroll_.BeginDrag(dipY);
         if (Context().input) Context().input->CapturePointer(this);
-            Invalidate();
+        Invalidate();
         e.handled = true;
         return;
     }
+
+    // Horizontal scrollbar drag: same logic as vertical, but on the X axis.
+    if (scroll_.HitHBarRegion(dipX, dipY)) {
+        if (!scroll_.HitHThumb(dipX, dipY)) {
+            const RectDip thumb = scroll_.HThumbRect();
+            const float trackRange = std::max(1.0f, scroll_.HTrackLength() - thumb.w);
+            const float wantLeft = (dipX - thumb.w * 0.5f) - bounds_.x;
+            scroll_.SetOffsetX(wantLeft / trackRange * scroll_.MaxOffsetX());
+            Invalidate();
+        }
+        scroll_.BeginHDrag(dipX);
+        if (Context().input) Context().input->CapturePointer(this);
+        Invalidate();
+        e.handled = true;
+        return;
+    }
+
     // Row press: capture so the matching release routes back to us even if the
     // pointer drifts, then act on release (chevron toggle or row select).
     if (Context().input) Context().input->CapturePointer(this);
@@ -524,23 +600,34 @@ void TreeView::OnPointerReleased(PointerEventArgs& e)
 {
     if (e.button != PointerButton::Left) return;
     bool wasDragging = scroll_.IsDragging();
+    bool wasDraggingX = scroll_.IsHDragging();
     if (wasDragging) { scroll_.EndDrag(); Invalidate(); }
+    if (wasDraggingX) { scroll_.EndHDrag(); Invalidate(); }
     if (Context().input && Context().input->Captured() == this)
         Context().input->ReleaseCapture(this);
     e.handled = true;
-    if (wasDragging) return;
+    if (wasDragging || wasDraggingX) return;
 
     // A row click only counts when released inside the control (drag-off cancels).
     float dipX = e.position.x, dipY = e.position.y;
     if (!bounds_.contains(dipX, dipY)) return;
-    if (scroll_.HitBarRegion(dipX, dipY)) return;  // release on scrollbar region, not a row click
+    if (scroll_.HitBarRegion(dipX, dipY) || scroll_.HitHBarRegion(dipX, dipY)) return;
+
     int rowIndex = HitRow(dipY);
     if (rowIndex < 0) return;
-    float chevronLeft = bounds_.x + 10.0f + items_[rowIndex].depth * 14.0f;
-    if (items_[rowIndex].hasChildren && dipX >= chevronLeft && dipX < chevronLeft + 16.0f) {
+
+    // Chevron hit-test: the kChevronColumn strip the expander triangle is centered
+    // in, shifted by the horizontal scroll. Reads the same TreeViewRowLayout as
+    // DrawRow so the glyph and its hit box cannot drift apart.
+    const TreeViewRowLayout l = TreeViewRowLayout::For(items_[rowIndex].depth);
+    float scrollX = scroll_.OffsetX();
+    float chevronLeft = bounds_.x + l.chevronLeft - scrollX;
+    float chevronRight = chevronLeft + TreeViewRowLayout::kChevronColumn;
+    if (items_[rowIndex].hasChildren && dipX >= chevronLeft && dipX < chevronRight) {
         ToggleRow(rowIndex);
         return;
     }
+
     // Modifier-aware selection (Multiple mode only; Single mode ignores modifiers
     // so a Ctrl+click there behaves exactly as before).
     //
@@ -565,14 +652,14 @@ void TreeView::OnPointerReleased(PointerEventArgs& e)
 
     int visibleIndex = VisibleIndexByRow(rowIndex);
     if (visibleIndex >= 0) SetSelectedIndex(visibleIndex);
-    
+
     // Double-click detection: check if this click is within the double-click
     // window and on the same row as the last click.
     DWORD now = GetTickCount();
     DWORD doubleClickTime = GetDoubleClickTime();  // System setting (usually 500ms)
     bool isDoubleClick = (now - lastClickTime_ <= doubleClickTime) &&
                          (lastClickRow_ == rowIndex);
-    
+
     if (isDoubleClick) {
         // Raise ItemDoubleClick event
         TreeViewItemDoubleClickArgs args;
@@ -581,17 +668,17 @@ void TreeView::OnPointerReleased(PointerEventArgs& e)
                        ? &items_[rowIndex]
                        : nullptr;
         args.handled = false;
-        
+
         if (itemDoubleClick_.HasSubscribers()) {
             itemDoubleClick_.Raise(*this, args);
         }
-        
+
         // Default behavior: toggle expansion if row has children, not handled by subscriber,
         // and doubleClickTogglesExpansion_ is true
         if (!args.handled && doubleClickTogglesExpansion_ && items_[rowIndex].hasChildren) {
             ToggleRow(rowIndex);
         }
-        
+
         // Reset double-click state to prevent triple-click from being detected as double-click
         lastClickTime_ = 0;
         lastClickRow_ = -1;
@@ -605,8 +692,9 @@ void TreeView::OnPointerReleased(PointerEventArgs& e)
 void TreeView::OnPointerLeft()
 {
     pointerInside_ = false;
-    // Pointer left the control entirely: drop bar hover so it shrinks + fades.
+    // Pointer left the control entirely: drop bar hover so both rails shrink + fade.
     scroll_.SetBarHover(false);
+    scroll_.SetHBarHover(false);
     // Clear row hover.
     if (hoverRowIndex_ != -1) {
         hoverRowIndex_ = -1;
@@ -627,6 +715,21 @@ void TreeView::EnsureSelectedVisible()
 
 void TreeView::OnPointerWheelChanged(PointerEventArgs& e)
 {
+    // Shift+Wheel scrolls horizontally (OS-wide convention); plain wheel is vertical.
+    const bool shift = (e.modifiers & ModifierKeys::Shift) != ModifierKeys::None;
+    if (shift) {
+        if (scroll_.MaxOffsetX() <= 0.0f) return;  // nothing to scroll horizontally
+        float lines = e.WheelScrollLines();
+        // Same sign as ScrollPanel's Shift+wheel, so every horizontally scrolling
+        // surface in the framework moves the same way for the same gesture. No tween
+        // on the X axis (by design, see ScrollViewer's horizontal-axis comment), so
+        // the offset applies immediately.
+        scroll_.SetOffsetX(scroll_.OffsetX() - lines * rowHeight_);
+        Invalidate();
+        e.handled = true;
+        return;
+    }
+
     if (scroll_.MaxOffset() <= 0.0f) return;  // nothing to scroll (bubbles up)
     // One wheel notch (WHEEL_DELTA = 120) scrolls WheelScrollLines() rows, read from
     // the system setting (Settings → Bluetooth & devices → Mouse → scroll lines).
@@ -819,6 +922,13 @@ void TreeView::DrawRow(const DrawingContext& dc, IDWriteTextFormat* fmt,
     const ColorTokens& pal = Theme().colors;
     const TreeViewRow& row = items_[rowIndex];
     const float y = rowTopY;
+
+    // Apply horizontal scroll offset: all horizontal coordinates shift left by OffsetX().
+    const float scrollX = scroll_.OffsetX();
+    const TreeViewRowLayout l = TreeViewRowLayout::For(row.depth);
+
+    // Selection/hover highlight fills the viewport width, not content width, so it
+    // stays fixed when scrolling horizontally (matches Explorer / Device Manager).
     D2D1_RECT_F rr = D2D1::RectF(leftX + 6.0f, y + 1.0f, rightX - 8.0f, y + rowHeight_ - 2.0f);
     const float itemCorner = Theme().spacing.cornerRadiusSmall;
 
@@ -842,18 +952,24 @@ void TreeView::DrawRow(const DrawingContext& dc, IDWriteTextFormat* fmt,
                            pal.accent);
     }
 
-    float indent = 10.0f + row.depth * 14.0f;
+    // Chevron (expander glyph): a triangle centered horizontally in the
+    // kChevronColumn strip. The downward triangle used to span cy-2..cy+3, so its
+    // flat top edge (the visually heavy part) sat above the row's center line and
+    // the glyph read as riding high next to the text. It now spans cy-1.5..cy+3.5,
+    // putting the shape's centroid just below center, where the eye expects it.
     if (row.hasChildren) {
         D2D1_COLOR_F chevron = EffectiveForeground(
             row.dimmed ? pal.textSecondary : pal.textPrimary);
         D2D1_POINT_2F p1, p2, p3;
-        float cx = leftX + indent + 5.0f;
+        float cx = leftX + l.chevronLeft + TreeViewRowLayout::kChevronColumn * 0.5f - scrollX;
         float cy = y + rowHeight_ * 0.5f;
         if (row.expanded) {
-            p1 = D2D1::Point2F(cx - 4.0f, cy - 2.0f);
-            p2 = D2D1::Point2F(cx + 4.0f, cy - 2.0f);
-            p3 = D2D1::Point2F(cx, cy + 3.0f);
+            // Down: baseline at cy - 1.5, point at cy + 3.5 (height 5, center at cy + 1.0)
+            p1 = D2D1::Point2F(cx - 4.0f, cy - 1.5f);
+            p2 = D2D1::Point2F(cx + 4.0f, cy - 1.5f);
+            p3 = D2D1::Point2F(cx, cy + 3.5f);
         } else {
+            // Right: left edge at cx - 2, point at cx + 3 (width 5, center at cx + 0.5)
             p1 = D2D1::Point2F(cx - 2.0f, cy - 4.0f);
             p2 = D2D1::Point2F(cx - 2.0f, cy + 4.0f);
             p3 = D2D1::Point2F(cx + 3.0f, cy);
@@ -869,9 +985,10 @@ void TreeView::DrawRow(const DrawingContext& dc, IDWriteTextFormat* fmt,
     // upscale from a fixed 16px source (blurry). High-quality cubic sampling keeps
     // it clean if the DPI changed since the bitmap was cached.
     if (row.customIcon) {
-        const float iconSize = 16.0f;
-        D2D1_RECT_F iconRect = D2D1::RectF(leftX + indent + 16.0f, y + 4.0f,
-                                           leftX + indent + 16.0f + iconSize, y + 4.0f + iconSize);
+        const float iconSize = TreeViewRowLayout::kIconSize;
+        // Vertically center the icon within the 28px row: y + (28 - 16) / 2 = y + 6.
+        D2D1_RECT_F iconRect = D2D1::RectF(leftX + l.iconLeft - scrollX, y + 6.0f,
+                                           leftX + l.iconLeft - scrollX + iconSize, y + 6.0f + iconSize);
         // Raw-context draw, so the element opacity is ours to apply: a hard-coded
         // 1.0 left the icon fully opaque inside a TreeView faded with SetOpacity.
         if (auto* dc2 = dc.Dc()) {
@@ -883,7 +1000,8 @@ void TreeView::DrawRow(const DrawingContext& dc, IDWriteTextFormat* fmt,
         // Snap icon position to the pixel grid so geometric shapes render crisp.
         // Without this, fractional coordinates cause D2D to antialias the edges,
         // making small icons (14×14 DIP) look blurry, especially at 100% DPI.
-        const float iconX = SnapToPixel(leftX + indent + 16.0f, dc.DpiScale());
+        // The icon is a 14×14 shape inside the 16px square; center it: +1 left, +7 top.
+        const float iconX = SnapToPixel(leftX + l.iconLeft + 1.0f - scrollX, dc.DpiScale());
         const float iconY = SnapToPixel(y + 7.0f, dc.DpiScale());
         DrawIcon(dc, row.icon, iconX, iconY, pal);
     }
@@ -893,8 +1011,15 @@ void TreeView::DrawRow(const DrawingContext& dc, IDWriteTextFormat* fmt,
     D2D1_COLOR_F textColor = EffectiveForeground(
         row.dimmed ? pal.textSecondary : pal.textPrimary);
     if (rowIsSelected) textColor = EffectiveForeground(pal.textPrimary);
+
+    // Text rect: anchored at textLeft with no right bound tied to the viewport. It
+    // used to end at rightX - 12; once the control was narrower than textLeft + 12
+    // that rect turned inverted (right < left) and DirectWrite laid the text out
+    // from the wrong edge, so the text slid sideways while the pane shrank. The
+    // Render clip and the horizontal scroll now handle overflow instead.
+    float textLeft = leftX + l.textLeft - scrollX;
     dc.DrawText(row.text.c_str(), static_cast<UINT32>(row.text.size()), fmt,
-                D2D1::RectF(leftX + indent + 34.0f, y, rightX - 12.0f, y + rowHeight_),
+                D2D1::RectF(textLeft, y, textLeft + 10000.0f, y + rowHeight_),
                 textColor, D2D1_DRAW_TEXT_OPTIONS_CLIP);
 }
 
@@ -924,9 +1049,35 @@ void TreeView::Render(const DrawingContext& dc)
         int first = static_cast<int>(scroll_.Offset() / rowHeight_);
         int visible = VisibleCapacity();
         float y = bounds_.y - (snappedOffset - first * rowHeight_);
+
+        // Learn the horizontal extent from the rows drawn this frame (see the
+        // rowTextWidth_ comment in TreeView.h). The width cache makes this a lookup
+        // for any row already seen, so steady-state frames build no text layouts.
+        float frameMaxWidth = extentStale_ ? 0.0f : maxSeenContentWidth_;
+
         for (int n = 0; n < visible && first + n < static_cast<int>(visibleRows_.size()); ++n) {
-            DrawRow(dc, fmt, visibleRows_[first + n], y, bounds_.x, bounds_.right());
+            const int rowIndex = visibleRows_[first + n];
+            frameMaxWidth = std::max(frameMaxWidth,
+                TreeViewRowLayout::ContentWidth(items_[rowIndex].depth,
+                                                RowTextWidth(rowIndex, fmt)));
+            DrawRow(dc, fmt, rowIndex, y, bounds_.x, bounds_.right());
             y += rowHeight_;
+        }
+
+        // Push the extent when it grew, or unconditionally after a row-set change
+        // (where it may also have shrunk). Growing mid-frame is safe for this frame's
+        // pixels: SetContentWidth only re-clamps the offset, and a wider extent never
+        // makes the current offset illegal.
+        if (extentStale_ || frameMaxWidth > maxSeenContentWidth_) {
+            const bool hadHRail = scroll_.MaxOffsetX() > 0.0f;
+            maxSeenContentWidth_ = frameMaxWidth;
+            extentStale_ = false;
+            scroll_.SetContentWidth(maxSeenContentWidth_);
+            // The rail appearing or disappearing changes the vertical extent (the
+            // 16 DIP strip). scroll_.Render runs after this block, so the vertical
+            // thumb drawn this frame already reflects it; no extra frame is needed.
+            if (hadHRail != (scroll_.MaxOffsetX() > 0.0f))
+                UpdateVerticalExtent();
         }
     }
 

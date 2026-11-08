@@ -72,7 +72,7 @@ void TextArea::NoteLineWidth(IDWriteTextLayout* layout) const {
 IDWriteTextLayout* TextArea::LineLayout(size_t lineNumber, size_t minCover) const {
     if (!Dwrite()) return nullptr;
     IDWriteTextFormat* fmt = Dwrite()->Format(
-        EffectiveFontSize(), EffectiveFontWeight(DWRITE_FONT_WEIGHT_NORMAL), DWRITE_TEXT_ALIGNMENT_LEADING,
+        ZoomedFontSize(), EffectiveFontWeight(DWRITE_FONT_WEIGHT_NORMAL), DWRITE_TEXT_ALIGNMENT_LEADING,
         DWRITE_PARAGRAPH_ALIGNMENT_NEAR, DWRITE_WORD_WRAPPING_NO_WRAP);
     if (!fmt) return nullptr;
     const unsigned gen = Context().theme ? Context().theme->generation : 0u;
@@ -242,7 +242,7 @@ void TextArea::EnsureLineIndex() const {
 // its estimate — being consistent about the guess means the two are wrong in
 // the same direction rather than fighting each other.
 float TextArea::SeedCharsPerLine() const {
-    const float avgGlyphW = std::max(1.0f, EffectiveFontSize() * 0.5f);
+    const float avgGlyphW = std::max(1.0f, ZoomedFontSize() * 0.5f);
     return std::max(1.0f, WrapLayoutWidth() / avgGlyphW);
 }
 
@@ -283,7 +283,7 @@ void TextArea::EnsureWrapExtent() const {
 IDWriteTextLayout* TextArea::WrapParagraphLayout(size_t p) const {
     if (!Dwrite() || !LayoutWidthKnown()) return nullptr;
     IDWriteTextFormat* fmt = Dwrite()->Format(
-        EffectiveFontSize(), EffectiveFontWeight(DWRITE_FONT_WEIGHT_NORMAL), DWRITE_TEXT_ALIGNMENT_LEADING,
+        ZoomedFontSize(), EffectiveFontWeight(DWRITE_FONT_WEIGHT_NORMAL), DWRITE_TEXT_ALIGNMENT_LEADING,
         DWRITE_PARAGRAPH_ALIGNMENT_NEAR, DWRITE_WORD_WRAPPING_WRAP);
     if (!fmt) return nullptr;
     EnsureWrapExtent();
@@ -600,10 +600,10 @@ float TextArea::LineHeight() const {
     // Memoized: this builds a throwaway probe layout. EnsureVisible and hit-testing
     // call it every frame. Only the font size can change it (DWrite line spacing
     // is in DIPs, so DPI does not enter).
-    if (lineHeightCache_ > 0.0f && lineHeightForFont_ == EffectiveFontSize())
+    if (lineHeightCache_ > 0.0f && lineHeightForFont_ == ZoomedFontSize())
         return lineHeightCache_;
 
-    float result = EffectiveFontSize() * 1.4f;
+    float result = ZoomedFontSize() * 1.4f;
     if (Dwrite()) {
         // Line spacing probe. Must use a MIXED Latin+CJK string to force DWrite to
         // pick the PRIMARY font (Segoe UI Variable) for line metrics, not a fallback.
@@ -611,7 +611,7 @@ float TextArea::LineHeight() const {
         // height, causing the first Latin character typed into a CJK-only line to jump
         // the row by ~0.7 DIP (font switch from YaHei 15.24 to Segoe 16.00 at 12pt).
         IDWriteTextFormat* fmt = Dwrite()->Format(
-            EffectiveFontSize(), EffectiveFontWeight(DWRITE_FONT_WEIGHT_NORMAL), DWRITE_TEXT_ALIGNMENT_LEADING,
+            ZoomedFontSize(), EffectiveFontWeight(DWRITE_FONT_WEIGHT_NORMAL), DWRITE_TEXT_ALIGNMENT_LEADING,
             DWRITE_PARAGRAPH_ALIGNMENT_NEAR, DWRITE_WORD_WRAPPING_WRAP);
         if (fmt) {
             ComPtr<IDWriteTextLayout> probe;
@@ -626,7 +626,7 @@ float TextArea::LineHeight() const {
     // Only cache once DWrite is available; before attach the fallback is a guess.
     if (Dwrite()) {
         lineHeightCache_ = result;
-        lineHeightForFont_ = EffectiveFontSize();
+        lineHeightForFont_ = ZoomedFontSize();
     }
     return result;
 }
@@ -1296,10 +1296,48 @@ void TextArea::OnPointerReleased(PointerEventArgs& e) {
     }
 }
 
+void TextArea::SetZoom(float factor) {
+    const float clamped = std::clamp(factor, kMinZoom, kMaxZoom);
+    if (clamped == zoom_) return;
+    zoom_ = clamped;
+    // A zoom change makes every DirectWrite format request a different size. All
+    // caches keyed on ZoomedFontSize() (line height, layout cache) must be cleared
+    // so they are rebuilt at the new size — same consequences as a DPI change.
+    lineHeightCache_ = 0.0f;
+    OnTextLayoutDirty();           // clears lineLayouts_, sets layoutDirty_
+    SyncScroll();                  // push new line heights to scroll extents immediately
+    Invalidate();
+    zoomChanged_.Raise(*this, zoom_);
+}
+
+void TextArea::OnKeyDownRouted(KeyEventArgs& e) {
+    // Ctrl+0 resets the view zoom. Consumed only when there is a zoom to reset, so an
+    // app shortcut bound to Ctrl+0 still fires while the text is at 100%. Read from
+    // e.modifiers (not GetKeyState) so headless tests can drive it.
+    const bool ctrl = (e.modifiers & ModifierKeys::Ctrl) != ModifierKeys::None;
+    if (ctrl && (e.vk == '0' || e.vk == VK_NUMPAD0) && zoomEnabled_ && zoom_ != 1.0f) {
+        SetZoom(1.0f);
+        e.handled = true;
+        return;
+    }
+    TextEditBase::OnKeyDownRouted(e);
+}
+
 void TextArea::OnPointerWheelChanged(PointerEventArgs& e) {
+    // Ctrl+Wheel zooms the text view. Ctrl wins over Shift when both are held, which
+    // is consistent with how most text editors handle it. The zoom does not change the
+    // control's Measure-size (no layout shift), only the glyph scale.
+    const bool ctrl  = (e.modifiers & ModifierKeys::Ctrl)  != ModifierKeys::None;
+    const bool shift = (e.modifiers & ModifierKeys::Shift) != ModifierKeys::None;
+    if (ctrl && zoomEnabled_) {
+        const float factor = (e.wheelDelta > 0) ? 1.1f : (1.0f / 1.1f);
+        SetZoom(zoom_ * factor);
+        e.handled = true;
+        return;
+    }
+
     // Shift+Wheel scrolls horizontally (NoWrap only: Wrap cannot scroll sideways by
     // construction). Unmodified Wheel scrolls vertically regardless of mode.
-    const bool shift = (e.modifiers & ModifierKeys::Shift) != ModifierKeys::None;
     if (shift && wrapMode_ == TextWrapMode::NoWrap) {
         if (scroll_.MaxOffsetX() <= 0.0f) return;  // nothing to scroll (bubbles up)
         float lines = e.WheelScrollLines();
@@ -1475,7 +1513,7 @@ size_t TextArea::DrawMinCoverForLine(size_t lineNumber) const {
     // Mirror the logic in DrawLinesToSurface exactly, but without the draw state
     // (surfaceOriginDip / selection from the loop). The draw loop passes the current
     // selection range from its outer scope; here we read the same fields directly.
-    const float avgGlyphW = std::max(1.0f, EffectiveFontSize() * 0.5f);
+    const float avgGlyphW = std::max(1.0f, ZoomedFontSize() * 0.5f);
     const float visRight = scroll_.OffsetX() + ContentWidth() * 2.0f;
     const size_t estCover = static_cast<size_t>(visRight / avgGlyphW) + 50;
 
@@ -1875,7 +1913,7 @@ void TextArea::Render(const DrawingContext& dc) {
         // buffer sizes without composing the string.
         if (DisplayEmpty() && !placeholder_.empty()) {
             if (IDWriteTextFormat* fmt = Dwrite() ? Dwrite()->Format(
-                    EffectiveFontSize(), EffectiveFontWeight(DWRITE_FONT_WEIGHT_NORMAL),
+                    ZoomedFontSize(), EffectiveFontWeight(DWRITE_FONT_WEIGHT_NORMAL),
                     DWRITE_TEXT_ALIGNMENT_LEADING,
                     DWRITE_PARAGRAPH_ALIGNMENT_NEAR,
                     DWRITE_WORD_WRAPPING_WRAP) : nullptr) {

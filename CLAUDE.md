@@ -102,9 +102,8 @@ Custom controls are built by inheriting FluentUI controls in a **separate
 library** that links `FluentUI.lib` — never by adding them to the FluentUI source
 tree. Those libraries live under `extensions/`: `extensions/CustomControls/`
 (LunarCalendar, BigButton, LogSlider, SpinnerControl), `extensions/InstallerControls/`
-and `extensions/NavigationControls/` are the working templates. The demo links
-CustomControls and InstallerControls; NavigationControls is linked only by the
-tests (the tests also link the other two).
+and `extensions/NavigationControls/` are the working templates. The demo and the
+tests link all three.
 `examples/` is kept for something different — minimal consumer programs
 (`Minimal/`, `PackageConsumer/`) that show how to *use* FluentUI, not how to
 extend it. A new reusable control library goes in `extensions/`, a new "how do I
@@ -129,7 +128,7 @@ renaming or changing them breaks downstream libraries.
 | `FluentSettings` | static lib | JSON config persistence (`nlohmann/json` vendored) |
 | `extensions/CustomControls` | static lib (template) | demonstrates user-library pattern: LunarCalendar, BigButton, LogSlider, SpinnerControl link FluentUI.lib |
 | `extensions/InstallerControls` | static lib | WizardControl + FolderPicker; linked by the demo and tests |
-| `extensions/NavigationControls` | static lib | NavRail, PageHost, OverlayHost; linked by the tests, not the demo |
+| `extensions/NavigationControls` | static lib | NavRail, PageHost, OverlayHost; linked by the demo and tests |
 | `demos/TrayAppDemo` | GUI app | close-to-tray sample (window tray icon, `ShutdownMode::OnExplicitShutdown`) |
 | `examples/Minimal`, `examples/PackageConsumer` | GUI app | minimal consumers (C++14/17/20 floor checks, CMake `find_package`) |
 

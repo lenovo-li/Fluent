@@ -89,19 +89,30 @@ std::unique_ptr<Panel> GalleryApp::BuildContent() {
 
 void GalleryApp::BuildAllPages() {
     static constexpr int kPageIds[] = {
-        101, 102, 103, 104, 105, 106, 107, 108, 111, 112, 113,  // 基础控件
-        201, 208, 202, 203, 204, 205, 206, 207,   // 输入控件
-        301, 302,                            // 文本控件
-        401, 402, 403, 404, 405, 406, 407, 408, 409,  // 数据控件（LogViewer + RichTextBox）
-        501, 502, 503, 504, 505, 506, 507, 508, 509, 510, 511, 512,   // 布局容器（512 新增）
-        601, 602, 603, 604, 605, 606, 607, 608,  // 窗口 & 对话框
-        701, 702, 703, 704, 705, 707,        // 性能演示 + 跨控件主题话题（707）
-        // 801-807 与 706 已撤销：它们都是各控件页的重复。801-804 是 102/103/201/302 的
-        // 超集，706「控件样式定制」是 Button/CheckBox/RadioButton/ToggleSwitch/Slider 的
-        // 样式演示汇总 —— 现在这些内容都在各控件自己的「样式定制」卡片里。一个控件出现在
-        // 两个地方只会让人不知道该看哪页。707 保留：它讲的是「主题驱动 vs 固定色」这个
-        // 跨控件取舍，不属于任何单个控件。
-        901, 902,                            // 真实应用复刻 + 自我调试
+        // 输入 · Input
+        101, 102, 103, 104, 109, 201, 208, 202, 203, 204, 205, 206, 111, 107,
+        // 显示 · Display
+        301, 105, 106, 108,
+        // 文本编辑 · Text Editing
+        302, 409, 408,
+        // 选择器 · Selectors
+        401, 402,
+        // 数据展示 · Data & Visualization
+        404, 405,
+        // 状态与反馈 · Status & Feedback
+        403, 406, 407,
+        // 布局容器 · Layout
+        501, 502, 503, 504, 505, 506, 507, 508, 509, 510, 511, 608, 512,
+        // 窗口与导航 · Window & Navigation
+        601, 602, 603, 604, 605, 606, 607, 610, 611,
+        // 框架功能 · Framework Features
+        801, 802, 803, 804, 805, 806, 807, 808, 809,
+        // 扩展库 · Extensions
+        112, 113,
+        // 性能与诊断 · Performance
+        701, 702, 703, 704, 705, 707,
+        // 真实应用 · Real Apps
+        901, 902,
     };
 
     for (int id : kPageIds) {
@@ -117,85 +128,110 @@ void GalleryApp::BuildAllPages() {
 std::vector<TreeViewRow> GalleryApp::BuildNavigationTree() {
     std::vector<TreeViewRow> rows;
 
-    rows.push_back({100, -1, L"基础控件", 0, false, true, true, TreeViewIcon::Folder});
-    rows.push_back({101, 100, L"Button", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({102, 100, L"CheckBox", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({103, 100, L"RadioButton", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({104, 100, L"ToggleSwitch", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({105, 100, L"Hyperlink", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({106, 100, L"Image", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({107, 100, L"RepeatButton", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({108, 100, L"Separator", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({111, 100, L"Rating", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({112, 100, L"Custom Controls", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({113, 100, L"Installer Controls", 1, false, false, true, TreeViewIcon::None});
+    // 1000: 输入 · Input
+    rows.push_back({1000, -1, L"输入 · Input", 0, false, true, true, TreeViewIcon::Folder});
+    rows.push_back({101, 1000, L"Button", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({102, 1000, L"CheckBox", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({103, 1000, L"RadioButton", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({104, 1000, L"ToggleSwitch", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({109, 1000, L"ToggleButton", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({201, 1000, L"TextBox", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({208, 1000, L"PasswordBox", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({202, 1000, L"Slider", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({203, 1000, L"ComboBox", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({204, 1000, L"DatePicker", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({205, 1000, L"Calendar", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({206, 1000, L"NumericUpDown", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({111, 1000, L"Rating", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({107, 1000, L"RepeatButton", 1, false, false, true, TreeViewIcon::None});
 
-    rows.push_back({200, -1, L"输入控件", 0, false, true, true, TreeViewIcon::Folder});
-    rows.push_back({201, 200, L"TextBox", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({208, 200, L"PasswordBox", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({202, 200, L"Slider", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({203, 200, L"ComboBox", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({204, 200, L"DatePicker", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({205, 200, L"Calendar", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({206, 200, L"NumericUpDown", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({207, 200, L"Rating", 1, false, false, true, TreeViewIcon::None});
+    // 2000: 显示 · Display
+    rows.push_back({2000, -1, L"显示 · Display", 0, false, true, true, TreeViewIcon::Folder});
+    rows.push_back({301, 2000, L"TextBlock", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({105, 2000, L"Hyperlink", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({106, 2000, L"Image", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({108, 2000, L"Separator", 1, false, false, true, TreeViewIcon::None});
 
-    rows.push_back({300, -1, L"文本控件", 0, false, true, true, TreeViewIcon::Folder});
-    rows.push_back({301, 300, L"TextBlock", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({302, 300, L"TextArea", 1, false, false, true, TreeViewIcon::None});
+    // 3000: 文本编辑 · Text Editing
+    rows.push_back({3000, -1, L"文本编辑 · Text Editing", 0, false, true, true, TreeViewIcon::Folder});
+    rows.push_back({302, 3000, L"TextArea", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({409, 3000, L"RichTextBox", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({408, 3000, L"LogViewer", 1, false, false, true, TreeViewIcon::None});
 
-    rows.push_back({400, -1, L"数据控件", 0, false, true, true, TreeViewIcon::Folder});
-    rows.push_back({401, 400, L"ListBox", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({402, 400, L"TreeView", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({403, 400, L"ProgressBar", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({404, 400, L"DataGrid", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({405, 400, L"Chart", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({406, 400, L"InfoBar", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({407, 400, L"Metric", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({408, 400, L"LogViewer", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({409, 400, L"RichTextBox", 1, false, false, true, TreeViewIcon::None});
+    // 4000: 选择器 · Selectors
+    rows.push_back({4000, -1, L"选择器 · Selectors", 0, false, true, true, TreeViewIcon::Folder});
+    rows.push_back({401, 4000, L"ListBox", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({402, 4000, L"TreeView", 1, false, false, true, TreeViewIcon::None});
 
-    // 布局容器. This group was once overwritten by a pasted second copy of 基础控件
-    // (same node id 100), which showed two "基础控件" roots, hid every layout page, and
-    // made the first root impossible to collapse: TreeView resolves a node by id, so
-    // both roots mapped to the second one. Node ids must be unique.
-    rows.push_back({500, -1, L"布局容器", 0, false, true, true, TreeViewIcon::Folder});
-    rows.push_back({501, 500, L"Grid", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({502, 500, L"StackPanel", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({503, 500, L"WrapPanel", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({504, 500, L"DockPanel", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({505, 500, L"Border", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({506, 500, L"Canvas", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({507, 500, L"ScrollViewer", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({508, 500, L"Expander", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({509, 500, L"UniformGrid", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({510, 500, L"Viewbox", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({511, 500, L"GroupBox", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({512, 500, L"动态列表 (RemoveAt/InsertAt)", 1, false, false, true, TreeViewIcon::None});
+    // 5000: 数据展示 · Data & Visualization
+    rows.push_back({5000, -1, L"数据展示 · Data & Visualization", 0, false, true, true, TreeViewIcon::Folder});
+    rows.push_back({404, 5000, L"DataGrid", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({405, 5000, L"Chart", 1, false, false, true, TreeViewIcon::None});
 
-    rows.push_back({600, -1, L"窗口 & 对话框", 0, false, true, true, TreeViewIcon::Folder});
-    rows.push_back({601, 600, L"TabControl", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({602, 600, L"MenuBar", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({603, 600, L"MenuFlyout", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({604, 600, L"ToolBar", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({605, 600, L"StatusBar", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({606, 600, L"ContentDialog", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({607, 600, L"MessageDialog", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({608, 600, L"GridSplitter", 1, false, false, true, TreeViewIcon::None});
+    // 6000: 状态与反馈 · Status & Feedback
+    rows.push_back({6000, -1, L"状态与反馈 · Status & Feedback", 0, false, true, true, TreeViewIcon::Folder});
+    rows.push_back({403, 6000, L"ProgressBar", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({406, 6000, L"InfoBar", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({407, 6000, L"Metric", 1, false, false, true, TreeViewIcon::None});
 
-    rows.push_back({700, -1, L"性能演示", 0, false, true, true, TreeViewIcon::Warning});
-    rows.push_back({701, 700, L"虚拟化对比", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({702, 700, L"日志追尾", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({703, 700, L"主题切换", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({704, 700, L"动画流畅度", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({705, 700, L"压力测试", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({707, 700, L"主题 vs 自定义", 1, false, false, true, TreeViewIcon::None});
+    // 7000: 布局容器 · Layout
+    rows.push_back({7000, -1, L"布局容器 · Layout", 0, false, true, true, TreeViewIcon::Folder});
+    rows.push_back({501, 7000, L"Grid", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({502, 7000, L"StackPanel", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({503, 7000, L"WrapPanel", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({504, 7000, L"DockPanel", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({505, 7000, L"Border", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({506, 7000, L"Canvas", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({507, 7000, L"ScrollViewer", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({508, 7000, L"Expander", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({509, 7000, L"UniformGrid", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({510, 7000, L"Viewbox", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({511, 7000, L"GroupBox", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({608, 7000, L"GridSplitter", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({512, 7000, L"动态列表 (RemoveAt/InsertAt)", 1, false, false, true, TreeViewIcon::None});
 
+    // 8000: 窗口与导航 · Window & Navigation
+    rows.push_back({8000, -1, L"窗口与导航 · Window & Navigation", 0, false, true, true, TreeViewIcon::Folder});
+    rows.push_back({601, 8000, L"TabControl", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({602, 8000, L"MenuBar", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({603, 8000, L"MenuFlyout", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({604, 8000, L"ToolBar", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({605, 8000, L"StatusBar", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({606, 8000, L"ContentDialog", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({607, 8000, L"MessageDialog", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({610, 8000, L"NavRail + PageHost", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({611, 8000, L"OverlayHost", 1, false, false, true, TreeViewIcon::None});
 
-    // 真实应用复刻：验证这套控件能否表达一个数据分析应用的界面。
-    rows.push_back({900, -1, L"\U0001F4C8 真实应用复刻", 0, false, true, true, TreeViewIcon::Folder});
-    rows.push_back({901, 900, L"A股分析工具", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({902, 900, L"自我调试 · Inspector", 1, false, false, true, TreeViewIcon::None});
+    // 9000: 框架功能 · Framework Features
+    rows.push_back({9000, -1, L"框架功能 · Framework Features", 0, false, true, true, TreeViewIcon::Folder});
+    rows.push_back({801, 9000, L"工具提示", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({802, 9000, L"右键菜单", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({803, 9000, L"Ctrl+Wheel 缩放", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({804, 9000, L"拖放", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({805, 9000, L"透明度", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({806, 9000, L"文件对话框", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({807, 9000, L"DPI 适配", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({808, 9000, L"动画", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({809, 9000, L"托盘图标", 1, false, false, true, TreeViewIcon::None});
+
+    // 10000: 扩展库 · Extensions
+    rows.push_back({10000, -1, L"扩展库 · Extensions", 0, false, true, true, TreeViewIcon::Folder});
+    rows.push_back({112, 10000, L"Custom Controls", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({113, 10000, L"Installer Controls", 1, false, false, true, TreeViewIcon::None});
+
+    // 11000: 性能与诊断 · Performance
+    rows.push_back({11000, -1, L"性能与诊断 · Performance", 0, false, true, true, TreeViewIcon::Warning});
+    rows.push_back({701, 11000, L"虚拟化对比", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({702, 11000, L"日志追尾", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({703, 11000, L"主题切换", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({704, 11000, L"动画流畅度", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({705, 11000, L"压力测试", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({707, 11000, L"主题 vs 自定义", 1, false, false, true, TreeViewIcon::None});
+
+    // 12000: 真实应用 · Real Apps
+    rows.push_back({12000, -1, L"真实应用 · Real Apps", 0, false, true, true, TreeViewIcon::Folder});
+    rows.push_back({901, 12000, L"A股分析工具", 1, false, false, true, TreeViewIcon::None});
+    rows.push_back({902, 12000, L"自我调试 · Inspector", 1, false, false, true, TreeViewIcon::None});
 
     return rows;
 }
@@ -242,6 +278,7 @@ std::unique_ptr<ScrollPanel> GalleryApp::CreatePageForId(int id) {
         case 106: return CreateImagePage();
         case 107: return CreateRepeatButtonPage();
         case 108: return CreateSeparatorPage();
+        case 109: return CreateToggleButtonPage();
         case 111: return CreateRatingPage();
         case 112: return CreateCustomControlsPage();
         case 113: return CreateInstallerControlsPage();
@@ -253,7 +290,6 @@ std::unique_ptr<ScrollPanel> GalleryApp::CreatePageForId(int id) {
         case 204: return CreateDatePickerPage();
         case 205: return CreateCalendarPage();
         case 206: return CreateNumericUpDownPage();
-        case 207: return CreateRatingPage();
 
         case 301: return CreateTextBlockPage();
         case 302: return CreateTextAreaPage();
@@ -283,6 +319,16 @@ std::unique_ptr<ScrollPanel> GalleryApp::CreatePageForId(int id) {
         case 901: return CreateStockAnalyzerPage();
         case 902: return CreateInspectorPage();
 
+        case 801: return CreateTooltipFeaturePage();
+        case 802: return CreateContextMenuFeaturePage();
+        case 803: return CreateZoomFeaturePage();
+        case 804: return CreateDragDropFeaturePage();
+        case 805: return CreateOpacityFeaturePage();
+        case 806: return CreateFileDialogFeaturePage();
+        case 807: return CreateDpiFeaturePage();
+        case 808: return CreateAnimationFeaturePage();
+        case 809: return CreateTrayFeaturePage();
+
         case 601: return CreateTabControlPage();
         case 602: return CreateMenuBarPage();
         case 603: return CreateMenuFlyoutPage();
@@ -291,6 +337,8 @@ std::unique_ptr<ScrollPanel> GalleryApp::CreatePageForId(int id) {
         case 606: return CreateContentDialogPage();
         case 607: return CreateMessageDialogPage();
         case 608: return CreateGridSplitterPage();
+        case 610: return CreateNavRailPageHostPage();
+        case 611: return CreateOverlayHostPage();
 
         case 701: return CreateVirtualizationDemoPage();
         case 702: return CreateLogDemoPage();

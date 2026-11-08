@@ -167,6 +167,7 @@
     <ClCompile Include="unit\CustomControlsTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\NavRailKeyboardTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\DataGridTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\ControlZoomTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ChartTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\InfoBarMetricTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ExpanderTests.cpp"><Filter>unit</Filter></ClCompile>

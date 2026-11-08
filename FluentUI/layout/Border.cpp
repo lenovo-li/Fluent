@@ -80,11 +80,12 @@ UIElement* Border::HitTestDeep(float dipX, float dipY) {
     if (content_ && content_->IsVisible()) {
         if (UIElement* hit = content_->HitTestDeep(dipX, dipY)) return hit;
     }
-    // The one exception: a Border carrying a context menu IS a target, otherwise
-    // right-click routing (which walks the hit element's parent chain) never
-    // reaches it and the menu can never open. Scoped to HasContextMenu() rather
-    // than made unconditional so decorative Borders keep the old behavior.
-    if (HasContextMenu() && HitTest(dipX, dipY)) return this;
+    // Two exceptions where the Border itself becomes a hit target:
+    // 1. A Border carrying a context menu (right-click routing needs to reach it)
+    // 2. A Border carrying a tooltip (hover state needs to arm the tooltip service)
+    // Both are scoped to the specific feature rather than made unconditional, so
+    // decorative Borders (cards, group frames) stay transparent to hit-testing.
+    if ((HasContextMenu() || HasTooltip()) && HitTest(dipX, dipY)) return this;
     return nullptr;
 }
 

@@ -4,16 +4,19 @@
 #include "../../FluentUI/controls/RepeatButton.h"
 #include "../../FluentUI/controls/Separator.h"
 #include "../../FluentUI/controls/CheckBox.h"
-#include "../../FluentUI/controls/Hyperlink.h"
-#include "../../FluentUI/controls/Slider.h"
-#include "../../FluentUI/layout/Grid.h"
-#include "../../FluentUI/layout/GroupBox.h"
 #include "../../FluentUI/controls/RadioButton.h"
 #include "../../FluentUI/controls/ToggleSwitch.h"
-#include "../../FluentUI/controls/MenuFlyout.h"
+#include "../../FluentUI/controls/Hyperlink.h"
+#include "../../FluentUI/controls/Slider.h"
+#include "../../FluentUI/controls/primitives/ToggleButton.h"
 #include "../../FluentUI/controls/TextBlock.h"
+#include "../../FluentUI/controls/MenuFlyout.h"
+#include "../../FluentUI/layout/Grid.h"
+#include "../../FluentUI/layout/GroupBox.h"
 #include "../../FluentUI/layout/StackPanel.h"
 #include "../../FluentUI/layout/ScrollPanel.h"
+#include "../../FluentUI/styling/ThemeTokens.h"
+#include "../../FluentUI/graphics/DrawingContext.h"
 
 namespace fluent {
 
@@ -694,6 +697,169 @@ vSep->SetHeight(32.0f);
 
 // 自定义粗细
 separator->SetThickness(2.0f);)");
+    return std::move(page);
+}
+
+// ToggleButton 是 CheckBox / ToggleSwitch 的公共基类，本身不绘制。
+// 为了演示其状态机，这里创建一个最小派生类。
+namespace {
+class ToggleChip : public ToggleButton {
+public:
+    // 让 Toggled 事件可被外部订阅
+    Event<ToggleChip, bool>& Toggled() { return toggled_evt_; }
+
+    void Measure(float availW, float availH) override {
+        UNREFERENCED_PARAMETER(availW);
+        UNREFERENCED_PARAMETER(availH);
+        // 固定尺寸的胶囊按钮：120×32 DIP
+        SetDesired({120.0f, 32.0f});
+    }
+
+    void Render(const DrawingContext& dc) override {
+        const ThemeSnapshot& th = Theme();
+        const ColorTokens& pal = th.colors;
+        const float corner = 16.0f;  // 胶囊圆角
+
+        D2D1_ROUNDED_RECT rr = D2D1::RoundedRect(
+            D2D1::RectF(bounds_.x, bounds_.y, bounds_.right(), bounds_.bottom()),
+            corner, corner);
+
+        // 填充：选中用 accent，未选中用 controlFillDefault
+        D2D1_COLOR_F fill;
+        if (IsChecked()) {
+            if (State() == VisualState::Pressed) fill = pal.accentPressed;
+            else if (State() == VisualState::Hover) fill = pal.accentHover;
+            else fill = pal.accent;
+        } else {
+            if (State() == VisualState::Pressed) fill = pal.controlFillPressed;
+            else if (State() == VisualState::Hover) fill = pal.controlFillHover;
+            else fill = pal.controlFillDefault;
+        }
+        dc.FillRoundedRect(rr, fill);
+
+        // 文本：选中用 onAccent，未选中用 textPrimary
+        D2D1_COLOR_F textColor = IsChecked() ? pal.onAccent : pal.textPrimary;
+        if (State() == VisualState::Disabled) textColor = pal.textSecondary;
+
+        if (Dwrite() && !Text().empty()) {
+            const float fontSize = 14.0f;
+            if (IDWriteTextFormat* fmt = Dwrite()->Format(fontSize)) {
+                dc.DrawText(Text().c_str(), static_cast<UINT32>(Text().size()), fmt,
+                            D2D1::RectF(bounds_.x, bounds_.y, bounds_.right(), bounds_.bottom()),
+                            textColor);
+            }
+        }
+
+        // 边框（未选中时显示）
+        if (!IsChecked()) {
+            dc.DrawRoundedRect(rr, pal.controlStrokeDefault, 1.0f);
+        }
+    }
+
+protected:
+    // ToggleButton 的钩子：用户切换时触发
+    void OnToggleChanged(bool newState) override { toggled_evt_.Raise(*this, newState); }
+
+private:
+    Event<ToggleChip, bool> toggled_evt_;
+};
+} // namespace
+
+std::unique_ptr<ScrollPanel> GalleryApp::CreateToggleButtonPage() {
+    auto [page, content] = CreatePageShell(L"ToggleButton");
+
+    AddNote(content, L"ToggleButton 是 CheckBox / ToggleSwitch 的公共基类（controls/primitives/），"
+                     L"持有 bool checked_ 和 Toggle() 状态机。点击或 Space/Enter 切换状态，"
+                     L"调用虚函数 OnToggleChanged(newState) 让子类触发自己的类型化事件。"
+                     L"ToggleButton 本身不绘制，所以这里展示一个最小派生类 ToggleChip。");
+
+    // 示例 1：基本切换
+    auto* card1 = CreateExampleCard(content, L"基本切换（ToggleChip 派生类）");
+    auto* row1 = card1->Add(std::make_unique<StackPanel>());
+    row1->SetOrientation(StackPanel::Orientation::Horizontal);
+    row1->SetSpacing(12.0f);
+
+    auto* chip1 = row1->Add(std::make_unique<ToggleChip>());
+    chip1->SetText(L"OFF");
+    auto* label1 = row1->Add(std::make_unique<TextBlock>());
+    label1->SetText(L"状态：未选中");
+
+    // owner 传 label；sender 就是被切换的 chip，所以不需要额外的上下文结构体。
+    pageSubs_ += chip1->Toggled().Subscribe(label1,
+        [](void* owner, ToggleChip& sender, bool& checked) {
+            static_cast<TextBlock*>(owner)->SetText(checked ? L"状态：已选中" : L"状态：未选中");
+            sender.SetText(checked ? L"ON" : L"OFF");
+        });
+
+    // 示例 2：多个 ToggleChip
+    auto* card2 = CreateExampleCard(content, L"多个独立开关");
+    auto* row2 = card2->Add(std::make_unique<StackPanel>());
+    row2->SetOrientation(StackPanel::Orientation::Horizontal);
+    row2->SetSpacing(12.0f);
+
+    auto* chip2a = row2->Add(std::make_unique<ToggleChip>());
+    chip2a->SetText(L"WIFI");
+
+    auto* chip2b = row2->Add(std::make_unique<ToggleChip>());
+    chip2b->SetText(L"蓝牙");
+    chip2b->SetChecked(true);  // 默认开启
+
+    auto* chip2c = row2->Add(std::make_unique<ToggleChip>());
+    chip2c->SetText(L"飞行模式");
+
+    // 示例 3：禁用状态
+    auto* card3 = CreateExampleCard(content, L"禁用状态");
+    auto* row3 = card3->Add(std::make_unique<StackPanel>());
+    row3->SetOrientation(StackPanel::Orientation::Horizontal);
+    row3->SetSpacing(12.0f);
+
+    auto* chip3a = row3->Add(std::make_unique<ToggleChip>());
+    chip3a->SetText(L"禁用未选中");
+    chip3a->SetEnabled(false);
+
+    auto* chip3b = row3->Add(std::make_unique<ToggleChip>());
+    chip3b->SetText(L"禁用已选中");
+    chip3b->SetChecked(true);
+    chip3b->SetEnabled(false);
+
+    // 示例 4：API 对比
+    auto* sec = AddSubSection(content, L"为什么需要 ToggleButton 基类");
+    AddNote(sec, L"CheckBox、ToggleSwitch 和 ToggleButton 共享状态机（bool checked_ + Toggle()），"
+                 L"但绘制和事件名不同：\n"
+                 L"• CheckBox 画方框 + 勾，事件叫 Checked\n"
+                 L"• ToggleSwitch 画滑块 + 轨道，事件叫 Toggled\n"
+                 L"• ToggleButton 持有状态机，子类覆盖 OnToggleChanged 触发自己的事件\n\n"
+                 L"RadioButton 不是 ToggleButton —— 它的「选中」派生自共享的组状态，激活动作是「选中」而非「切换」。");
+
+    CreateCodeExample(content, LR"(// ToggleButton 派生类示例
+class ToggleChip : public ToggleButton {
+public:
+    Event<ToggleChip, bool>& Toggled() { return toggled_evt_; }
+
+    void Render(const DrawingContext& dc) override {
+        // 根据 IsChecked() 和 State() 绘制
+        D2D1_COLOR_F fill = IsChecked() ? pal.accent : pal.controlFillDefault;
+        dc.FillRoundedRect(rr, fill);
+    }
+
+protected:
+    // ToggleButton 钩子：用户切换时触发
+    void OnToggleChanged(bool newState) override {
+        toggled_evt_.Raise(*this, newState);
+    }
+
+private:
+    Event<ToggleChip, bool> toggled_evt_;
+};
+
+// 使用
+auto* chip = panel->Add(std::make_unique<ToggleChip>());
+chip->SetText(L"WIFI");
+chip->SetChecked(true);
+chip->Toggled().Subscribe(this, [](void* ctx, ToggleChip&, bool& checked) {
+    // 处理切换
+});)");
+
     return std::move(page);
 }
 

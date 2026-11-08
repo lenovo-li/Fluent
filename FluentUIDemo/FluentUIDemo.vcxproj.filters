@@ -47,6 +47,18 @@
     <ClCompile Include="pages\LogViewerPage.cpp">
       <Filter>pages</Filter>
     </ClCompile>
+    <ClCompile Include="pages\FrameworkFeaturesPage.cpp">
+      <Filter>pages</Filter>
+    </ClCompile>
+    <ClCompile Include="pages\FrameworkFeaturesPage2.cpp">
+      <Filter>pages</Filter>
+    </ClCompile>
+    <ClCompile Include="pages\FrameworkFeaturesPage3.cpp">
+      <Filter>pages</Filter>
+    </ClCompile>
+    <ClCompile Include="pages\NavigationControlsPage.cpp">
+      <Filter>pages</Filter>
+    </ClCompile>
     <ClCompile Include="pages\RichTextBoxPage.cpp">
       <Filter>pages</Filter>
     </ClCompile>

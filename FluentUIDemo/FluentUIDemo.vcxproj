@@ -82,6 +82,9 @@
     <ProjectReference Include="..\extensions\InstallerControls\InstallerControls.vcxproj">
       <Project>{f8e2d9a1-3b4c-5d6e-7f8a-9b0c1d2e3f4a}</Project>
     </ProjectReference>
+    <ProjectReference Include="..\extensions\NavigationControls\NavigationControls.vcxproj">
+      <Project>{f9e3d8b2-4c5e-6f7a-8b9c-0d1e2f3a4b5c}</Project>
+    </ProjectReference>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="GalleryMain.cpp" />
@@ -99,6 +102,10 @@
     <ClCompile Include="pages\InfoBarMetricPages.cpp" />
     <ClCompile Include="pages\DataGridChartPages.cpp" />
     <ClCompile Include="pages\LogViewerPage.cpp" />
+    <ClCompile Include="pages\FrameworkFeaturesPage.cpp" />
+    <ClCompile Include="pages\FrameworkFeaturesPage2.cpp" />
+    <ClCompile Include="pages\FrameworkFeaturesPage3.cpp" />
+    <ClCompile Include="pages\NavigationControlsPage.cpp" />
     <ClCompile Include="pages\RichTextBoxPage.cpp" />
     <ClCompile Include="pages\InspectorPage.cpp" />
     <ClCompile Include="pages\ShowcaseHelpers.cpp" />

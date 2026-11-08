@@ -43,6 +43,21 @@ public:
     void SetReadOnly(bool ro) { readOnly_ = ro; }
     bool ReadOnly() const { return readOnly_; }
 
+    // --- View zoom (Ctrl+Wheel / Ctrl+0) -------------------------------------
+    // A VIEW magnification: every run's fontSize is multiplied by this factor when the
+    // paragraph layouts are built, but the document itself is untouched. The runs keep
+    // the sizes the user or app gave them, so a saved document, an undo snapshot and
+    // GetCurrentStyle() all report unzoomed sizes. Same contract as TextArea::SetZoom.
+    // Absolute line spacing (LineSpacingMode::Absolute) is a pinned box height and is
+    // deliberately NOT scaled: zooming it would rewrite the author's explicit value.
+    static constexpr float kMinZoom = 0.5f;
+    static constexpr float kMaxZoom = 4.0f;
+    void SetZoom(float factor);
+    float Zoom() const { return zoom_; }
+    void SetZoomEnabled(bool on) { zoomEnabled_ = on; }
+    bool ZoomEnabled() const { return zoomEnabled_; }
+    Event<RichTextBox, float>& ZoomChanged() { return zoomChanged_; }
+
     // --- Style at caret ---------------------------------------------------
     // The style used for the next insertion. When there is a selection, returns
     // the style at the selection start. When the caret is at offset 0 in an
@@ -315,6 +330,13 @@ private:
     UINT32 dragStartLo_ = 0;
     UINT32 dragStartHi_ = 0;
 
+    // Drag-select auto-scroll: true when the pointer is being dragged outside the
+    // control bounds during selection. WantsAnimationTick returns true while this
+    // flag is set, and OnAnimationTick continues scrolling every frame until the
+    // pointer moves back inside or the drag ends.
+    bool dragOutsideEdge_ = false;
+    float dragPointerX_ = 0.0f, dragPointerY_ = 0.0f;  // cached position
+
     // Which scrollbar the pointer is currently over, cached from OnPointerMoved.
     // Cursor() is const and cannot ask the ScrollViewer directly, and the answer is
     // needed there to show an arrow over a rail instead of an I-beam.
@@ -433,6 +455,12 @@ private:
     // --- Events -----------------------------------------------------------
     Event<RichTextBox, std::wstring> textChanged_;
     Event<RichTextBox, SelectionChangedArgs> selectionChanged_;
+
+    // View zoom (see SetZoom). Applied in the paragraph-layout build and the caret
+    // fallback heights; the runs in doc_ are never scaled.
+    float zoom_ = 1.0f;
+    bool zoomEnabled_ = true;
+    Event<RichTextBox, float> zoomChanged_;
 };
 
 } // namespace fluent

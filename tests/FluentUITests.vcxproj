@@ -139,6 +139,7 @@
     <ClCompile Include="unit\TextAreaWrapVirtualTests.cpp" />
     <ClCompile Include="unit\TabControlTests.cpp" />
     <ClCompile Include="unit\DataGridTests.cpp" />
+    <ClCompile Include="unit\ControlZoomTests.cpp" />
     <ClCompile Include="unit\ChartTests.cpp" />
     <ClCompile Include="unit\InfoBarMetricTests.cpp" />
     <ClCompile Include="unit\ExpanderTests.cpp" />

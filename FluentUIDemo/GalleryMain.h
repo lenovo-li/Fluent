@@ -13,14 +13,10 @@
 //   - 每个页面的 ScrollPanel 独立保持自己的滚动位置
 //
 // TreeView 节点结构：
-//   id=1xx：基础控件分组（depth=0 父节点）
-//   id=101/102/...：具体控件（depth=1 子节点）
-//   id=2xx：输入控件分组
-//   id=3xx：文本控件分组
-//   id=4xx：布局容器分组
-//   id=5xx：数据控件分组
-//   id=6xx：对话框/窗口分组
-//   id=7xx：性能演示分组
+//   分类节点（depth=0）id 为 1000、2000 … 12000，与页面 id 不重叠——
+//   TreeView 按 id 解析节点，id 重复会让两个节点指向同一行。
+//   页面节点（depth=1）保留原有的三位数 id（101、201 …），工厂函数按 id 查表，
+//   所以一个页面换分类只改它在 BuildNavigationTree 里的父 id，不改 id 本身。
 
 #pragma once
 #include "../FluentUI/controls/TreeView.h"
@@ -107,7 +103,7 @@ public:
     std::unique_ptr<Panel> BuildContent();
 
 private:
-    // 构建左侧 TreeView 的节点数据（7 大分类 + 31 个控件）
+    // 构建左侧 TreeView 的节点数据（12 个分类）
     std::vector<TreeViewRow> BuildNavigationTree();
 
     // TreeView SelectionChanged 回调：切换右侧详情页
@@ -124,6 +120,9 @@ private:
     std::unique_ptr<ScrollPanel> CreateCheckBoxPage();
     std::unique_ptr<ScrollPanel> CreateRadioButtonPage();
     std::unique_ptr<ScrollPanel> CreateToggleSwitchPage();
+    // ToggleButton 是 CheckBox / ToggleSwitch 的公共基类（controls/primitives/），
+    // 本身没有绘制；演示页用一个最小派生类展示它的状态机（pages/BasicInputPages.cpp）。
+    std::unique_ptr<ScrollPanel> CreateToggleButtonPage();
     std::unique_ptr<ScrollPanel> CreateTextBoxPage();
     std::unique_ptr<ScrollPanel> CreatePasswordBoxPage();
     std::unique_ptr<ScrollPanel> CreateTextBlockPage();
@@ -178,6 +177,8 @@ private:
     std::unique_ptr<ScrollPanel> CreateContentDialogPage();
     std::unique_ptr<ScrollPanel> CreateMessageDialogPage();
     std::unique_ptr<ScrollPanel> CreateGridSplitterPage();
+    std::unique_ptr<ScrollPanel> CreateNavRailPageHostPage();   // 610 NavRail + PageHost
+    std::unique_ptr<ScrollPanel> CreateOverlayHostPage();       // 611 OverlayHost
 
     // 跨控件的样式话题（pages/BorderThemePages.cpp）。
     //
@@ -188,6 +189,19 @@ private:
     // 页已经并回各控件自己的页面（102/103/201/302/505）——它们本来就是基础页的
     // 超集，一个控件分两页展示只会让人不知道该看哪一页。
     std::unique_ptr<ScrollPanel> CreateThemeVsCustomPage();
+
+    // 框架功能页（800 组）。每页讲一个跨控件的能力，而不是某个控件：工具提示和右键
+    // 菜单挂在 UIElement 上，任何控件都能用；缩放是三个文本控件共享的同一套契约。
+    // 放在这里而不是散在各控件页里，是因为「这个能力怎么用」本身就是要回答的问题。
+    std::unique_ptr<ScrollPanel> CreateTooltipFeaturePage();       // 801
+    std::unique_ptr<ScrollPanel> CreateContextMenuFeaturePage();   // 802
+    std::unique_ptr<ScrollPanel> CreateZoomFeaturePage();          // 803
+    std::unique_ptr<ScrollPanel> CreateDragDropFeaturePage();      // 804
+    std::unique_ptr<ScrollPanel> CreateOpacityFeaturePage();       // 805
+    std::unique_ptr<ScrollPanel> CreateFileDialogFeaturePage();    // 806
+    std::unique_ptr<ScrollPanel> CreateDpiFeaturePage();           // 807
+    std::unique_ptr<ScrollPanel> CreateAnimationFeaturePage();     // 808
+    std::unique_ptr<ScrollPanel> CreateTrayFeaturePage();          // 809
 
     // 对话框演示的动作。成员函数而不是内联 lambda：Event 的 handler 是无捕获
     // 函数指针，回调只拿到 void* owner，真正的逻辑必须挂在 GalleryApp 上。
@@ -394,6 +408,27 @@ private:
     // 对话框演示的状态显示。两个页面各一个文本，显示对话框返回的结果。
     TextBlock* dialogResultText_ = nullptr;
     TextBlock* messageResultText_ = nullptr;
+
+    // 文件对话框页（806）。OpenFileDialog / SaveFileDialog 需要 owner HWND，
+    // 和 ContentDialog 一样从 ownerWindow_ 拿；结果写回这两个文本。
+    // 处理函数是成员函数，因为 Event 的 handler 是无捕获函数指针。
+    void ShowOpenFileDialog(Button&, RoutedEventArgs&);
+    void ShowOpenMultiFileDialog(Button&, RoutedEventArgs&);
+    void ShowSaveFileDialog(Button&, RoutedEventArgs&);
+    TextBlock* openFileResultText_ = nullptr;
+    TextBlock* saveFileResultText_ = nullptr;
+
+    // DPI 页（807）：显示窗口当前 DPI。数值在 Window::OnDpiChanged 后会变，
+    // 所以提供一个按钮按需刷新，而不是轮询（Idle 必须零开销）。
+    void RefreshDpiReadout(Button&, RoutedEventArgs&);
+    TextBlock* dpiReadoutText_ = nullptr;
+
+    // 托盘页（809）：GalleryWindow 是普通 Window，托盘 API 就在它身上。
+    // 演示按钮通过 ownerWindow_ 拿到 Window，临时挂一个托盘图标再移除。
+    void AddDemoTrayIcon(Button&, RoutedEventArgs&);
+    void ShowDemoTrayBalloon(Button&, RoutedEventArgs&);
+    void RemoveDemoTrayIcon(Button&, RoutedEventArgs&);
+    TextBlock* trayStatusText_ = nullptr;
 };
 
 } // namespace fluent

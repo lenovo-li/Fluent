@@ -55,6 +55,40 @@ std::unique_ptr<ScrollPanel> GalleryApp::CreateLogViewerPage() {
     intro->SetFontSize(13.0f);
     intro->SetMargin(Thickness{0, 0, 0, 20.0f});
 
+    // --- 卡片 0：主题自适应 ----------------------------------------------
+    auto* card0 = CreateExampleCard(content, L"主题自适应（不设置背景）");
+
+    auto* d0 = card0->Add(std::make_unique<TextBlock>());
+    d0->SetText(L"不调用 SetBackground，背景和滚动条自动跟随主题的 layerFill 和 textPrimary。"
+                L"点击右上角主题切换按钮（月亮图标），观察背景、滚动条和文本颜色一起变化。");
+    d0->SetFontSize(12.0f);
+    d0->SetMargin(Thickness{0, 0, 0, 10.0f});
+
+    auto* autoLog = card0->Add(std::make_unique<LogViewer>());
+    autoLog->SetWidth(720.0f);
+    autoLog->SetHeight(180.0f);
+    // 不调用 SetBackground(kConsole)，让它跟随主题
+    autoLog->SetAutoScrollToTail(false);
+
+    // 使用默认颜色（sentinel）的 span，跟随主题的 textPrimary
+    autoLog->AppendLine({{L"[INFO] ", kGreen}, {L"背景跟随主题 layerFill"}});
+    autoLog->AppendLine({{L"[INFO] ", kGreen}, {L"滚动条根据背景亮度自动选色"}});
+    autoLog->AppendLine({{L"点击右上角月亮图标切换主题，观察背景和滚动条变化"}});
+    autoLog->AppendLine({{L"[OK] ", kGreen}, {L"显式颜色（绿色）不受主题影响"}});
+    autoLog->AppendLine({{L"默认颜色的文本在亮色主题下接近黑色，暗色主题下接近白色"}});
+
+    auto* cacheBtn = card0->Add(std::make_unique<Button>());
+    cacheBtn->SetText(L"追加几条演示行");
+    cacheBtn->SetMargin(Thickness{0, 10.0f, 0, 0});
+
+    pageSubs_ += cacheBtn->Click().Subscribe(autoLog,
+        [](void* owner, Button&, RoutedEventArgs&) {
+            auto* log = static_cast<LogViewer*>(owner);
+            log->AppendLine({{L"[DEBUG] ", kCyan}, {L"这行用默认颜色（跟随主题）"}});
+            log->AppendLine({{L"[WARN] ", kAmber}, {L"警告级别用固定黄色"}});
+            log->AppendLine({{L"[ERROR] ", kRed}, {L"错误级别用固定红色"}});
+        });
+
     // --- 卡片 1：行内多样式 ---------------------------------------------
     auto* card1 = CreateExampleCard(content, L"行内多样式：一行中分段着色与加粗");
 

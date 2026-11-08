@@ -149,3 +149,23 @@ TEST(Border, HitTestDeep_WithContextMenu_BecomesTarget) {
     // Point outside bounds → null.
     EXPECT_EQ(b.HitTestDeep(150, 150), nullptr);
 }
+
+// HitTestDeep: Border WITH tooltip becomes a fallback hit target (like ContextMenu).
+TEST(Border, HitTestDeep_WithTooltip_BecomesTarget) {
+    Border b;
+    b.SetBorderThickness(0.0f);
+    b.SetPadding(Thickness{10});  // 10 DIP padding on all sides
+    auto* child = b.SetChild(std::make_unique<FixedLeaf>(50.0f, 50.0f));
+    b.Measure(100.0f, 100.0f);
+    b.Arrange({0, 0, 100, 100});  // Border is 100×100, child slot is 80×80 (inset by padding)
+
+    // Set tooltip (no menu, just tooltip).
+    b.SetTooltip(L"Test tooltip");
+
+    // Point in padding area (top-left corner at 5,5) → Border itself (now hittable because of tooltip).
+    EXPECT_EQ(b.HitTestDeep(5, 5), &b);
+    // Point inside child area → child (child is at 10,10 with size 80×80 due to stretch).
+    EXPECT_EQ(b.HitTestDeep(50, 50), child);
+    // Point outside bounds → null.
+    EXPECT_EQ(b.HitTestDeep(150, 150), nullptr);
+}

@@ -56,13 +56,16 @@ namespace fluent {
 // One styled text span within a log line.
 struct TextSpan {
     std::wstring text;
-    D2D1_COLOR_F color = D2D1::ColorF(1.0f, 1.0f, 1.0f);  // white default
+    // Color: negative alpha as a sentinel for "use theme textPrimary". Allows spans
+    // without explicit color to follow the theme (light/dark), while explicit colors
+    // (passed by the caller) stay fixed.
+    D2D1_COLOR_F color = D2D1::ColorF(-1.0f, -1.0f, -1.0f, -1.0f);  // sentinel
     float fontSize = 12.0f;
     DWRITE_FONT_WEIGHT weight = DWRITE_FONT_WEIGHT_NORMAL;
     bool underline = false;
 
     TextSpan() = default;
-    TextSpan(std::wstring t, D2D1_COLOR_F c = D2D1::ColorF(1.0f, 1.0f, 1.0f),
+    TextSpan(std::wstring t, D2D1_COLOR_F c = D2D1::ColorF(-1.0f, -1.0f, -1.0f, -1.0f),
              float fs = 12.0f, DWRITE_FONT_WEIGHT w = DWRITE_FONT_WEIGHT_NORMAL,
              bool u = false)
         : text(std::move(t)), color(c), fontSize(fs), weight(w), underline(u) {}
@@ -230,6 +233,18 @@ public:
     void Render(const DrawingContext& dc) override;
     void Measure(float availW, float availH) override;
     void Arrange(const RectDip& finalRect) override;
+    // --- View zoom (Ctrl+Wheel / Ctrl+0) -------------------------------------
+    // Multiplies every span's fontSize by this factor when building DirectWrite formats.
+    // Same contract as TextArea::SetZoom: does not change the app's font settings,
+    // only the glyph scale. Clamped to [kMinZoom, kMaxZoom].
+    static constexpr float kMinZoom = 0.5f;
+    static constexpr float kMaxZoom = 4.0f;
+    void SetZoom(float factor);
+    float Zoom() const { return zoom_; }
+    void SetZoomEnabled(bool on) { zoomEnabled_ = on; }
+    bool ZoomEnabled() const { return zoomEnabled_; }
+    Event<LogViewer, float>& ZoomChanged() { return zoomChanged_; }
+
     void OnPointerWheelChanged(PointerEventArgs& e) override;
     void OnPointerPressed(PointerEventArgs& e) override;
     void OnPointerMoved(PointerEventArgs& e) override;
@@ -323,6 +338,21 @@ private:
     // Whether the pointer is currently over the scrollbar's hover strip. Recorded by
     // OnPointerMoved because Cursor() is passed no coordinates and must not guess.
     bool pointerOverBar_ = false;
+
+    // Drag-select auto-scroll: true when the pointer is being dragged outside the
+    // control bounds during selection. WantsAnimationTick returns true while this
+    // flag is set, and OnAnimationTick continues scrolling every frame until the
+    // pointer moves back inside or the drag ends (so the selection can extend beyond
+    // one screenful even if the pointer sits still outside the edge).
+    bool dragOutsideEdge_ = false;
+    float dragPointerY_ = 0.0f;  // cached Y to re-resolve against each tick
+
+    // View zoom (see SetZoom). Every DirectWrite format and every height estimate is
+    // built at span.fontSize * zoom_; a change drops the layout cache and re-estimates
+    // all row heights, because both are functions of the zoomed size.
+    float zoom_ = 1.0f;
+    bool zoomEnabled_ = true;
+    Event<LogViewer, float> zoomChanged_;
 
     // Ordered copy of the selection, or false when the ends are equal.
     bool NormalizedSelection(LogTextPos& from, LogTextPos& to) const;

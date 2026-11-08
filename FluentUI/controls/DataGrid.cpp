@@ -1030,6 +1030,20 @@ void DataGrid::OnPointerLeft() {
 }
 
 void DataGrid::OnPointerWheelChanged(PointerEventArgs& e) {
+    // Shift+Wheel scrolls horizontally (OS-wide convention); plain wheel is vertical.
+    const bool shift = (e.modifiers & ModifierKeys::Shift) != ModifierKeys::None;
+    if (shift) {
+        if (scroll_.MaxOffsetX() <= 0.0f) return;  // nothing to scroll horizontally
+        if (editingRow_ >= 0) CommitEdit();
+        float lines = e.WheelScrollLines();
+        // Same sign as ScrollPanel / TreeView: wheel-up scrolls content RIGHT (offset decreases).
+        // No tween on the X axis (by design — see ScrollViewer's horizontal-axis comment).
+        scroll_.SetOffsetX(scroll_.OffsetX() - lines * rowHeight_);
+        Invalidate();
+        e.handled = true;
+        return;
+    }
+
     // Animated, so the wheel feels like the rest of the framework's scrolling; AnimateBy
     // accumulates against the pending target so spinning builds momentum. Commit a live
     // edit first (see SetVerticalOffset): the wheel used to scroll the rows out from

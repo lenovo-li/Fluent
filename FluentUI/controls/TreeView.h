@@ -67,6 +67,44 @@ struct TreeViewItemDoubleClickArgs {
 // there when the multi-select state was hoisted so ListBox could share it. It is
 // still reachable as fluent::SelectionMode, so existing call sites are unchanged.
 
+// Horizontal geometry of one row, in DIPs relative to the content's left edge
+// (before the horizontal scroll offset is applied). Drawing, chevron hit-testing
+// and the horizontal-extent measurement all read it, so the three can't disagree.
+// They did before it existed: each hard-coded "10 + depth * 14", and changing the
+// indent in one place would have left the chevron click target offset from the
+// glyph.
+//
+// The layout follows Device Manager / File Explorer: one indent step equals the
+// chevron column plus the gap to the icon, so a child's chevron sits exactly
+// under its parent's icon. The old 14 DIP step was 2 DIP short of the 16 DIP
+// chevron column, so each level landed almost (not exactly) under the parent's
+// icon and the hierarchy read as blurred.
+struct TreeViewRowLayout {
+    static constexpr float kLeadingPad = 8.0f;    // content edge -> depth-0 chevron column
+    static constexpr float kChevronColumn = 16.0f;
+    static constexpr float kChevronIconGap = 4.0f;
+    static constexpr float kIndentPerLevel = kChevronColumn + kChevronIconGap;  // 20
+    static constexpr float kIconSize = 16.0f;
+    static constexpr float kIconTextGap = 6.0f;
+    static constexpr float kTrailingPad = 12.0f;  // text end -> content's right edge
+
+    float chevronLeft = 0.0f;  // the 16 DIP column the expander glyph is centered in
+    float iconLeft = 0.0f;
+    float textLeft = 0.0f;
+
+    static TreeViewRowLayout For(int depth) {
+        TreeViewRowLayout l;
+        l.chevronLeft = kLeadingPad + static_cast<float>(depth) * kIndentPerLevel;
+        l.iconLeft = l.chevronLeft + kChevronColumn + kChevronIconGap;
+        l.textLeft = l.iconLeft + kIconSize + kIconTextGap;
+        return l;
+    }
+    // Content width a row needs to show its text in full.
+    static float ContentWidth(int depth, float textWidth) {
+        return For(depth).textLeft + textWidth + kTrailingPad;
+    }
+};
+
 class TreeView : public Selector<TreeViewRow> {
 public:
     TreeView() {
@@ -271,6 +309,35 @@ private:
     // hover during smooth scrolling (the content moves under a stationary pointer).
     Point lastPointerPos_;
     bool pointerInside_ = false;
+    // --- Horizontal extent ---------------------------------------------------
+    // The tree scrolls sideways (Device Manager does too: a long device name at
+    // depth 3 is otherwise unreadable in a narrow pane). Measuring every row's text
+    // would make SetRows O(total) DirectWrite layouts — 100k nodes is seconds — so
+    // the extent is learned from the rows actually drawn:
+    //
+    //   * rowTextWidth_[row] caches each row's measured text width (-1 = not yet),
+    //     so a row costs one layout the first time it scrolls into view and nothing
+    //     after. Steady-state frames build no layouts at all.
+    //   * maxSeenContentWidth_ is the widest row drawn so far. It only GROWS while
+    //     the row set is unchanged, so scrolling vertically past a section of short
+    //     names never shrinks the horizontal thumb under the user.
+    //   * On a row-set change (OnItemsChanged) the cache is dropped and
+    //     extentStale_ makes the next Render recompute the max from scratch and
+    //     push it — possibly smaller — to scroll_. Deferring to Render (rather than
+    //     zeroing the extent immediately) keeps the horizontal offset when the app
+    //     re-sets identical rows, which DeviceCommunicate does every time a batch
+    //     of device icons finishes loading.
+    //
+    // Consequence: a wide row that has never been on screen does not count yet; the
+    // thumb grows when it appears. WinUI's virtualized TreeView behaves the same way.
+    float RowTextWidth(int rowIndex, IDWriteTextFormat* fmt);
+    // Vertical extent: the rows, plus the horizontal rail's strip while that rail is
+    // live, so the last row can scroll fully above the rail instead of resting under
+    // it (same rule as ScrollPanel::UpdateScrollExtent).
+    void UpdateVerticalExtent();
+    std::vector<float> rowTextWidth_;
+    float maxSeenContentWidth_ = 0.0f;
+    bool extentStale_ = true;
 };
 
 } // namespace fluent
