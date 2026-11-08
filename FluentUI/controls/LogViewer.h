@@ -284,6 +284,22 @@ private:
     // in it that has none yet. Render calls this before drawing, so the draw loop
     // itself only reads the cache.
     void PrepareVisibleLayouts(const VisibleRange& range) const;
+    // Measure-before-draw for the visible range. Every still-estimated line in view
+    // is measured from its cached layouts, the Y table rebuilt from the first line
+    // whose estimate was off, and the range recomputed (a correction moves the lines
+    // below it, which can bring new estimated lines into view) until it is stable.
+    // Updates `scrollTop` when a tail-following view is re-pinned to the bottom.
+    //
+    // Why this exists: Render used to draw a line at its ESTIMATED position and only
+    // then learn its height, fixing the table for the next frame. That frame drew
+    // every line below a wrong estimate at the wrong place. After a zoom (which
+    // resets every row to its estimate) a row whose real height differs a lot from
+    // the one-line estimate — text ending in "\r\n" lays out as two lines — put the
+    // next line's glyphs inside its own blank lower half for one frame: a visible
+    // flash between rows 1 and 2 on every Ctrl+Wheel notch.
+    VisibleRange LayoutVisibleLines(float& scrollTop, float dpiScale);
+    // Tallest span layout of one line (DIPs), 0 without DWrite. Reads the layout cache.
+    float MeasureLineHeight(size_t lineIndex) const;
 
     // Trim the oldest lines to enforce maxLines_ cap. O(lines removed): pops the
     // front, moves yOrigin_, and shifts the layout window's first index with the

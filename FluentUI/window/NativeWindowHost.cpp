@@ -1332,7 +1332,14 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
         }
 
         case WM_SIZE:
-            if (wp != SIZE_MINIMIZED) {
+            if (wp == SIZE_MINIMIZED) {
+                // Window minimized: close any open popups (menus, tooltips, etc.)
+                // so they don't linger invisible and become unresponsive.
+                FL_TRACEF("Input", "WM_SIZE SIZE_MINIMIZED: closing popups");
+                if (popupDismiss_) {
+                    DispatchPopupDismiss(PopupDismissReason::Move, nullptr, 0, 0);
+                }
+            } else {
                 // Wall-clock gap since the previous WM_SIZE we were handed. A large
                 // value here means the STALL WAS BEFORE US: the system did not
                 // deliver a size for that long, so no amount of frame pacing on our
@@ -1554,6 +1561,17 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
         // for a rapid series, so a handler that keyed off the message type alone would
         // see every third click as a fresh single press; counting time+position instead
         // is what makes triple-click possible at all (Win32 has no triple-click message).
+        case WM_NCLBUTTONDOWN: {
+            // Title bar / window chrome non-client click (dragging to move, etc.).
+            // Dismiss any open popup before allowing the system drag.
+            int px = GET_X_LPARAM(lp), py = GET_Y_LPARAM(lp);
+            POINT pt = {px, py};
+            ScreenToClient(hwnd_, &pt);
+            FL_TRACEF("Input", "WM_NCLBUTTONDOWN at client (%d,%d): light-dismiss", pt.x, pt.y);
+            LightDismissAt(pt.x, pt.y);
+            break;  // let DefWindowProc handle the drag
+        }
+
         case WM_LBUTTONDOWN:
         case WM_LBUTTONDBLCLK: {
             HideTooltip();  // any click dismisses a visible tooltip
@@ -1565,6 +1583,11 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
                 // Chrome interaction breaks the streak: a double-click that lands half
                 // on the caption and half in the text must not select a word.
                 input_.Clicks().Reset();
+                // A press on min/max/close is still a click outside the open popup, so it
+                // light-dismisses like any other press. This branch used to return before
+                // reaching LightDismissAt below, leaving a menu open across a minimize.
+                FL_TRACEF("Input", "caption button %d press: light-dismiss", caption);
+                LightDismissAt(px, py);
                 pressedCaption_ = caption;
                 SetCapture(hwnd_);
                 Render();

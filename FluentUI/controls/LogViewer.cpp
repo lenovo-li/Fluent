@@ -178,6 +178,8 @@ void LogViewer::SetZoom(float factor) {
     const float clamped = std::clamp(factor, kMinZoom, kMaxZoom);
     if (clamped == zoom_) return;
 
+    FL_TRACEF("LogViewer", "SetZoom %.2f → %.2f", zoom_, clamped);
+
     // Keep the line at the top of the viewport anchored across the zoom, the way an
     // editor does: remember which line is there and how far into it the view sits
     // (as a fraction, since the line's height is about to change).
@@ -303,6 +305,7 @@ LogViewer::VisibleRange LogViewer::CalculateVisibleRange(float scrollTop,
 
 void LogViewer::RebuildYPositions(size_t fromIndex) {
     if (fromIndex >= lines_.size()) return;
+
 
     double y = (fromIndex == 0)
         ? yOrigin_
@@ -452,10 +455,10 @@ void LogViewer::Render(const DrawingContext& dc) {
     // smooth scrolling. The conversion DIP → px → round → DIP ensures text always lands
     // on integer pixel boundaries where DirectWrite's ClearType produces consistent output.
     const float dpiScale = dc.DpiScale();
-    const float scrollTop = SnapToPixel(scroll_.Offset(), dpiScale);
-    const float viewportH = bounds_.h;
-    const VisibleRange range = CalculateVisibleRange(scrollTop, viewportH);
-    PrepareVisibleLayouts(range);
+    float scrollTop = SnapToPixel(scroll_.Offset(), dpiScale);
+    // Measure the visible lines BEFORE drawing any of them, so no line is ever
+    // painted at a position derived from an estimate (see LayoutVisibleLines).
+    const VisibleRange range = LayoutVisibleLines(scrollTop, dpiScale);
 
     // Which lines were still estimates when this frame started. Drawing is
     // measuring here (same shape as TextArea's Wrap path), so the corrections have
@@ -491,6 +494,9 @@ void LogViewer::Render(const DrawingContext& dc) {
         // An estimate was wrong, so every line below it sits at the wrong offset.
         // Rebuilding from the first correction is O(lines) of integer arithmetic —
         // no layout work — and the next frame draws at the corrected positions.
+        // Fallback only: LayoutVisibleLines measured the range before the loop, so
+        // this fires just when that pass hit its cap with lines still estimated.
+        FL_TRACEF("LogViewer", "Render: late height correction at line %zu", firstCorrected);
         RebuildYPositions(firstCorrected);
         Invalidate();
     }
@@ -853,10 +859,57 @@ void LogViewer::PrepareVisibleLayouts(const VisibleRange& range) const {
         SpanLayout(static_cast<size_t>(i), 0, unused);   // builds the row if needed
 }
 
+float LogViewer::MeasureLineHeight(size_t lineIndex) const {
+    const LogLine& line = lines_[lineIndex];
+    float maxHeight = 0.0f;
+    ComPtr<IDWriteTextLayout> scratch;
+    for (size_t s = 0; s < line.spans.size(); ++s) {
+        IDWriteTextLayout* layout = SpanLayout(lineIndex, s, scratch);
+        if (!layout) continue;
+        DWRITE_TEXT_METRICS tm{};
+        if (SUCCEEDED(layout->GetMetrics(&tm))) maxHeight = std::max(maxHeight, tm.height);
+    }
+    return maxHeight;
+}
+
+LogViewer::VisibleRange LogViewer::LayoutVisibleLines(float& scrollTop, float dpiScale) {
+    VisibleRange range = CalculateVisibleRange(scrollTop, bounds_.h);
+    // Each pass that changes anything measures at least one previously estimated
+    // line, so this converges; the cap only bounds a pathological document whose
+    // estimates are all far too tall (each pass then pulls in a few more lines).
+    for (int pass = 0; pass < 8; ++pass) {
+        PrepareVisibleLayouts(range);
+        size_t firstChanged = lines_.size();
+        for (int i = range.first; i <= range.last; ++i) {
+            const size_t idx = static_cast<size_t>(i);
+            LogLine& line = lines_[idx];
+            if (line.heightMeasured) continue;
+            const float h = MeasureLineHeight(idx);
+            if (h <= 0.0f) continue;   // no DWrite: keep the estimate, try next frame
+            if (std::fabs(h - line.height) > 0.5f) firstChanged = std::min(firstChanged, idx);
+            line.height = h;
+            line.heightMeasured = true;
+        }
+        if (firstChanged >= lines_.size()) break;
+
+        // A tail-following view must stay pinned to the bottom across the correction:
+        // the extent grows (or shrinks) here, after AppendLine / SetZoom already
+        // pinned the offset against the estimated extent.
+        const bool pinned = autoScrollToTail_ && scroll_.Offset() >= scroll_.MaxOffset() - 0.5f;
+        FL_TRACEF("LogViewer", "LayoutVisibleLines: pass %d corrected from line %zu",
+                  pass, firstChanged);
+        RebuildYPositions(firstChanged);
+        if (pinned) scroll_.SetOffset(scroll_.MaxOffset());
+        scrollTop = SnapToPixel(scroll_.Offset(), dpiScale);
+        range = CalculateVisibleRange(scrollTop, bounds_.h);
+    }
+    return range;
+}
+
 void LogViewer::PrepareVisibleLayoutsForTest() {
     // Same inputs Render uses: the pixel-snapped offset and the control's height.
-    const float scrollTop = SnapToPixel(scroll_.Offset(), Context().dpiScale);
-    PrepareVisibleLayouts(CalculateVisibleRange(scrollTop, bounds_.h));
+    float scrollTop = SnapToPixel(scroll_.Offset(), Context().dpiScale);
+    LayoutVisibleLines(scrollTop, Context().dpiScale);
 }
 
 // ---------------------------------------------------------------------------

@@ -449,6 +449,23 @@ LRESULT PopupHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
             input_.PointerLeftWindow();
             return 0;
 
+        case WM_SHOWWINDOW:
+            // Owned WS_POPUP windows are hidden by the system when the owner is
+            // minimized (SW_PARENTCLOSING) and re-shown by DefWindowProc when the owner
+            // is restored (SW_PARENTOPENING). Our own Close() runs during the minimize
+            // (deactivation dismisses the menu) and calls SW_HIDE on a window the system
+            // has already hidden, which does not clear the system's "hidden by owner"
+            // mark. On restore the system would then show a popup whose state is Closed
+            // and whose owner has dropped its dismiss hook: visible, unclickable, and
+            // immune to click-outside. Refuse the re-show unless we are really open.
+            if (lp == SW_PARENTOPENING || lp == SW_PARENTCLOSING) {
+                FL_TRACEF("PopupHost", "WM_SHOWWINDOW %s state=%d",
+                          lp == SW_PARENTOPENING ? "SW_PARENTOPENING" : "SW_PARENTCLOSING",
+                          static_cast<int>(state_));
+                if (lp == SW_PARENTOPENING && state_ != PopupState::Open) return 0;
+            }
+            break;
+
         case WM_ERASEBKGND:
             return 1;  // DComp owns the content
 
