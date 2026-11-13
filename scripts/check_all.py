@@ -38,6 +38,8 @@ CHECKS = [
      "CMakeLists.txt and FluentUI.vcxproj list the same sources"),
     ("check_filters.py",
      "Solution Explorer tree mirrors the on-disk folder layout"),
+    ("check_docs_coverage.py",
+     "Every control has documentation and required sections"),
 ]
 
 

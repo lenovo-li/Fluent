@@ -174,6 +174,17 @@ tree. Tested in `tests/unit/AutomationExtensionPeerTests.cpp`; a mutation of eac
 (solution folder `/extensions/`). Output: `x64/<Config>/NavigationControls.lib`.
 Consuming it from another solution: see `INTEGRATION.md`.
 
+### Tracing (`NavTrace.h`)
+
+The library's controls trace through `NAV_TRACEF(fmt, ...)`, a printf-style
+wrapper over `OutputDebugStringA` (256-byte buffer). It follows the same
+`FLUENTUI_ENABLE_TRACE` switch as FluentUI's `Trace` helpers: on in Debug, off
+in Release. When off, the call sits in an `if constexpr (false)` branch, so the
+arguments are still type-checked but never evaluated, and side effects in them
+do not run. The caller writes the full tag and the line ending, for example
+`NAV_TRACEF("[NavigationControls.PageHost] navigate %d\n", index)`, so the VS
+Output window can be filtered by `[NavigationControls.`.
+
 ## UI Automation
 
 `NavRail` exposes itself as a UIA List (name: its AutomationName, default "Navigation") whose children are its navigation items as ListItems (Name = `label`), followed in pane mode by the footer items (Settings), in the rail's unified index. A pane-mode section header is a Text item that cannot be selected; a disabled item reports IsEnabled false. SelectionItem goes through `PerformSelect`, the click's path: it refuses headers and disabled items and raises `SelectionChanged`, so a screen-reader selection navigates (`SetSelectedIndex` would move the highlight silently). ExpandCollapse is the pane toggle through `PerformSetPaneExpanded` (raises `ExpandedChanged`); outside pane mode the rail reports LeafNode and refuses Expand. It is written in `NavRailPeer.cpp`, outside the core library, as the worked example of adding UIA to an extension control: override `CreateAutomationPeer()` and build on `FluentUI/automation/SelectorPeers.h`.

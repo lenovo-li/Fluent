@@ -3,6 +3,44 @@
 多样式可编辑文本控件——每个 run 有独立的字号、字重、颜色、下划线，且支持段落级
 格式（对齐、行间距、缩进）。
 
+## 概述
+
+RichTextBox 基于 `RichTextDocument`（纯 C++ 富文本模型）和 `Control`（不从
+`TextEditBase` 派生，因为那会引入 `std::wstring text_` 第二真相源）。每段一个
+DirectWrite 布局，run 在段内流排和换行，段落级格式（对齐、间距、缩进）是布局属性。
+全文档在内存并一次布局，无虚拟化。索引是 UTF-16 码元偏移，光标在 `[0..length]` 间。
+
+支持：快照式 undo/redo、IME 组合、只读模式。  
+不支持：输入过滤器、max-length（未实现）。
+
+## 继承层次
+
+```
+Visual
+  └─ UIElement
+      └─ FrameworkElement
+          └─ Control
+              └─ RichTextBox
+```
+
+**命名空间**: `fluent`  
+**头文件**: `FluentUI/controls/RichTextBox.h`
+
+## 公开 API
+
+核心方法见下方"API"章节：
+- `SetDocument(RichTextDocument)` / `Document()`
+- `SetReadOnly(bool)` / `ReadOnly()`
+- `GetCurrentStyle()` / `SetCurrentStyle(style)` / `ApplyStyle(style)`
+- 单属性修改：`SetSelectionBold` / `SetSelectionUnderline` / `SetSelectionColor` / `SetSelectionFontSize` / `SetSelectionFontWeight`
+- 段落格式：`SetParagraphAlignment` / `SetParagraphLineSpacing` / `SetParagraphFirstLineIndent` 等
+- `CanUndo()` / `CanRedo()`（Undo/Redo 由 Ctrl+Z/Y 触发，不是 public 方法）
+- 剪贴板：Ctrl+C/X/V 快捷键，无单独 public 方法
+- 选区：`Select(start, length)` / `SelectAll()` / `HasSelection()`
+- `SetWordWrap(bool)` / `WordWrap()`
+- `SetZoom(float)` / `ZoomEnabled()`
+- 事件：`TextChanged()` / `SelectionChanged()`
+
 ## 何时用
 
 - 需要**内联样式混排**（一行里粗体+斜体+不同颜色）

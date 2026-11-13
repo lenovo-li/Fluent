@@ -10,7 +10,7 @@ import json
 import sys
 
 try:
-    payload = json.load(sys.stdin)
+    payload = json.loads(sys.stdin.buffer.read().decode("utf-8"))
 except (json.JSONDecodeError, ValueError):
     # A guard fails closed: if the target can't be read, don't allow the write.
     sys.stderr.write("Blocked: could not parse hook input; write refused.\n")

@@ -4,11 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Agent usage policy
 
-Simple bug fixes and small changes are done directly in the main conversation.
-Delegate when a task produces output the main context doesn't need (builds, test
-runs, wide searches), needs a reviewer that didn't write the code, or splits into
-independent read-only pieces. Ultracode/workflows are permitted when the task
-scale warrants it.
+Every code change must be verified, reviewed by `fluent-reviewer`, and audited by
+`fluent-doc-auditor` before a turn can end — this is enforced by a Stop hook
+completion gate (`.claude/hooks/stop-gate.py`). Delegate when a task produces
+output the main context doesn't need (builds, test runs, wide searches), needs a
+reviewer that didn't write the code, or splits into independent read-only pieces.
+Ultracode/workflows are permitted when the task scale warrants it.
 
 Project subagents live in `.claude/agents/`:
 
@@ -16,14 +17,44 @@ Project subagents live in `.claude/agents/`:
 |---|---|---|
 | `fluent-explorer` | read-only | Before writing or changing a control: read the nearest existing controls, docs and `inheritance-guide.md`, return the real API |
 | `fluent-builder` | Bash, read | `check_all.py`, Debug + Release builds, test runs; returns only errors, warnings and failing tests |
-| `fluent-reviewer` | read-only + git | Review a diff against the non-negotiables, the dirty-bounds contract, COM lifetime and `protected` API stability |
-| `fluent-doc-auditor` | read-only | Doc record for every new/optimized control, doc lifetime rule, source-list registration |
+| `fluent-reviewer` | read-only + git | Review a diff against the non-negotiables, the dirty-bounds contract, COM lifetime and `protected` API stability; runs after every code change |
+| `fluent-doc-auditor` | read-only | Audit docs against headers (API section, behavior contracts, extension points, template structure); runs in parallel with the reviewer after every code change; may emit `DOC-NOT-NEEDED: <Name> — <reason>` when documented facts stay true |
 
 Writes stay serial: only one agent edits files or runs MSBuild at a time, because
-`.vcxproj`/`.filters` and the `x64/` output tree are shared. Read-only review can
-run in parallel. Skills in `.claude/skills/`: `/verify` (full verification via
-`fluent-builder`), `/new-control` (explore → implement → verify → review), and
-`task-state` (the checkpoint regimen below).
+`.vcxproj`/`.filters` and the `x64/` output tree are shared. Read-only review and
+doc audit run in parallel. Skills in `.claude/skills/`: `/verify` (full
+verification via `fluent-builder`), `/new-control` (explore → implement → verify
+→ review + audit → complete docs), `/doc-sync` (sync docs after code changes),
+and `task-state` (the checkpoint regimen below).
+
+### Completion gate
+
+A Stop hook (`.claude/hooks/stop-gate.py`) blocks the turn from ending when:
+- Changed code files exist under `FluentUI/{controls,layout}` or `extensions/`
+  without matching doc updates, unless exempted (`EXEMPT_CONTROLS` in
+  `scripts/check_docs_coverage.py`) or waived by a `DOC-NOT-NEEDED` line from
+  `fluent-doc-auditor`.
+- `python scripts/check_all.py` fails (source list sync, Solution Explorer
+  consistency, doc coverage).
+- `x64/Debug/FluentUITests.exe` or `x64/Release/FluentUITests.exe` is older than
+  the newest changed code file (stale build).
+- Review stamps are missing: `fluent-reviewer` or `fluent-doc-auditor` have not
+  recorded their completion in `.claude/review-stamps.json` (gitignored) for the
+  current HEAD.
+
+The hook writes a Chinese diagnostic to stderr and exits 2, keeping the turn open.
+It blocks once per stop attempt: when Claude Code reports `stop_hook_active` (the
+turn is already continuing because of this hook), it lets the stop through so a
+problem that cannot be fixed in this turn does not loop forever. That release is
+not a pass; report what the gate listed as still open. Review stamps record file
+lists, not contents, and are keyed to HEAD, so a new commit clears them.
+
+A PreToolUse hook (`.claude/hooks/check-doc-exists.py`) refuses an Edit/Write to
+`FluentUI/controls/` or `FluentUI/layout/` when `docs/controls/<Name>.md` does not
+exist yet: create the doc skeleton from `docs/controls/TEMPLATE.md` first. The `DOC-NOT-NEEDED`
+protocol: only `fluent-doc-auditor` may emit it (format `DOC-NOT-NEEDED: <Name> —
+<reason>`), never the writer, and it is never used for new controls or when the
+audit found issues.
 
 ## What this is
 
@@ -229,7 +260,6 @@ What actually exists under `docs/`:
 - `docs/controls/` — per-control reference pages off `TEMPLATE.md`.
 - `docs/design/` — design and task documents for in-flight features. **Transient**:
   deleted once the work lands.
-- `docs/dual-repo-workflow.md` — workflow for syncing between internal and public repos.
 - `docs/learn/` — Chinese technical notes (compositor clipping, borderless-window
   resize, DirectWrite font fallback, UI Automation server-side provider).
 

@@ -175,6 +175,29 @@ public:
     // the same logic.
     void ApplySizeConstraints() override { ClampDesiredSize(); }
 
+    // UIElement::ConstrainAvailable override — narrows the offer to
+    // [MinWidth, MaxWidth] x [MinHeight, MaxHeight] before Measure, the WPF
+    // MeasureCore rule. Min wins over Max on conflict, as in ClampDesiredSize.
+    // An infinite offer becomes MaxWidth when one is set, which is what lets a
+    // wrapping TextBlock inside a horizontally unbounded parent wrap at all.
+    // Margin is NOT subtracted here: panels already offer the margin-less extent.
+    void ConstrainAvailable(float& availW, float& availH) const override {
+        availW = ClampAvailAxis(availW, minWidth_, maxWidth_);
+        availH = ClampAvailAxis(availH, minHeight_, maxHeight_);
+    }
+
+    // Pure per-axis rule behind ConstrainAvailable, static so tests can check it
+    // headless. Unset limits leave the offer untouched (including an infinite
+    // offer, which must stay infinite for a content-sized element to report its
+    // natural size).
+    static float ClampAvailAxis(float avail, const std::optional<float>& lo,
+                                const std::optional<float>& hi) {
+        const float minV = lo.value_or(0.0f);
+        const float maxV = std::max(minV,
+            hi.value_or(std::numeric_limits<float>::infinity()));
+        return std::clamp(avail, minV, maxV);
+    }
+
 protected:
     // Enforces MinWidth/MaxWidth/MinHeight/MaxHeight on desired_. Called by
     // both the base Measure() and the ApplySizeConstraints hook, so it covers

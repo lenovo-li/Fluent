@@ -2,6 +2,35 @@
 
 弹出式菜单——上下文菜单、命令按钮下拉、级联子菜单的统一实现。
 
+## 概述
+
+MenuFlyout 呈现一组命令供用户选择，支持级联子菜单、键盘导航、分隔线和禁用项，
+点击外部、失去激活或按 Esc 时关闭。它本身不是元素树节点：由 MenuBar 或某个控件
+持有，通过 `SetContext` / `SetOwnerContext` 拿到所属窗口的服务。每一级菜单是一个
+独立的 `PopupHost` 弹出窗口，关闭的层级放进 `retired_` 留待下次复用，而不是每次
+重新创建窗口。
+
+## 继承层次
+
+```
+IContextMenu
+  └─ MenuFlyout
+```
+
+MenuFlyout 不派生自 `UIElement`。每级菜单的内容是 `.cpp` 内部定义的
+`MenuListView`（一个 `Control`），挂在该级 `PopupHost` 里。
+
+**命名空间**: `fluent`  
+**头文件**: `FluentUI/controls/MenuFlyout.h`（接口在 `FluentUI/core/IContextMenu.h`）
+
+## 公开 API
+
+完整 API 见下方"API"章节。核心方法：
+- `SetItems(vector<MenuItem>)` / `SetItemsBorrow(const vector<MenuItem>*)`
+- `ShowAt(screenX, screenY)` / `ShowBelow(anchorRect)`
+- `Close()` / `IsOpen()`
+- `Closed()` 事件
+
 ## 何时用
 
 - **右键上下文菜单**：文件列表、编辑器选区、树节点的操作菜单

@@ -49,15 +49,15 @@
 
 - [StackPanel](StackPanel.md) — 栈式布局（水平/垂直）
 - [Grid](Grid.md) — 网格布局（行列定义，auto/star/pixel 尺寸）
-- Canvas（文档待写） — 画布布局（绝对定位 + ZIndex）
-- DockPanel（文档待写） — 停靠布局
-- WrapPanel（文档待写） — 自动换行布局
+- [Canvas](Canvas.md) — 画布布局（绝对定位 + ZIndex）
+- [DockPanel](DockPanel.md) — 停靠布局
+- [WrapPanel](WrapPanel.md) — 自动换行布局
 - [Border](Border.md) — 边框容器
 - [ScrollPanel](ScrollPanel.md) — 通用滚动容器（双轴，不虚拟化）
 - Separator（文档待写） — 分隔线
-- Viewbox（文档待写） — 缩放容器（Uniform/Fill/None）
-- GroupBox（文档待写） — 分组框
-- UniformGrid（文档待写） — 均匀网格
+- [Viewbox](Viewbox.md) — 缩放容器（Uniform/Fill/None）
+- [GroupBox](GroupBox.md) — 分组框
+- [UniformGrid](UniformGrid.md) — 均匀网格
 
 ### 显示控件
 
@@ -68,12 +68,12 @@
 ### 对话框
 
 - ContentDialog（文档待写） — 内容对话框
-- MessageDialog（文档待写） — 消息框
+- [MessageDialog](MessageDialog.md) — 消息框
 
 ### 导航与工具栏
 
 - [TabControl](TabControl.md) — 选项卡控件
-- ToolBar（文档待写） — 工具栏（CommandBar 风格，溢出进 flyout）
+- [ToolBar](ToolBar.md) — 工具栏（CommandBar 风格，溢出进 flyout）
 - [StatusBar](StatusBar.md) — 状态栏
 
 ### 日期与时间
@@ -84,7 +84,7 @@
 ### 其他
 
 - [GridSplitter](GridSplitter.md) — 可拖动分隔条
-- Expander（文档待写） — 可展开/折叠容器
+- [Expander](Expander.md) — 可展开/折叠容器
 
 ### 富文本（独立分类）
 

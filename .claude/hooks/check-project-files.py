@@ -18,7 +18,7 @@ WATCHED_NAMES = ("cmakelists.txt",)
 
 def main() -> int:
     try:
-        payload = json.load(sys.stdin)
+        payload = json.loads(sys.stdin.buffer.read().decode("utf-8"))
     except (json.JSONDecodeError, ValueError):
         return 0
     path = (payload.get("tool_input") or {}).get("file_path") or ""

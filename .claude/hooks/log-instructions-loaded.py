@@ -16,7 +16,7 @@ import os
 import sys
 
 try:
-    payload = json.load(sys.stdin)
+    payload = json.loads(sys.stdin.buffer.read().decode("utf-8"))
 except (json.JSONDecodeError, ValueError):
     sys.exit(0)
 
@@ -40,9 +40,24 @@ fields = [
     rel(payload.get("file_path")),
     "trigger=" + rel(payload.get("trigger_file_path")),
 ]
+# Size cap: once the log passes MAX_BYTES, keep only the newest KEEP_BYTES so it
+# never grows without bound between manual cleanups. Cut at a line boundary so
+# the first kept line is whole.
+MAX_BYTES = 64 * 1024
+KEEP_BYTES = 16 * 1024
+log_path = os.path.join(root, ".claude", "instructions-load.log")
 try:
-    with open(os.path.join(root, ".claude", "instructions-load.log"), "a",
-              encoding="utf-8") as f:
+    if os.path.getsize(log_path) > MAX_BYTES:
+        with open(log_path, "rb") as f:
+            f.seek(-KEEP_BYTES, os.SEEK_END)
+            tail = f.read()
+        nl = tail.find(b"\n")
+        with open(log_path, "wb") as f:
+            f.write(tail[nl + 1:] if nl >= 0 else tail)
+except OSError:
+    pass
+try:
+    with open(log_path, "a", encoding="utf-8") as f:
         f.write("  ".join(fields) + "\n")
 except OSError:
     pass

@@ -218,6 +218,8 @@
     <ClCompile Include="unit\MessageDialogTests.cpp" />
     <ClCompile Include="unit\UndoStackTests.cpp" />
     <ClCompile Include="unit\FrameworkElementMinMaxTests.cpp" />
+    <ClCompile Include="unit\FrameworkElementConstrainAvailableTests.cpp" />
+    <ClCompile Include="unit\ConstrainAvailableCacheTests.cpp" />
     <ClCompile Include="unit\TextEditUndoTests.cpp" />
     <ClCompile Include="unit\DragDropTests.cpp" />
     <ClCompile Include="unit\ComboBoxTests.cpp" />

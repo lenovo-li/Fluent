@@ -190,6 +190,8 @@
     <ClCompile Include="unit\UniformGridTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\UniformGridStretchTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\FrameworkElementMinMaxTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\FrameworkElementConstrainAvailableTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\ConstrainAvailableCacheTests.cpp"><Filter>unit</Filter></ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="framework\Test.h"><Filter>framework</Filter></ClInclude>

@@ -119,6 +119,26 @@ public:
     // *when* the hook runs. FrameworkElement overrides it to clamp.
     virtual void ApplySizeConstraints() {}
 
+    // Narrows the constraint offered to Measure() by this element's own size
+    // limits, BEFORE measuring. The counterpart of ApplySizeConstraints, which
+    // clamps the result AFTER. Both are needed, and the "before" half is the one
+    // that was missing for a long time:
+    //
+    // Clamping only the result is wrong for any element whose height depends on
+    // the width it was measured at. A wrapping TextBlock with MaxWidth 420 offered
+    // 800 DIP measured one line at 800, then had its desired width clamped to 420
+    // with the one-line height kept. Arrange gave it 420, Render re-wrapped to two
+    // lines, and the second line fell outside bounds_ and was clipped away. WPF
+    // avoids this the same way: FrameworkElement.MeasureCore clamps the available
+    // size by Min/Max before calling MeasureOverride.
+    //
+    // Runs only on the MeasureCached path (every panel child). Direct Measure()
+    // calls skip it on purpose: a window root is offered the client area, which
+    // no Min/Max may override (see FrameworkElement::Arrange). Default: no limits.
+    virtual void ConstrainAvailable(float& availW, float& availH) const {
+        (void)availW; (void)availH;
+    }
+
     // Measure short-circuit cache. Panels call this on children
     // instead of Measure() directly: when not Measure-dirty and the constraint
     // matches the last measure, the cached desired size is reused and the
@@ -131,8 +151,17 @@ public:
     // thread on top. See the postmortem comment in Window.cpp's resize path before
     // reintroducing anything shaped like it.
     void MeasureCached(float availW, float availH) {
+        // Narrow the constraint BEFORE the cache check, so the cache key is the
+        // value Measure() actually sees. A TextBlock with MaxWidth 420 offered
+        // 800/801/802 during a resize always measures at 420 and shares one cache
+        // entry, instead of missing three times. The narrowing is a pure function
+        // of the offer and Min/Max, and changing Min/Max dirties Measure, so this
+        // is safe: equal narrowed constraints always produce equal desired sizes.
+        float measureW = availW, measureH = availH;
+        ConstrainAvailable(measureW, measureH);
+
         if (!NeedsRemeasure() && measureCacheValid_ &&
-            availW == lastAvailW_ && availH == lastAvailH_) {
+            measureW == lastAvailW_ && measureH == lastAvailH_) {
             LayoutCostProbe::Bump(LayoutCountKey::MeasureCacheHits);
             desired_ = cachedDesired_;
             return;
@@ -142,11 +171,11 @@ public:
         // exactly. Instrumenting the virtual instead would miss the elements the
         // cache short-circuits — i.e. precisely the ones we want to count.
         LayoutCostProbe::Bump(LayoutCountKey::MeasureCalls);
-        Measure(availW, availH);
+        Measure(measureW, measureH);
         ApplySizeConstraints();
         cachedDesired_ = desired_;
-        lastAvailW_ = availW;
-        lastAvailH_ = availH;
+        lastAvailW_ = measureW;
+        lastAvailH_ = measureH;
         measureCacheValid_ = true;
     }
 
