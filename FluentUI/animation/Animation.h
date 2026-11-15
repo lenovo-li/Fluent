@@ -105,4 +105,16 @@ double CaretBlinkHalfPeriodSec();
 ComPtr<IDCompositionAnimation> MakeBlink(IDCompositionDevice2* device,
                                          double halfPeriodSec);
 
+// Build an INFINITELY looping rotation sweep for SpinnerControl. Rotates clockwise
+// from 0° to 360° at `rps` revolutions per second (Hz), then wraps back to 0° and
+// repeats — evaluated on the DComp compositor thread, so it keeps spinning even
+// while the UI thread is busy. Returns nullptr on failure (caller falls back to
+// the UI-thread spin). Implemented as a LINEAR cubic (only the `constant` and
+// `linear` coefficients are non-zero):
+//   angle(t) = 360 * rps * t   (degrees per second)
+// with an AddRepeat that loops the full [0, 360) range every 1/rps seconds. The
+// rotation is about the visual's center (set via SetCenterX/SetCenterY on a rotate transform).
+ComPtr<IDCompositionAnimation> MakeRotationSweep(IDCompositionDevice2* device,
+                                                 double rps);
+
 } // namespace fluent

@@ -45,3 +45,11 @@ rule: **any interface obtained via `CoCreateInstance` must be owned by an
 object whose lifetime is strictly shorter than `Application`'s.** That means no
 static/global `ComPtr`, and the `Application` instance must be declared first
 in `wWinMain`.
+
+Before adding an unfamiliar Win32 / COM / UIA interface, look up its threading
+model and ownership rules with the microsoft-learn MCP (`microsoft_docs_search`,
+then `microsoft_docs_fetch`) instead of relying on memory: which apartment it
+requires, whether out-parameters arrive AddRef'd, and and which thread its callbacks
+arrive on. UIA is the example to learn from: without
+`ProviderOptions_UseComThreading` it calls providers on its own threads, which is
+why `automation/UiaProvider.h` sets that option and asserts the UI thread.

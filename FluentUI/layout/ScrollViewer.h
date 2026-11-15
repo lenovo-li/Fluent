@@ -168,7 +168,6 @@ protected:
     // Re-clamp BOTH axes: a resize changes each viewport extent, so an offset that
     // was legal a moment ago can now point past the end of its content.
     void OnBoundsChanged() override {
-        LayoutCostProbe::Scope probe(LayoutCostKey::ScrollViewerBoundsChanged);
         SetOffset(offset_);
         SetOffsetX(offsetX_);
     }

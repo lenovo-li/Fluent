@@ -318,7 +318,7 @@ buttonPanel->Add(std::move(cancelBtn));
 
 ## UI Automation
 
-Button（`RepeatButton`、扩展库的 `BigButton` 继承同一 peer） 的 peer（`automation/ControlPeers.h`）：
+Button（扩展库的 `BigButton` 继承同一 peer） 的 peer（`automation/ControlPeers.h`）：
 
 | 项 | 值 |
 |---|---|
@@ -335,7 +335,6 @@ Button（`RepeatButton`、扩展库的 `BigButton` 继承同一 peer） 的 peer
 ## 相关控件
 
 - [MenuFlyout](MenuFlyout.md) — 可通过 `SetFlyout` 关联到按钮的弹出菜单
-- `RepeatButton`（文档待写，`controls/RepeatButton.h`）— 按住时重复触发的按钮
 - `ToggleButton`（基类，`controls/primitives/ToggleButton.h`）— 开/关状态按钮基类
 - `ButtonBase`（基类，`controls/primitives/ButtonBase.h`）— 所有按钮类控件的基类
 

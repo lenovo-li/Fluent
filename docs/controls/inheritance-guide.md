@@ -10,7 +10,7 @@
 FluentUI adopts a **two-tier inheritance strategy**:
 
 1. **Abstract base classes** (`ButtonBase`, `RangeBase`, `TextEditBase`, `Panel`) expose `protected` state and virtual hooks, designed for deep customization.
-2. **Concrete controls** (`Button`, `Slider`, `Calendar`) seal internal state as `private` but expose `protected` accessors and split rendering hooks for visual/behavioral extension.
+2. **Concrete controls** (`Button`, `Slider`) seal internal state as `private` but expose `protected` accessors and split rendering hooks for visual/behavioral extension.
 
 This guide explains **when to inherit**, **what you can do**, and **what constraints remain by design**.
 
@@ -23,7 +23,6 @@ This guide explains **when to inherit**, **what you can do**, and **what constra
 ```
 FluentUI.lib (framework, unchanged)
     ↓ links against
-CustomControls.lib (your extensions: LunarCalendar, BigButton, LogSlider)
     ↓ links against
 YourApp.exe (links both libraries)
 ```
@@ -34,7 +33,6 @@ YourApp.exe (links both libraries)
 - ✅ You can fork/modify CustomControls without touching FluentUI
 - ✅ Demonstrates the real integration path to end users
 
-**Example**: See `extensions/CustomControls/` for a working separate-library template with LunarCalendar, BigButton, and LogSlider.
 
 ---
 
@@ -48,7 +46,7 @@ When you need **fundamentally different behavior** (e.g., a three-state toggle, 
 
 | Base Class | Purpose | Examples |
 |------------|---------|----------|
-| `ButtonBase` | Click/focus/keyboard activation | Button, RadioButton, ToggleButton, DatePicker |
+| `ButtonBase` | Click/focus/keyboard activation | Button, RadioButton, ToggleButton |
 | `RangeBase` | Min/max/value + coercion | Slider, ProgressBar, NumericUpDown |
 | `TextEditBase` | Text buffer + caret + selection | TextBox, TextArea |
 | `Panel` | Layout container | StackPanel, Grid, Canvas, WrapPanel |
@@ -67,7 +65,6 @@ When you want to **add decorations or conditional rendering** without reimplemen
 
 | Control | Use Case | What's Exposed |
 |---------|----------|----------------|
-| **Calendar** | Lunar calendar, holiday markers, event dots | Cell geometry, hover state, split rendering hooks |
 | **Button** | Big button (icon + two-line text), themed buttons | Kind, tint opacity, split rendering (background/border/content) |
 | **Slider** | Logarithmic slider, tick marks, custom scale | Drag state, track geometry, value-to-position mapping |
 
@@ -98,7 +95,6 @@ Avoid inheriting **complex controls** where composition is simpler:
 
 | Control | Source | What It Does |
 |---------|--------|--------------|
-| **LunarCalendar** | `LunarCalendar.cpp` | Adds lunar date display below Gregorian days |
 | **BigButton** | `BigButton.cpp` | 64dp tall button with icon + two-line text |
 | **LogSlider** | `LogSlider.cpp` | Logarithmic snapping (1, 10, 100, 1000) |
 
@@ -107,87 +103,6 @@ These are **real, compilable implementations** that link against `FluentUI.lib`.
 ---
 
 ## Inheritance-Ready Controls
-
-### Calendar
-
-**Scenario**: Add lunar dates, holiday badges, or event dots below each day number.
-
-**Protected API**:
-
-```cpp
-// Read-only state
-float CellWidth() const;
-float CellHeight() const;
-int HoverCell() const;              // [0..41] or -1
-float HoverOpacity() const;         // [0..1], syncs with base animation
-
-// Geometry helpers
-RectDip CellRect(int cellIndex) const;
-RectDip NavBarRect() const;
-RectDip WeekdayHeaderRect() const;
-RectDip PrevArrowRect() const;
-RectDip NextArrowRect() const;
-
-// Split rendering hooks
-virtual void RenderNavBar(const DrawingContext& dc);
-virtual void RenderWeekdayHeader(const DrawingContext& dc);
-virtual void RenderCell(const DrawingContext& dc, const CellInfo& cell);
-```
-
-**CellInfo struct**:
-```cpp
-struct CellInfo {
-    int index;              // 0..41, row-major, Sunday-first
-    int year, month, day;
-    RectDip rect;           // == CellRect(index)
-    bool inViewedMonth;     // false for leading/trailing days
-    bool isToday;
-    bool isSelected;
-    bool isEnabled;         // within min/max, not blacked out
-    bool isHovered;         // index == HoverCell()
-};
-```
-
-**Example: Lunar Calendar**
-
-```cpp
-class LunarCalendar : public Calendar {
-protected:
-    void RenderCell(const DrawingContext& dc, const CellInfo& cell) override {
-        // Call base to draw day number + selection/today ring
-        Calendar::RenderCell(dc, cell);
-        
-        // Add lunar date below
-        if (cell.inViewedMonth && cell.isEnabled) {
-            std::wstring lunar = GetLunarDate(cell.year, cell.month, cell.day);
-            if (DWriteContext* dw = Dwrite()) {
-                if (auto* fmt = dw->Format(9.0f, DWRITE_FONT_WEIGHT_NORMAL,
-                                           DWRITE_TEXT_ALIGNMENT_CENTER,
-                                           DWRITE_PARAGRAPH_ALIGNMENT_CENTER)) {
-                    D2D1_RECT_F lunarRect = D2D1::RectF(
-                        cell.rect.x, cell.rect.y + cell.rect.h * 0.6f,
-                        cell.rect.right(), cell.rect.bottom());
-                    dc.DrawText(lunar.c_str(), lunar.size(), fmt, lunarRect,
-                               Theme().colors.textSecondary);
-                }
-            }
-        }
-    }
-
-private:
-    std::wstring GetLunarDate(int y, int m, int d) {
-        // Lunar calendar conversion (simplified)
-        return L"初一";
-    }
-};
-```
-
-**Design Constraints**:
-- ✅ Can read `CellWidth()`/`CellHeight()` but **cannot write** them (layout algorithm stays in base)
-- ✅ Use `CellRect(index)` instead of assuming cell dimensions (future-proof if base changes layout)
-- ❌ Cannot access `hoverFade_` animation state directly (private implementation detail)
-
----
 
 ### Button
 
@@ -523,7 +438,7 @@ Rules a peer must follow, and why:
 
 `ButtonBase::PerformActivate()` is the public programmatic activation (same effect as a click; ignored when disabled) that `ButtonPeer`/`TogglePeer`/`RadioButtonPeer` call.
 
-More patterns are available to a peer: `IRangeValuePeer` (Slider, NumericUpDown, ProgressBar, Rating), `IExpandCollapsePeer` (Expander, ComboBox, TreeView rows, NavRail), `IScrollPeer` (ScrollPanel, ListBox, TreeView; percent-based, `-1` = axis cannot scroll), `ISelectionPeer` (containers; answered by index, `GetSelection` capped at 256), and `CanScrollIntoView()`/`ScrollIntoView()` for ScrollItem. Built-in peers: `automation/RangeAndContainerPeers.h`, `automation/SelectorPeers.h`.
+More patterns are available to a peer: `IRangeValuePeer` (Slider, NumericUpDown, ProgressBar), `IExpandCollapsePeer` (Expander, ComboBox, TreeView rows, NavRail), `IScrollPeer` (ScrollPanel, ListBox, TreeView; percent-based, `-1` = axis cannot scroll), `ISelectionPeer` (containers; answered by index, `GetSelection` capped at 256), and `CanScrollIntoView()`/`ScrollIntoView()` for ScrollItem. Built-in peers: `automation/RangeAndContainerPeers.h`, `automation/SelectorPeers.h`.
 
 **Items that are not elements.** A control that draws its own rows (a list, a tree, tab headers) derives its peer from `ItemsContainerPeer` (`automation/ItemPeers.h`), or from `SelectableContainerPeer` when the rows are selectable, and supplies `ItemCount()`, `ItemName(i)`, `ItemRect(i)` (host DIPs, empty when scrolled out), and the selection hooks. Row peers are created only when a client reaches them, keyed by index by default; override `KeyAt`/`IndexOfKey` to key by a stable id (TreeView does), so a row that only moved keeps its UIA identity. Rules:
 
@@ -535,13 +450,12 @@ More patterns are available to a peer: `IRangeValuePeer` (Slider, NumericUpDown,
 - Item property changes (IsSelected, an item's ExpandCollapseState) need no code: after the container's element invalidates, the flush re-checks up to `kMaxRecheckedItems` cached items (focused first, then visible ones).
 - **Act on the user's path.** A pattern action is a user acting through an assistive tool. Call the entry point a click or keystroke uses, not a silent programmatic setter, or the app's event never fires: `NavRail::PerformSelect`, `Expander::PerformSetExpanded`, `NavRail::PerformSetPaneExpanded`, `ComboBox::ReplaceTextAsUserEdit`, `TextEditBase::ReplaceAllAsUserEdit`, `ButtonBase::PerformActivate`. A control whose user path is private needs a public `Perform...` added for its peer.
 
-`NavRail` (`extensions/NavigationControls/NavRailPeer.cpp`) is the worked example of all of this written from outside the core library. Smaller ones: `BigButton` (subclass `ButtonPeer`, add HelpText), `LunarCalendar` (subclass `CalendarPeer`, extend `ItemName`), `SpinnerControl` (a plain `AutomationPeer` with a ControlType and a state-dependent `IsControlElement`), `WizardControl` (a Group whose Name tracks state) and `OverlayHost` (`IsDialog()`). Each is in its library's .cpp; the rule they all follow is to expose what the control DRAWS that its base class does not know about.
 
 **Popup windows.** Content shown in a `PopupHost` is in another HWND, so it is not under the owner window's UIA root. A popup whose content should be reachable calls `PopupHost::EnableAutomation()` before `SetContent`; the popup then answers WM_GETOBJECT itself, its content's peer is the popup root's child, and a content peer that overrides `PopupOpenedEventId()` / `PopupClosedEventId()` gets that event raised when the popup is shown / hidden (only while a client listens). The content must be detached or destroyed before the PopupHost. MenuFlyout's levels are the example (`controls/MenuFlyout.cpp`, `MenuListPeer`).
 
 **Live regions.** A peer whose element reports status (InfoBar) overrides `GetLiveSetting()` (Polite or Assertive) and raises LiveRegionChanged itself when its text changes: compare against a baseline in `OnFlushRecheck()` and call `IAutomationSite::QueueEvent(Provider(), 20024)`, which drops the event when nobody listens. `InfoBarPeer` (`automation/DataPeers.cpp`) is the example.
 
-**Per-item enabled state and item kinds.** `SelectableContainerPeer::ItemEnabled(i)` makes an item report IsEnabled false (a disabled date, a NavRail section header), so UIA refuses Select on it. An item that is not selectable (InfoBar's close button, a log line) derives from `ItemPeer` directly and maps its control-space rect with `OwnerRectToHost`. Data controls key their items so content changes stay correct: DataGrid by row index, Calendar by date, LogViewer by line serial (`automation/DataPeers.h` explains each choice).
+**Per-item enabled state and item kinds.** `SelectableContainerPeer::ItemEnabled(i)` makes an item report IsEnabled false (a disabled date, a NavRail section header), so UIA refuses Select on it. An item that is not selectable (InfoBar's close button, a log line) derives from `ItemPeer` directly and maps its control-space rect with `OwnerRectToHost`. Data controls key their items so content changes stay correct: DataGrid by row index, LogViewer by line serial (`automation/DataPeers.h` explains each choice).
 
 **Text.** A peer that returns an `ITextPeer` from `AsText()` gets the UIA TextPattern (`automation/UiaTextPattern.cpp`): `Text()`, `SelectionStart()/SelectionLength()`, `SelectText(start, len)` (called from the flush, never inside the client's call), `OffsetAtPoint(x, y)` (host DIPs) and `IsTextReadOnly()`. Ranges are plain offset pairs that are clamped to the current text on every use, so a client holding a range across an edit reads the shortened text instead of reading out of bounds. Units: Character, Word (whitespace-separated; Format behaves as Word, since no formatting is exposed), Line (`
 `; Paragraph behaves as Line), Document (Page behaves as Document). `TextEditPeer` raises `Text_TextChanged` / `Text_TextSelectionChanged` from the control's own `TextChanged` / `SelectionChanged` events through `IAutomationSite::QueueEvent`, which coalesces per flush and sends nothing without a listener. Password mode returns `nullptr` from `AsText()`: the text must not be readable. Known limit: `GetBoundingRectangles` returns the control's rectangle, not one per line, so a screen magnifier following the caret line does not move within a multi-line TextArea.
@@ -556,7 +470,7 @@ Most inheritance needs **augment**, not **replace**:
 
 ```cpp
 void RenderCell(const DrawingContext& dc, const CellInfo& cell) override {
-    Calendar::RenderCell(dc, cell);  // ✅ base selection ring, today indicator, day number
+    BaseControl::RenderOverride(dc);  // ✅ call base rendering first
     DrawMyDecoration(dc, cell);       // ✅ add-on: lunar date, event dot
 }
 ```
@@ -632,7 +546,7 @@ float x = bounds_.x + (col % 7) * 36.0f;  // ← breaks if base changes cellW_
 ```cpp
 RectDip rect = CellRect(index);  // ← base computes, subclass queries
 ```
-Now Calendar can change its layout algorithm (variable cell width, padding) without breaking subclasses.
+This pattern keeps base layout changes compatible with subclasses.
 
 ---
 
@@ -694,11 +608,10 @@ Low-priority controls were evaluated and found to prefer **composition over inhe
 - Animation states (`checkAnim_`, `slide_`) are visual-only, low value for subclasses
 - Custom rendering: override `Render()` and read `IsChecked()` / `IsSelected()`
 
-### ProgressBar / Rating
+### ProgressBar
 **Status**: ✅ Existing APIs already sufficient
 
 - ProgressBar derives `RangeBase`, which exposes `protected value_`, `min_`, `max_`; public `Value()`, `Minimum()`, `Maximum()`, plus `Fraction()`
-- Rating derives `Control`, not RangeBase (a rating is a small integer count whose count is also its maximum); its value is private, read through `Value()` / `MaxValue()`
 - Custom rendering: override `Render()` and read state
 
 ### DataGrid / TreeView
@@ -715,7 +628,6 @@ Low-priority controls were evaluated and found to prefer **composition over inhe
 | Inheritance Level | When | Examples | Freedom | Constraints |
 |-------------------|------|----------|---------|-------------|
 | **Abstract Base** | New control type | ButtonBase → MyCustomButton | Full | Must implement pure virtuals |
-| **Concrete Control** | Visual tweak | Calendar → LunarCalendar | High | Cannot mutate private state |
 | **Composition** | Config-driven | DataGrid in a Panel | Medium | No code, only property setting |
 
 **Golden Rule**: If you need to change **behavior**, inherit the base class. If you need to change **appearance**, inherit the concrete control.

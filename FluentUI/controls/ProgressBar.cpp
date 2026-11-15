@@ -237,7 +237,6 @@ void ProgressBar::OnDetachedFromTree() {
 }
 
 void ProgressBar::OnBoundsChanged() {
-    LayoutCostProbe::Scope probe(LayoutCostKey::ProgressBarBoundsChanged);
     // Resize: reposition + re-fit the travel range to the new width, phase-
     // continuously (SetGeometryPx handles the no-jump re-fit). Not a fresh start.
     if (compositorActive_) SyncSweepGeometry(/*startSweep=*/false);

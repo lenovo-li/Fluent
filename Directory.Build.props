@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!--
+    Global project properties inherited by all .vcxproj files in this directory tree.
+    MSBuild automatically imports this file before evaluating any project.
+  -->
+
+  <PropertyGroup Label="CRT Linkage">
+    <!--
+      FluentCRTLinkage: controls whether to link the C++ runtime statically or dynamically.
+
+      Values:
+        Dynamic (default) — /MD in Release, /MDd in Debug. EXE is smaller, requires vcruntime140.dll.
+        Static           — /MT in Release, /MTd in Debug. EXE is self-contained but larger.
+
+      To switch: edit this line, or override in a local Directory.Build.props, or pass via:
+        msbuild /p:FluentCRTLinkage=Static
+    -->
+    <FluentCRTLinkage Condition="'$(FluentCRTLinkage)'==''">Dynamic</FluentCRTLinkage>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Derived Runtime Library Setting">
+    <!-- Translate FluentCRTLinkage to the actual RuntimeLibrary values MSBuild expects -->
+    <FluentRuntimeLibrary_Debug Condition="'$(FluentCRTLinkage)'=='Static'">MultiThreadedDebug</FluentRuntimeLibrary_Debug>
+    <FluentRuntimeLibrary_Debug Condition="'$(FluentCRTLinkage)'=='Dynamic'">MultiThreadedDebugDLL</FluentRuntimeLibrary_Debug>
+    <FluentRuntimeLibrary_Release Condition="'$(FluentCRTLinkage)'=='Static'">MultiThreaded</FluentRuntimeLibrary_Release>
+    <FluentRuntimeLibrary_Release Condition="'$(FluentCRTLinkage)'=='Dynamic'">MultiThreadedDLL</FluentRuntimeLibrary_Release>
+  </PropertyGroup>
+
+</Project>

@@ -1,4 +1,4 @@
-// InfoBarMetricPages.cpp — standalone showcase pages for InfoBar and Metric.
+// InfoBarMetricPages.cpp — standalone showcase page for InfoBar (the Metric control it once shared this file with has been removed).
 //
 // Each page follows the same three-part shape, because a control gallery has three
 // different readers:
@@ -17,14 +17,12 @@
 #include "../../FluentUI/window/NativeWindowHost.h"
 
 #include "../../FluentUI/controls/InfoBar.h"
-#include "../../FluentUI/controls/Metric.h"
 #include "../../FluentUI/controls/Button.h"
 #include "../../FluentUI/controls/TextBlock.h"
 #include "../../FluentUI/controls/TextBox.h"
 #include "../../FluentUI/controls/CheckBox.h"
 #include "../../FluentUI/controls/Slider.h"
 #include "../../FluentUI/controls/ProgressBar.h"
-#include "../../FluentUI/controls/Separator.h"
 #include "../../FluentUI/layout/StackPanel.h"
 #include "../../FluentUI/layout/Grid.h"
 #include "../../FluentUI/layout/Border.h"
@@ -231,189 +229,6 @@ bar->SetClosable(true);
 sub_ = bar->Closed().Subscribe(this, [](void* o, InfoBar& b, RoutedEventArgs&) {
     b.SetVisible(false);          // 这一行是应用的选择，控件不会自己做
 });)");
-
-    return std::move(page);
-}
-
-// ---------------------------------------------------------------------------
-// Metric
-// ---------------------------------------------------------------------------
-
-std::unique_ptr<ScrollPanel> GalleryApp::CreateMetricPage() {
-    auto [page, content] = CreatePageShell(L"Metric");
-
-    // --- 1. Trend states -------------------------------------------------
-    {
-        auto* card = CreateExampleCard(content, L"四种 Trend");
-        auto* intro = card->Add(std::make_unique<TextBlock>());
-        intro->SetText(L"Trend 决定 delta 行的颜色。None 表示不显示 delta —— 注意它会"
-                       L"把那一行的纵向空间收回，而不是留一行空白。");
-        intro->SetWrap(true);
-        intro->SetDimmed(true);
-        intro->SetMargin(Thickness{0, 0, 0, 8.0f});
-
-        // Auto row: let layout compute the height. Typing a number here is what clipped
-        // the KPI strip on the StockAnalyzer page.
-        auto* row = card->Add(std::make_unique<Grid>());
-        row->AddRow(GridLength::Auto());
-        for (int i = 0; i < 4; ++i) row->AddColumn(GridLength::Star(1.0f));
-
-        struct TrendDemo { const wchar_t* label; const wchar_t* value;
-                           const wchar_t* delta; Metric::Trend trend; };
-        const TrendDemo demos[] = {
-            {L"Up",   L"40.31", L"+0.61%",       Metric::Trend::Up},
-            {L"Down", L"37.82", L"-2.14%",       Metric::Trend::Down},
-            {L"Flat", L"28.40", L"行业中位 31.2", Metric::Trend::Flat},
-            {L"None", L"3.17",  L"（不显示）",    Metric::Trend::None},
-        };
-        for (int i = 0; i < 4; ++i) {
-            auto* m = row->Add(std::make_unique<Metric>());
-            row->SetCell(m, 0, i);
-            m->SetLabel(demos[i].label);
-            m->SetValue(demos[i].value);
-            m->SetDelta(demos[i].delta, demos[i].trend);
-        }
-    }
-
-    // --- 2. The inversion, which is the whole point ----------------------
-    {
-        auto* card = CreateExampleCard(content, L"SetInverted：涨是好事吗？");
-        auto* intro = card->Add(std::make_unique<TextBlock>());
-        intro->SetText(L"符号来自数值，颜色来自另一个问题：这个量上涨是好消息吗？"
-                       L"营收上涨是收益，错误率 / 回撤 / 负债率上涨是坏消息。"
-                       L"没有任何对数值的检查能判断这一点，所以必须由调用者声明。"
-                       L"下面两组 Trend 完全相同，只有 SetInverted 不同。");
-        intro->SetWrap(true);
-        intro->SetDimmed(true);
-        intro->SetMargin(Thickness{0, 0, 0, 8.0f});
-
-        auto* normal = card->Add(std::make_unique<GroupBox>());
-        normal->SetHeader(L"默认：涨=正面色（营收、利润、净值）");
-        auto* normalRow = normal->SetChild(std::make_unique<Grid>());
-        normalRow->AddRow(GridLength::Auto());
-        normalRow->AddColumn(GridLength::Star(1.0f));
-        normalRow->AddColumn(GridLength::Star(1.0f));
-        {
-            auto* a = normalRow->Add(std::make_unique<Metric>());
-            normalRow->SetCell(a, 0, 0);
-            a->SetLabel(L"营业收入");
-            a->SetValue(L"68.4 亿");
-            a->SetDelta(L"+12.3%", Metric::Trend::Up);
-
-            auto* b = normalRow->Add(std::make_unique<Metric>());
-            normalRow->SetCell(b, 0, 1);
-            b->SetLabel(L"净利润");
-            b->SetValue(L"9.1 亿");
-            b->SetDelta(L"-4.8%", Metric::Trend::Down);
-        }
-
-        auto* inverted = card->Add(std::make_unique<GroupBox>());
-        inverted->SetHeader(L"SetInverted(true)：涨=负面色（负债率、回撤、错误率）");
-        auto* invRow = inverted->SetChild(std::make_unique<Grid>());
-        invRow->AddRow(GridLength::Auto());
-        invRow->AddColumn(GridLength::Star(1.0f));
-        invRow->AddColumn(GridLength::Star(1.0f));
-        {
-            auto* a = invRow->Add(std::make_unique<Metric>());
-            invRow->SetCell(a, 0, 0);
-            a->SetLabel(L"资产负债率");
-            a->SetValue(L"41.8%");
-            a->SetDelta(L"+1.9%", Metric::Trend::Up);
-            a->SetInverted(true);
-
-            auto* b = invRow->Add(std::make_unique<Metric>());
-            invRow->SetCell(b, 0, 1);
-            b->SetLabel(L"最大回撤");
-            b->SetValue(L"-18.4%");
-            b->SetDelta(L"-3.2%", Metric::Trend::Down);
-            b->SetInverted(true);
-        }
-    }
-
-    // --- 3. Live update --------------------------------------------------
-    {
-        auto* card = CreateExampleCard(content, L"实时更新（拖动滑块）");
-        auto* hint = card->Add(std::make_unique<TextBlock>());
-        hint->SetText(L"只改 Trend（文字不变）是 Render 级更新，不会触发重新布局 —— "
-                      L"这对每秒刷新的仪表盘是必要的。改文字或 None↔非 None 才是 Measure 级。");
-        hint->SetWrap(true);
-        hint->SetDimmed(true);
-
-        auto* live = card->Add(std::make_unique<Metric>());
-        live->SetLabel(L"模拟价格");
-        live->SetValue(L"40.00");
-        live->SetDelta(L"+0.00%", Metric::Trend::Flat);
-        live->SetHAlign(HAlign::Left);
-
-        auto* slider = card->Add(std::make_unique<Slider>());
-        slider->SetMin(30.0f);
-        slider->SetMax(50.0f);
-        slider->SetValue(40.0f);
-        metricLive_ = live;
-        metricLiveSub_ = slider->ValueChanged().Subscribe(this,
-            [](void* owner, Slider&, float& v) {
-                auto* self = static_cast<GalleryApp*>(owner);
-                if (!self->metricLive_) return;
-                const double base = 40.0;
-                const double pct = (v - base) / base * 100.0;
-                self->metricLive_->SetValue(Fmt2(v));
-                wchar_t buf[32];
-                std::swprintf(buf, 32, L"%+.2f%%", pct);
-                self->metricLive_->SetDelta(buf,
-                    pct > 0.05 ? Metric::Trend::Up
-                    : pct < -0.05 ? Metric::Trend::Down
-                                  : Metric::Trend::Flat);
-            });
-    }
-
-    // --- 4. In context: a real KPI strip ---------------------------------
-    {
-        auto* card = CreateExampleCard(content, L"混合使用：仪表盘条 + 进度");
-        auto* hint = card->Add(std::make_unique<TextBlock>());
-        hint->SetText(L"Metric 的真实位置是仪表盘的一行。用 Grid 的 Star 列均分宽度，"
-                      L"Auto 行让高度由内容决定 —— 写死行高正是之前切掉文字的原因。");
-        hint->SetWrap(true);
-        hint->SetDimmed(true);
-
-        auto* strip = card->Add(std::make_unique<Grid>());
-        strip->AddRow(GridLength::Auto());
-        for (int i = 0; i < 4; ++i) strip->AddColumn(GridLength::Star(1.0f));
-
-        struct Kpi { const wchar_t* l; const wchar_t* v; const wchar_t* d;
-                     Metric::Trend t; bool inv; };
-        const Kpi kpis[] = {
-            {L"累计收益", L"+37.2%", L"跑赢基准 12.4pp", Metric::Trend::Up, false},
-            {L"最大回撤", L"-18.4%", L"+2.1pp",          Metric::Trend::Up, true},
-            {L"夏普比率", L"1.23",   L"+0.08",           Metric::Trend::Up, false},
-            {L"胜率",     L"54.2%",  L"37 笔交易",       Metric::Trend::Flat, false},
-        };
-        for (int i = 0; i < 4; ++i) {
-            auto* m = strip->Add(std::make_unique<Metric>());
-            strip->SetCell(m, 0, i);
-            m->SetLabel(kpis[i].l);
-            m->SetValue(kpis[i].v);
-            m->SetDelta(kpis[i].d, kpis[i].t);
-            m->SetInverted(kpis[i].inv);
-        }
-
-        card->Add(std::make_unique<Separator>());
-        auto* progLabel = card->Add(std::make_unique<TextBlock>());
-        progLabel->SetText(L"回测进度 68%");
-        progLabel->SetDimmed(true);
-        auto* prog = card->Add(std::make_unique<ProgressBar>());
-        prog->SetValue(0.68f);
-    }
-
-    CreateCodeExample(content, LR"(auto* m = strip->Add(std::make_unique<Metric>());
-strip->SetCell(m, 0, col);
-m->SetLabel(L"资产负债率");
-m->SetValue(L"41.8%");                       // 字符串：格式化由调用者决定
-m->SetDelta(L"+1.9%", Metric::Trend::Up);
-m->SetInverted(true);                        // 负债率上涨是坏消息
-
-// 行高交给布局，不要写死：
-// strip->AddRow(GridLength::Auto());  ✓
-// strip->SetHeight(58.0f);            ✗ 三行 Metric 需要 62.6 DIP，会切字)");
 
     return std::move(page);
 }

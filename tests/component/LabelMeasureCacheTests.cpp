@@ -38,7 +38,6 @@
 #include "../../FluentUI/controls/CheckBox.h"
 #include "../../FluentUI/controls/RadioButton.h"
 #include "../../FluentUI/controls/InfoBar.h"
-#include "../../FluentUI/controls/Metric.h"
 #include "../framework/PixelSurface.h"
 #include "../../FluentUI/controls/TabControl.h"
 #include "../../FluentUI/controls/ToggleSwitch.h"
@@ -541,12 +540,4 @@ TEST(LabelMeasureCache, InfoBarMeasureAndRenderReuseLayouts) {
         b.SetTitle(L"Update available");
         b.SetMessage(L"Restart the application to finish installing the update.");
     }, "InfoBarMeasureAndRenderReuseLayouts");
-}
-
-TEST(LabelMeasureCache, MetricMeasureAndRenderReuseLayouts) {
-    ExpectMeasureAndRenderHitCache<Metric>([](Metric& m) {
-        m.SetLabel(L"Revenue");
-        m.SetValue(L"$12,400");
-        m.SetDelta(L"+4.2%", Metric::Trend::Up);
-    }, "MetricMeasureAndRenderReuseLayouts");
 }

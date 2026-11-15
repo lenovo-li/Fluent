@@ -7,8 +7,7 @@
 // Closing covers only the popup's OWN side effects (unregistering its animation
 // root, hiding the HWND). The owner's onClose_ callback runs after the state has
 // already become Closed, as the very last thing Close() does. Two consequences the
-// owners (ComboBox, DatePicker) rely on, because they raise their public
-// DropDownClosed / CalendarClosed events from that callback:
+// owners (ComboBox) rely on, because they raise their public DropDownClosed from it:
 //   * a handler that reopens the popup works: Open() sees Closed, not Closing;
 //   * Close() itself touches no member after the callback returns.
 // That second point does NOT make it safe for a handler to destroy the owner

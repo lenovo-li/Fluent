@@ -14,7 +14,6 @@ constexpr float kCaretW = 1.0f;    // caret width (DIP)
 } // namespace
 
 void TextBox::Measure(float availW, float availH) {
-    LayoutCostProbe::Scope probe(LayoutCostKey::TextBoxMeasure);
     UNREFERENCED_PARAMETER(availH);
     // WinUI TextBox MinHeight is 32 DIP; the content height is one line of body
     // text plus top/bottom padding. Width defaults to the natural text width but

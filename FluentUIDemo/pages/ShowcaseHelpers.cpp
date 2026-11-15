@@ -20,7 +20,6 @@
 #include "../GalleryMain.h"
 
 #include "../../FluentUI/controls/TextBlock.h"
-#include "../../FluentUI/controls/Separator.h"
 #include "../../FluentUI/layout/StackPanel.h"
 #include "../../FluentUI/layout/Grid.h"
 #include "../../FluentUI/layout/Border.h"

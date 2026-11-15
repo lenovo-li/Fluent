@@ -41,8 +41,6 @@ HRESULT TooltipService::Create(HINSTANCE hInst, HWND hwndOwner, D2DContext* d2d,
     content_->SetFontSize(kFontSize);
     content_->SetWrap(true);
     popup_->SetContent(content_.get());
-
-    TraceMsg(kTag, "Create: tooltip popup ready");
     return S_OK;
 }
 

@@ -1,8 +1,6 @@
 ﻿// BasicInputPages.cpp — 基础输入控件页面
 #include "../GalleryMain.h"
 #include "../../FluentUI/controls/Button.h"
-#include "../../FluentUI/controls/RepeatButton.h"
-#include "../../FluentUI/controls/Separator.h"
 #include "../../FluentUI/controls/CheckBox.h"
 #include "../../FluentUI/controls/RadioButton.h"
 #include "../../FluentUI/controls/ToggleSwitch.h"
@@ -608,97 +606,6 @@ image->ImageFailed().Subscribe(owner, [](void*, Image&, auto& args) {
     return std::move(page);
 }
 
-std::unique_ptr<ScrollPanel> GalleryApp::CreateRepeatButtonPage() {
-    auto [page, content] = CreatePageShell(L"RepeatButton");
-
-    auto* card = CreateExampleCard(content, L"Auto-repeat while held");
-    auto* desc = card->Add(std::make_unique<TextBlock>());
-    desc->SetText(L"RepeatButton 在按住时持续触发 Click 事件，用于数值调节、滚动条等场景。");
-    desc->SetWrap(true);
-    desc->SetMargin(Thickness{0, 0, 0, 12.0f});
-
-    auto* counterLabel = card->Add(std::make_unique<TextBlock>());
-    counterLabel->SetText(L"计数: 0");
-    counterLabel->SetMargin(Thickness{0, 0, 0, 8.0f});
-
-    auto* repeatBtn = card->Add(std::make_unique<RepeatButton>());
-    repeatBtn->SetText(L"按住我");
-    repeatBtn->SetWidth(120.0f);
-    repeatBtn->SetTooltip(L"按住触发重复事件");
-
-    // 使用页面生命期的计数器（不回收，与 ComboBox 示例一致）
-    struct CounterPair { RepeatButton* btn; TextBlock* label; int count; };
-    auto* pair = new CounterPair{repeatBtn, counterLabel, 0};
-    pageSubs_ += repeatBtn->Click().Subscribe(pair, [](void* owner, Button&, RoutedEventArgs&) {
-        auto* p = static_cast<CounterPair*>(owner);
-        p->count++;
-        p->label->SetText(L"计数: " + std::to_wstring(p->count));
-    });
-
-    CreateCodeExample(content, LR"(auto* repeatBtn = panel->Add(std::make_unique<RepeatButton>());
-repeatBtn->SetText(L"Volume +");
-repeatBtn->Click().Subscribe(owner, [](void* owner, Button&, RoutedEventArgs&) {
-    // 按住时持续触发，首次延迟 0.5 秒，之后 20 Hz 重复率
-});)");
-    return std::move(page);
-}
-
-std::unique_ptr<ScrollPanel> GalleryApp::CreateSeparatorPage() {
-    auto [page, content] = CreatePageShell(L"Separator");
-
-    auto* card1 = CreateExampleCard(content, L"Horizontal separator");
-    auto* desc1 = card1->Add(std::make_unique<TextBlock>());
-    desc1->SetText(L"水平分隔线，默认 1 DIP 粗，横向拉伸填充父容器。");
-    desc1->SetWrap(true);
-    desc1->SetMargin(Thickness{0, 0, 0, 8.0f});
-
-    card1->Add(std::make_unique<TextBlock>())->SetText(L"Section 1");
-    card1->Add(std::make_unique<Separator>());
-    card1->Add(std::make_unique<TextBlock>())->SetText(L"Section 2");
-    card1->Add(std::make_unique<Separator>());
-    card1->Add(std::make_unique<TextBlock>())->SetText(L"Section 3");
-
-    auto* card2 = CreateExampleCard(content, L"Vertical separator");
-    auto* desc2 = card2->Add(std::make_unique<TextBlock>());
-    desc2->SetText(L"垂直分隔线，用于并排控件之间。需要放在水平容器中。");
-    desc2->SetWrap(true);
-    desc2->SetMargin(Thickness{0, 0, 0, 8.0f});
-
-    auto* row = card2->Add(std::make_unique<StackPanel>());
-    row->SetOrientation(StackPanel::Orientation::Horizontal);
-    row->SetSpacing(12.0f);
-    row->Add(std::make_unique<Button>())->SetText(L"Button 1");
-    auto* sep = row->Add(std::make_unique<Separator>());
-    sep->SetOrientation(Separator::Orientation::Vertical);
-    sep->SetHeight(32.0f);
-    row->Add(std::make_unique<Button>())->SetText(L"Button 2");
-
-    auto* card3 = CreateExampleCard(content, L"Custom thickness");
-    auto* desc3 = card3->Add(std::make_unique<TextBlock>());
-    desc3->SetText(L"SetThickness 调整分隔线粗细（DIP）。");
-    desc3->SetWrap(true);
-    desc3->SetMargin(Thickness{0, 0, 0, 8.0f});
-
-    auto* thin = card3->Add(std::make_unique<Separator>());
-    thin->SetThickness(0.5f);
-    card3->Add(std::make_unique<TextBlock>())->SetText(L"Thin (0.5 DIP)");
-
-    auto* thick = card3->Add(std::make_unique<Separator>());
-    thick->SetThickness(3.0f);
-    card3->Add(std::make_unique<TextBlock>())->SetText(L"Thick (3.0 DIP)");
-
-    CreateCodeExample(content, LR"(// 水平分隔线
-auto* separator = panel->Add(std::make_unique<Separator>());
-
-// 垂直分隔线
-auto* vSep = panel->Add(std::make_unique<Separator>());
-vSep->SetOrientation(Separator::Orientation::Vertical);
-vSep->SetHeight(32.0f);
-
-// 自定义粗细
-separator->SetThickness(2.0f);)");
-    return std::move(page);
-}
 
 // ToggleButton 是 CheckBox / ToggleSwitch 的公共基类，本身不绘制。
 // 为了演示其状态机，这里创建一个最小派生类。

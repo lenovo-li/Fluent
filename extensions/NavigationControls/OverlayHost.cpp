@@ -1,7 +1,6 @@
 // OverlayHost.cpp
 #include "OverlayHost.h"
 #include "../../FluentUI/automation/AutomationPeer.h"
-#include "NavTrace.h"
 #include "../../FluentUI/styling/ThemeTokens.h"
 #include "../../FluentUI/input/FocusManager.h"
 #include "../../FluentUI/core/UIContext.h"
@@ -110,9 +109,6 @@ void OverlayHost::Show(const OverlaySpec& spec) {
     SetOpacity(fade_);
     InvalidateDirty(DirtyFlags::Measure);
     FocusSelf();
-    NAV_TRACEF("[NavigationControls.OverlayHost] show progress=%d details=%d warning=%d\n",
-               spec.showProgress ? 1 : 0, spec.details.empty() ? 0 : 1,
-               spec.warning.empty() ? 0 : 1);
 }
 
 void OverlayHost::UpdateProgress(int percent, const std::wstring& message) {
@@ -138,7 +134,6 @@ void OverlayHost::BeginHide(bool raise, OverlayResult result) {
     } else {
         Invalidate();  // schedules the frame that starts the fade tick
     }
-    NAV_TRACEF("[NavigationControls.OverlayHost] hide\n");
     // Raised last: a handler may chain the next state with Show().
     if (raise) {
         OverlayResultArgs args;

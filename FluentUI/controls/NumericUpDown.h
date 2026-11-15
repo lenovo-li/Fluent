@@ -1,6 +1,6 @@
 // NumericUpDown.h — Fluent numeric spinner control.
 //
-// A RangeBase with inline up/down RepeatButtons and an editable text field, all
+// A RangeBase with inline up/down buttons (auto-repeat while held) and an editable text field, all
 // drawn into the window content surface (no child elements). The text field is
 // self-drawn with DWrite rather than embedding a TextBox — an embedded TextBox
 // would bring a second Tab stop (see ComboBox.h rationale), plus its own attach
@@ -85,7 +85,7 @@ private:
     void StartRepeat(ButtonPart btn);
     void StopRepeat();
 
-    // RepeatButton logic (auto-repeat while held).
+    // Auto-repeat while the pointer is held.
     bool WantsAnimationTick() const override { return repeating_; }
     void OnAnimationTick(float dtSec) override;
 
@@ -109,7 +109,7 @@ private:
     ButtonPart pressedButton_ = ButtonPart::None;
     bool pointerCaptured_ = false;
 
-    // RepeatButton state.
+    // Auto-repeat state.
     bool repeating_ = false;
     bool armed_ = false;         // Initial delay phase
     float accumSec_ = 0.0f;

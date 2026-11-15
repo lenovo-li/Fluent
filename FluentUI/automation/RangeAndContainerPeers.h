@@ -1,7 +1,7 @@
 // RangeAndContainerPeers.h — peers for value ranges, scrolling and simple
-// containers: Slider / LogSlider / NumericUpDown / ProgressBar / Rating
+// containers: Slider / LogSlider / NumericUpDown / ProgressBar
 // (RangeValue), ScrollPanel (Pane + Scroll), Expander (Group + ExpandCollapse),
-// Hyperlink (Invoke + Value = the URI), StatusBar, Metric and Image.
+// Hyperlink (Invoke + Value = the URI), StatusBar and Image.
 //
 // Same contract as ControlPeers.h: each control declares CreateAutomationPeer in
 // its header and defines it in RangeAndContainerPeers.cpp; getters read live state.
@@ -11,12 +11,10 @@
 
 namespace fluent {
 class RangeBase;
-class Rating;
 class ScrollPanel;
 class Expander;
 class Hyperlink;
 class StatusBar;
-class Metric;
 class Image;
 }  // namespace fluent
 
@@ -42,22 +40,6 @@ private:
     ControlType type_;
     float step_;
     bool readOnly_;  // ProgressBar: displays a value, the user cannot set it
-};
-
-// Rating is not a RangeBase: 0..MaxValue in whole stars, read-only when the app says.
-class RatingPeer : public AutomationPeer, public IRangeValuePeer {
-public:
-    explicit RatingPeer(Rating& owner);
-    ControlType GetControlType() const override { return ControlType::Slider; }
-    bool IsControlElement() const override { return true; }
-    IRangeValuePeer* AsRangeValue() override { return this; }
-    double GetValue() const override;
-    double GetMinimum() const override { return 0; }
-    double GetMaximum() const override;
-    double GetSmallChange() const override { return 1; }
-    double GetLargeChange() const override { return 1; }
-    bool IsReadOnly() const override;
-    void SetValue(double v) override;
 };
 
 // ScrollPanel: a Pane (not "Custom") with the Scroll pattern. It is focusable for

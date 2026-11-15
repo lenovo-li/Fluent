@@ -1,6 +1,6 @@
 // NavTrace.h — trace output for the NavigationControls library.
 //
-//   NAV_TRACEF("[NavigationControls.NavRail] select %d\n", index);
+//   NAV_TRACEF("[NavigationControls.NavRail] icon format failed hr=0x%08X\n", hr);
 //
 // Same switch as FluentUI (FLUENTUI_ENABLE_TRACE in fl_common.h): on in Debug,
 // off in Release, overridable from the build. The caller writes the whole line,

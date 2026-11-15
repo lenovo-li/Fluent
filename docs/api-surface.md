@@ -60,7 +60,7 @@ Everything below is exported by the umbrella header.
 `controls/Button.h`, `CheckBox.h`, `RadioButton.h`, `ToggleSwitch.h`, `Slider.h`,
 `ProgressBar.h`, `ComboBox.h`, `ListBox.h`, `TextBlock.h`, `TextBox.h`, `TextArea.h`,
 `TreeView.h`, `TabControl.h`, `ContentDialog.h`, `MessageDialog.h`, `MenuBar.h`,
-`MenuFlyout.h`, `ToolBar.h`, `StatusBar.h`, `DatePicker.h`, `Calendar.h`, `Image.h`,
+`MenuFlyout.h`, `ToolBar.h`, `StatusBar.h`, `Image.h`,
 `Hyperlink.h`, `GridSplitter.h`.
 
 **Events and theming**

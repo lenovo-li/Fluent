@@ -42,6 +42,7 @@ public:
     void StartOffsetSweep(const SweepSpec& spec) override;
     void StartOffsetYTween(float fromPx, float toPx, double durationSec) override;
     void StartOpacityBlink(double halfPeriodSec) override;
+    void StartRotationSweep(double rps) override;
     void StopAnimation(CompositionProperty property) override;
     bool DrawSurface(uint32_t pixelW, uint32_t pixelH,
                      const DrawCallback& draw) override;
@@ -55,6 +56,7 @@ private:
     ComPtr<IDCompositionVisual2> visual_;
     ComPtr<IDCompositionVisual3> visual3_;      // opacity animation (Win8.1+)
     ComPtr<IDCompositionSurface> surface_;
+    ComPtr<IDCompositionRotateTransform> rotateTransform_;  // rotation animation
     IDCompositionDevice2* device_ = nullptr;    // borrowed (for CreateSurface/animation)
     D2DContext* d2d_ = nullptr;                 // borrowed (surface draw context)
     uint32_t surfaceW_ = 0, surfaceH_ = 0;      // current surface pixel size

@@ -9,7 +9,6 @@
 #include "../../FluentUI/controls/Hyperlink.h"
 #include "../../FluentUI/controls/Image.h"
 #include "../../FluentUI/controls/ProgressBar.h"
-#include "../../FluentUI/controls/Rating.h"
 #include "../../FluentUI/controls/Slider.h"
 #include "../../FluentUI/controls/StatusBar.h"
 #include "../../FluentUI/controls/TextBlock.h"
@@ -58,28 +57,18 @@ TEST(AutomationControlPeer, SliderRangeValueReadsAndSetsThroughThePostedPath) {
     EXPECT_TRUE(raised);
 }
 
-TEST(AutomationControlPeer, ProgressBarIsReadOnlyRatingUsesWholeStars) {
+TEST(AutomationControlPeer, ProgressBarIsReadOnly) {
     UiaFixture fx;
     auto* pb = fx.root->Emplace<ProgressBar>();
-    auto* r = fx.root->Emplace<Rating>();
-    r->SetMaxValue(5);
     fx.Attach();
     auto pf = First(fx);
-    auto rf = Nav(pf.Get(), NavigateDirection_NextSibling);
     EXPECT_EQ(PropInt(pf.Get(), UIA_ControlTypePropertyId), UIA_ProgressBarControlTypeId);
-    ComPtr<IRangeValueProvider> prv, rrv;
+    ComPtr<IRangeValueProvider> prv;
     pf.As(&prv);
-    rf.As(&rrv);
     BOOL ro = FALSE;
     EXPECT_TRUE(prv && SUCCEEDED(prv->get_IsReadOnly(&ro)) && ro == TRUE);
     EXPECT_EQ(prv ? prv->SetValue(50) : S_OK, UIA_E_ELEMENTNOTENABLED);
     (void)pb;
-    double mx = 0;
-    EXPECT_TRUE(rrv && SUCCEEDED(rrv->get_Maximum(&mx)));
-    EXPECT_NEAR(mx, 5.0, 1e-6);
-    EXPECT_EQ(rrv ? rrv->SetValue(3) : E_FAIL, S_OK);
-    fx.host.OnFlush();
-    EXPECT_NEAR(r->Value(), 3.0f, 1e-6f);
 }
 
 TEST(AutomationControlPeer, ExpanderExpandCollapseAndChildrenFollowState) {

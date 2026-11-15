@@ -117,7 +117,6 @@ row->AddColumn(GridLength::Star(1.0f));   // 侧栏占 1/4
 
 **1. ⚠️ 不要给包含文字的行写死高度。**
 
-这是本项目真实发生过的 bug:KPI 条写了 `SetHeight(58)`,而三行的 `Metric` 需要
 **62.6 DIP**,于是第三行文字被切掉 4.6 DIP。
 
 本框架的 Arrange 契约是「子元素永不超出容器」—— 不够的部分**静默裁剪**,不溢出、不警告。
@@ -131,7 +130,6 @@ grid->SetHeight(58.0f);             // ✗ 猜一个字体的行高
 **2. ⚠️ `UniformGrid` 不是「等分列」。**
 
 `UniformGrid` 把每个 cell 的尺寸定为**最大子元素的 desired 尺寸**,并且**从不撑开 cell
-去填满 arrange 宽度**。四个 `Metric` 放进 800 DIP 的 `UniformGrid`,每个只得到约
 **63 DIP**,右边 550 DIP 空着。
 
 这对它声明的用途(日历那种等大、内容定尺寸的格子)是合理的,但**不是**「均分可用宽度」。

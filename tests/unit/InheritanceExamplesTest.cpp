@@ -26,61 +26,12 @@ struct LogSliderPeer : LogSlider {
     float End() const { return TrackEnd(); }
 };
 
-struct CalendarPeer : Calendar {
-    RectDip Prev() const { return PrevArrowRect(); }
-    RectDip Next() const { return NextArrowRect(); }
-    RectDip Nav() const { return NavBarRect(); }
-    RectDip Header() const { return WeekdayHeaderRect(); }
-    float CellW() const { return CellWidth(); }
-};
 
 struct BigButtonPeer : BigButton {
     Button::Kind KindNow() const { return CurrentKind(); }
 };
 }  // namespace
 
-TEST(InheritanceExamples, LunarCalendarIsACalendar) {
-    LunarCalendar cal;
-    cal.SetSelectedDate(2026, 9, 26);
-    EXPECT_EQ(2026, cal.SelectedYear());
-    EXPECT_EQ(9, cal.SelectedMonth());
-    EXPECT_EQ(26, cal.SelectedDay());
-}
-
-// The arrow rects RenderNavBar paints into are the same rects OnPointerPressed tests.
-// A click at the centre of NextArrowRect must advance the month.
-TEST(InheritanceExamples, CalendarArrowRectsDriveNavigation) {
-    CalendarPeer cal;
-    cal.SetViewedMonth(2026, 9);
-    cal.Arrange(RectDip{10, 20, 252, 252});
-
-    RectDip next = cal.Next();
-    PointerEventArgs e;
-    e.button = PointerButton::Left;
-    e.position = Point{next.x + next.w * 0.5f, next.y + next.h * 0.5f};
-    cal.OnPointerPressed(e);
-    EXPECT_TRUE(e.handled);
-    EXPECT_EQ(10, cal.ViewedMonth());
-
-    RectDip prev = cal.Prev();
-    PointerEventArgs e2;
-    e2.button = PointerButton::Left;
-    e2.position = Point{prev.x + 1.0f, prev.y + 1.0f};
-    cal.OnPointerPressed(e2);
-    EXPECT_EQ(9, cal.ViewedMonth());
-}
-
-// Geometry helpers tile the control: nav bar, then header, then the cell grid.
-TEST(InheritanceExamples, CalendarRegionsTileTheBounds) {
-    CalendarPeer cal;
-    cal.Arrange(RectDip{0, 0, 350, 300});
-    RectDip nav = cal.Nav();
-    RectDip hdr = cal.Header();
-    EXPECT_NEAR(nav.bottom(), hdr.y, 0.01f);
-    EXPECT_NEAR(hdr.bottom(), cal.CellRect(0).y, 0.01f);
-    EXPECT_NEAR(350.0f, cal.CellRect(6).right(), 0.01f);  // grid spans full width
-    EXPECT_NEAR(50.0f, cal.CellW(), 0.01f);
-}
 
 TEST(InheritanceExamples, BigButtonMeasureOverrideTakesEffect) {
     BigButtonPeer btn;

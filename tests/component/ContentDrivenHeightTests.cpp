@@ -19,8 +19,8 @@
 // A test pinned to "62.5" would break on the next font change and teach nobody anything.
 
 #include "../framework/Test.h"
-#include "../../FluentUI/controls/Metric.h"
 #include "../../FluentUI/controls/InfoBar.h"
+#include "../../FluentUI/controls/TextBlock.h"
 #include "../../FluentUI/layout/Grid.h"
 #include "../../FluentUI/layout/StackPanel.h"
 #include "../../FluentUI/core/UIContext.h"
@@ -72,36 +72,50 @@ struct Env {
     bool Ready() { return host.DWrite().Valid(); }
 };
 
-Metric* AddFullMetric(Grid& g, int col, const wchar_t* label,
-                      const wchar_t* value, const wchar_t* delta) {
-    auto* m = g.Add(std::make_unique<Metric>());
-    g.SetCell(m, 0, col);
-    m->SetLabel(label);
-    m->SetValue(value);
-    m->SetDelta(delta, Metric::Trend::Up);
-    return m;
+// Test-local tile: three-line stack (label, value, delta) replicating Metric's structure
+// without requiring the actual Metric control.
+StackPanel* AddThreeLineTile(Grid& g, int col, const wchar_t* label,
+                              const wchar_t* value, const wchar_t* delta) {
+    auto* tile = g.Add(std::make_unique<StackPanel>());
+    g.SetCell(tile, 0, col);
+    auto* labelLine = tile->Add(std::make_unique<TextBlock>());
+    labelLine->SetText(label);
+    labelLine->SetDimmed(true);
+    auto* valueLine = tile->Add(std::make_unique<TextBlock>());
+    valueLine->SetText(value);
+    valueLine->SetFontSize(20.0f);  // Metric's value was larger
+    auto* deltaLine = tile->Add(std::make_unique<TextBlock>());
+    deltaLine->SetText(delta);
+    deltaLine->SetDimmed(true);
+    return tile;
 }
 
 }  // namespace
 
-// A three-line Metric must report a height that fits all three lines. This is the direct
+// A three-line tile must report a height that fits all three lines. This is the direct
 // regression for the screenshot: the control was right, the hand-typed 58 was wrong.
-TEST(ContentDrivenHeight, ThreeLineMetricNeedsMoreThanTheHandTypedFiftyEight) {
+TEST(ContentDrivenHeight, ThreeLineTileNeedsMoreThanTheHandTypedFiftyEight) {
     Env env;
     if (!env.Ready()) { std::printf("  [SKIP] no DWrite\n"); return; }
 
-    Metric m;
-    m.AttachToContext(env.ctx);
-    m.SetLabel(L"市盈率 TTM");
-    m.SetValue(L"28.40");
-    m.SetDelta(L"行业中位 31.2", Metric::Trend::Flat);
-    m.Measure(200.0f, 1000.0f);
+    StackPanel tile;
+    tile.AttachToContext(env.ctx);
+    auto* labelLine = tile.Add(std::make_unique<TextBlock>());
+    labelLine->SetText(L"市盈率 TTM");
+    labelLine->SetDimmed(true);
+    auto* valueLine = tile.Add(std::make_unique<TextBlock>());
+    valueLine->SetText(L"28.40");
+    valueLine->SetFontSize(20.0f);
+    auto* deltaLine = tile.Add(std::make_unique<TextBlock>());
+    deltaLine->SetText(L"行业中位 31.2");
+    deltaLine->SetDimmed(true);
+    tile.Measure(200.0f, 1000.0f);
 
-    std::printf("  three-line Metric wants %.1f DIP (the page hard-coded 58)\n",
-                m.Desired().h);
+    std::printf("  three-line tile wants %.1f DIP (the page hard-coded 58)\n",
+                tile.Desired().h);
     // The point is not the exact value but that 58 was NOT enough — which is why typing it
     // was the mistake.
-    EXPECT_TRUE(m.Desired().h > 58.0f);
+    EXPECT_TRUE(tile.Desired().h > 58.0f);
 }
 
 // An Auto row must give every child at least its desired height. This is the fix: let the
@@ -115,11 +129,11 @@ TEST(ContentDrivenHeight, AutoRowGivesEveryChildItsFullDesiredHeight) {
     strip.AddRow(GridLength::Auto());          // the fix, instead of SetHeight(58)
     for (int i = 0; i < 4; ++i) strip.AddColumn(GridLength::Star(1.0f));
 
-    Metric* m[4];
-    m[0] = AddFullMetric(strip, 0, L"最新价", L"40.31", L"+0.61%");
-    m[1] = AddFullMetric(strip, 1, L"市盈率 TTM", L"28.40", L"行业中位 31.2");
-    m[2] = AddFullMetric(strip, 2, L"市净率", L"3.17", L"分位 62%");
-    m[3] = AddFullMetric(strip, 3, L"资产负债率", L"41.8%", L"+1.9%");
+    StackPanel* m[4];
+    m[0] = AddThreeLineTile(strip, 0, L"最新价", L"40.31", L"+0.61%");
+    m[1] = AddThreeLineTile(strip, 1, L"市盈率 TTM", L"28.40", L"行业中位 31.2");
+    m[2] = AddThreeLineTile(strip, 2, L"市净率", L"3.17", L"分位 62%");
+    m[3] = AddThreeLineTile(strip, 3, L"资产负债率", L"41.8%", L"+1.9%");
 
     strip.Measure(800.0f, 1000.0f);
     strip.Arrange(RectDip{0.0f, 0.0f, 800.0f, strip.Desired().h});
@@ -161,7 +175,7 @@ TEST(ContentDrivenHeight, FixedContainerCompressesContentByDesign) {
     strip.AddColumn(GridLength::Star(1.0f));
     strip.SetHeight(58.0f);                     // the original bug, reproduced
 
-    Metric* m = AddFullMetric(strip, 0, L"市盈率 TTM", L"28.40", L"行业中位 31.2");
+    StackPanel* m = AddThreeLineTile(strip, 0, L"市盈率 TTM", L"28.40", L"行业中位 31.2");
     strip.Measure(800.0f, 1000.0f);
     strip.Arrange(RectDip{0.0f, 0.0f, 800.0f, 58.0f});
 
@@ -173,7 +187,7 @@ TEST(ContentDrivenHeight, FixedContainerCompressesContentByDesign) {
     EXPECT_TRUE(m->Bounds().h < m->Desired().h);
 }
 
-// Two-line vs three-line Metrics must differ in height, so a strip mixing them sizes to
+// Two-line vs three-line tiles must differ in height, so a strip mixing them sizes to
 // the taller one rather than to whichever happens to be first.
 TEST(ContentDrivenHeight, StripSizesToTheTallestTileNotTheFirstOne) {
     Env env;
@@ -186,13 +200,17 @@ TEST(ContentDrivenHeight, StripSizesToTheTallestTileNotTheFirstOne) {
     strip.AddColumn(GridLength::Star(1.0f));
 
     // First tile: two lines only (no delta).
-    auto* shortTile = strip.Add(std::make_unique<Metric>());
+    auto* shortTile = strip.Add(std::make_unique<StackPanel>());
     strip.SetCell(shortTile, 0, 0);
-    shortTile->SetLabel(L"市净率");
-    shortTile->SetValue(L"3.17");
+    auto* labelA = shortTile->Add(std::make_unique<TextBlock>());
+    labelA->SetText(L"市净率");
+    labelA->SetDimmed(true);
+    auto* valueA = shortTile->Add(std::make_unique<TextBlock>());
+    valueA->SetText(L"3.17");
+    valueA->SetFontSize(20.0f);
 
     // Second tile: three lines.
-    Metric* tallTile = AddFullMetric(strip, 1, L"市盈率 TTM", L"28.40", L"行业中位 31.2");
+    StackPanel* tallTile = AddThreeLineTile(strip, 1, L"市盈率 TTM", L"28.40", L"行业中位 31.2");
 
     strip.Measure(600.0f, 1000.0f);
     strip.Arrange(RectDip{0.0f, 0.0f, 600.0f, strip.Desired().h});

@@ -91,7 +91,7 @@ public:
     //
     // 1. The focus ring is stroked at `bounds_ - 2.0` with a 1.0 centered stroke,
     //    so its outer edge sits 2.5 DIP outside on the left and top. Unlike
-    //    ListBox / TreeView / TabControl / DatePicker — which all inset their ring
+    //    ListBox / TreeView / TabControl — which all inset their ring
     //    INWARD by exactly half the stroke and genuinely spill nothing — this one
     //    is built outward from the bounds edge.
     // 2. The underline is drawn at `bounds_.y + textH + kUnderlineGap`, and when

@@ -57,8 +57,8 @@
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <PreprocessorDefinitions Condition="'$(Configuration)'=='Debug'">_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PreprocessorDefinitions Condition="'$(Configuration)'=='Release'">NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <RuntimeLibrary Condition="'$(Configuration)'=='Debug'">MultiThreadedDebug</RuntimeLibrary>
-      <RuntimeLibrary Condition="'$(Configuration)'=='Release'">MultiThreaded</RuntimeLibrary>
+      <RuntimeLibrary Condition="'$(Configuration)'=='Debug'">$(FluentRuntimeLibrary_Debug)</RuntimeLibrary>
+      <RuntimeLibrary Condition="'$(Configuration)'=='Release'">$(FluentRuntimeLibrary_Release)</RuntimeLibrary>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -124,7 +124,6 @@
     <ClCompile Include="unit\FrameWaiterTests.cpp" />
     <ClCompile Include="unit\AnimatedValueTests.cpp" />
     <ClCompile Include="unit\ButtonBaseTests.cpp" />
-    <ClCompile Include="unit\RepeatButtonTests.cpp" />
     <ClCompile Include="unit\RangeBaseTests.cpp" />
     <ClCompile Include="unit\RangeBaseInvertedTests.cpp" />
     <ClCompile Include="unit\CompositionBackendTests.cpp" />
@@ -140,22 +139,14 @@
     <ClCompile Include="unit\TabControlTests.cpp" />
     <ClCompile Include="unit\DataGridTests.cpp" />
     <ClCompile Include="unit\ControlZoomTests.cpp" />
-    <ClCompile Include="unit\ChartTests.cpp" />
-    <ClCompile Include="unit\InfoBarMetricTests.cpp" />
     <ClCompile Include="unit\ExpanderTests.cpp" />
     <ClCompile Include="unit\ExpanderTransitionTests.cpp" />
     <ClCompile Include="unit\GroupBoxTests.cpp" />
     <ClCompile Include="unit\HyperlinkTests.cpp" />
     <ClCompile Include="unit\ImageEventsTests.cpp" />
     <ClCompile Include="unit\ComboBoxEventsTests.cpp" />
-    <ClCompile Include="unit\CalendarEventsTests.cpp" />
-    <ClCompile Include="unit\DatePickerEventsTests.cpp" />
-    <ClCompile Include="unit\CalendarConstraintsTests.cpp" />
-    <ClCompile Include="unit\CalendarTests.cpp" />
     <ClCompile Include="unit\InheritanceExamplesTest.cpp" />
-    <ClCompile Include="unit\DatePickerTests.cpp" />
     <ClCompile Include="unit\ScrollPanelTests.cpp" />
-    <ClCompile Include="unit\SeparatorTests.cpp" />
     <ClCompile Include="unit\ToolBarTests.cpp" />
     <ClCompile Include="unit\StatusBarTests.cpp" />
     <ClCompile Include="unit\UniformGridTests.cpp" />
@@ -181,6 +172,7 @@
     <ClCompile Include="unit\RichTextBoxTests.cpp" />
     <ClCompile Include="unit\RichTextBoxEventsTests.cpp" />
     <ClCompile Include="unit\ScrollViewerEventsTests.cpp" />
+    <ClCompile Include="unit\ScrollViewerSettleTests.cpp" />
     <ClCompile Include="unit\GridSplitterEventsTests.cpp" />
     <ClCompile Include="unit\GridSplitterTrackUnitTests.cpp" />
     <ClCompile Include="unit\MenuFlyoutEventsTests.cpp" />
@@ -233,7 +225,6 @@
     <ClCompile Include="component\FocusRingClipMatrixTests.cpp" />
     <ClCompile Include="component\LabelWeightMeasureTests.cpp" />
     <ClCompile Include="unit\PanelChildManagementTests.cpp" />
-    <ClCompile Include="component\StockAnalyzerShapeTests.cpp" />
     <ClCompile Include="component\InitialStateNoAnimationTests.cpp" />
     <ClCompile Include="component\SelfInspectionTests.cpp" />
     <ClCompile Include="component\DisabledAndInteractionStateTests.cpp" />

@@ -33,10 +33,9 @@ token 化主题），有 XAML 经验即可平移。
 
 ## 控件
 
-基础：Button / RepeatButton / CheckBox / RadioButton / ToggleSwitch / Slider / ProgressBar /
-TextBlock / TextBox / PasswordBox / Hyperlink / Image / Separator / Rating / NumericUpDown
+基础：Button / CheckBox / RadioButton / ToggleSwitch / Slider / ProgressBar /
+TextBlock / TextBox / PasswordBox / Hyperlink / Image / NumericUpDown
 
-状态与数据展示：InfoBar（内联提示条）/ Metric（指标卡）/ Chart（折线/柱状/K 线）
 
 选择与导航：ComboBox（可编辑）/ ListBox（虚拟化，O(visible) 绘制）/
 TreeView（虚拟化，双击展开/折叠）/ DataGrid（虚拟化，列定义、排序、单元格编辑）/
@@ -44,7 +43,7 @@ TabControl / MenuBar / MenuFlyout（上下文菜单、下拉、子菜单）/
 ToolBar（命令条，溢出进 flyout）/ StatusBar
 
 文本与日期：TextArea（NoWrap/Wrap 两模式虚拟化，28 MB 秒开）/ RichTextBox（段落缩进）/
-LogViewer（高吞吐 log 追加）/ DatePicker / Calendar
+LogViewer（高吞吐 log 追加）
 
 对话框：ContentDialog / MessageDialog / OpenFileDialog / SaveFileDialog（系统文件对话框封装）
 

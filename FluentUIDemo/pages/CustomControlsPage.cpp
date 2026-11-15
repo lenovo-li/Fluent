@@ -48,20 +48,6 @@ void OnAnimationTick(float dtSec) override {
     Invalidate();
 })");
 
-    // LunarCalendar
-    auto title2 = content->Add(std::make_unique<TextBlock>());
-    title2->SetText(L"LunarCalendar (Inherits Calendar)");
-    title2->SetFontSize(20.0f);
-    title2->SetMargin(Thickness{0, 24.0f, 0, 8.0f});
-
-    auto desc2 = content->Add(std::make_unique<TextBlock>());
-    desc2->SetText(L"Calls Calendar::RenderCell() to reuse base rendering, adds lunar dates below.");
-    desc2->SetMargin(Thickness{0, 0, 0, 12.0f});
-
-    auto* card2 = CreateExampleCard(content, L"Calendar with Lunar Dates");
-    auto lunar = card2->Add(std::make_unique<LunarCalendar>());
-    lunar->SetSelectedDate(2026, 9, 27);
-
     // BigButton
     auto title3 = content->Add(std::make_unique<TextBlock>());
     title3->SetText(L"BigButton (Inherits Button)");

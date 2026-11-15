@@ -82,4 +82,32 @@ ComPtr<IDCompositionAnimation> MakeBlink(IDCompositionDevice2* device,
     return anim;
 }
 
+ComPtr<IDCompositionAnimation> MakeRotationSweep(IDCompositionDevice2* device,
+                                                 double rps) {
+    ComPtr<IDCompositionAnimation> anim;
+    if (!device || FAILED(device->CreateAnimation(anim.GetAddressOf()))) {
+        TraceMsg(kTag, "CreateAnimation (rotation sweep) failed");
+        return nullptr;
+    }
+    if (rps <= 0.0) rps = 1.0;  // guard: fall back to 1 revolution/second
+
+    // A LINEAR cubic: angle(t) = 360 * rps * t (degrees per second). We rotate
+    // from 0° to 360° over duration = 1/rps, then AddRepeat loops that segment.
+    // The constant term is 0, the linear term is the angular velocity in deg/sec.
+    const double period = 1.0 / rps;
+    anim->AddCubic(/*beginOffset*/ 0.0,
+                   /*constant d*/ 0.0f,
+                   /*linear  c*/ static_cast<float>(360.0 * rps),
+                   /*square  b*/ 0.0f,
+                   /*cube    a*/ 0.0f);
+    // Replays [period - period, period) = [0, period), looping the 0→360 sweep.
+    // No End() — that would stop the loop.
+    HRESULT hr = anim->AddRepeat(/*beginOffset*/ period, /*durationToRepeat*/ period);
+    if (FAILED(hr)) {
+        Trace(kTag, "AddRepeat (rotation) FAILED", hr);
+        return nullptr;  // a non-looping rotation would freeze at 360°
+    }
+    return anim;
+}
+
 } // namespace fluent

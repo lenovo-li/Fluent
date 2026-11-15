@@ -22,7 +22,7 @@ AutomationHost（每个窗口一个，popup 按需一个）
 - **peer 惰性创建**：只有客户端访问到某个元素时才创建。没有客户端时每个元素只多一个空指针。
 - **虚拟化控件不为每行建元素**：容器 peer 按需为客户端访问到的行创建 ItemPeer，按 key 缓存，
   上限 1024 个。key 的选择决定内容变化时客户端看到什么：下标（ListBox、DataGrid，行数变化时整体释放）、
-  稳定 id（TreeView 的行 id、Calendar 的日期、LogViewer 的行序号）。
+  稳定 id（TreeView 的行 id、LogViewer 的行序号）。
 
 ## 二、实测结论
 
@@ -112,7 +112,6 @@ PowerShell UIA 客户端都试过）没有收到。元素级订阅能收到同�
 
 扩展库（`extensions/`）的控件在自己的 .cpp 里重写 `CreateAutomationPeer()`，只用公开的
 `FluentUI/automation/*.h`，不碰 COM。检查扩展控件时要看的是它“画了什么基类不知道的东西”：
-BigButton 的副标题、LunarCalendar 格子里的农历、WizardControl 当前在第几步。只继承基类 peer 时，
 这些文字和状态客户端读不到。不可交互但有意义的控件（转圈的 SpinnerControl、模态的 OverlayHost）
 默认 peer 是无名的 Pane，要给出 ControlType 和名字。
 

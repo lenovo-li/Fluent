@@ -11,7 +11,6 @@ project references it too (`tests/unit/CustomControlsTests.cpp`).
 
 `extensions/CustomControls/` is a **separate library** demonstrating how end users should extend FluentUI by inheriting controls. It contains four working examples:
 
-1. **LunarCalendar**: adds lunar dates below Gregorian days
 2. **BigButton**: 64dp tall button with icon + title + subtitle
 3. **LogSlider**: snaps to powers of ten (1, 10, 100, 1000); arrow keys step one decade
 4. **SpinnerControl**: a fully custom animated control (derives `Control`)
@@ -58,7 +57,6 @@ Using the controls from an app:
 using namespace fluent::custom;
 
 // Panels own their children: Add takes std::unique_ptr and returns the raw pointer.
-auto* lunarCal = panel->Add(std::make_unique<LunarCalendar>());
 lunarCal->SetSelectedDate(2026, 9, 27);
 
 auto* bigBtn = panel->Add(std::make_unique<BigButton>());

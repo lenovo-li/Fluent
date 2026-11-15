@@ -61,8 +61,8 @@
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <PreprocessorDefinitions Condition="'$(Configuration)'=='Debug'">_DEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PreprocessorDefinitions Condition="'$(Configuration)'=='Release'">NDEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <RuntimeLibrary Condition="'$(Configuration)'=='Debug'">MultiThreadedDebug</RuntimeLibrary>
-      <RuntimeLibrary Condition="'$(Configuration)'=='Release'">MultiThreaded</RuntimeLibrary>
+      <RuntimeLibrary Condition="'$(Configuration)'=='Debug'">$(FluentRuntimeLibrary_Debug)</RuntimeLibrary>
+      <RuntimeLibrary Condition="'$(Configuration)'=='Release'">$(FluentRuntimeLibrary_Release)</RuntimeLibrary>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -141,18 +141,14 @@
     <ClInclude Include="text\UndoStack.h" />
     <ClInclude Include="controls\CheckBox.h" />
     <ClInclude Include="controls\RadioButton.h" />
-    <ClInclude Include="controls\RepeatButton.h" />
     <ClInclude Include="controls\ToggleSwitch.h" />
     <ClInclude Include="controls\ToggleVisuals.h" />
     <ClInclude Include="controls\Slider.h" />
     <ClInclude Include="controls\InfoBar.h" />
-    <ClInclude Include="controls\Metric.h" />
     <ClInclude Include="controls\DataGrid.h" />
     <ClInclude Include="controls\LogViewer.h" />
     <ClInclude Include="controls\RichTextBox.h" />
     <ClInclude Include="controls\RichTextDocument.h" />
-    <ClInclude Include="controls\Chart.h" />
-    <ClInclude Include="controls\Separator.h" />
     <ClInclude Include="controls\ProgressBar.h" />
     <ClInclude Include="controls\ProgressSweepVisual.h" />
     <ClInclude Include="controls\ComboBox.h" />
@@ -162,11 +158,8 @@
     <ClInclude Include="controls\MessageDialog.h" />
     <ClInclude Include="controls\TabControl.h" />
     <ClInclude Include="controls\Hyperlink.h" />
-    <ClInclude Include="controls\Calendar.h" />
-    <ClInclude Include="controls\DatePicker.h" />
     <ClInclude Include="controls\ToolBar.h" />
     <ClInclude Include="controls\StatusBar.h" />
-    <ClInclude Include="controls\Rating.h" />
     <ClInclude Include="controls\NumericUpDown.h" />
     <ClInclude Include="dialogs\FileDialog.h" />
     <ClInclude Include="window\NativeWindowHost.h" />
@@ -265,18 +258,14 @@
     <ClCompile Include="text\UndoStack.cpp" />
     <ClCompile Include="controls\CheckBox.cpp" />
     <ClCompile Include="controls\RadioButton.cpp" />
-    <ClCompile Include="controls\RepeatButton.cpp" />
     <ClCompile Include="controls\ToggleSwitch.cpp" />
     <ClCompile Include="controls\ToggleVisuals.cpp" />
     <ClCompile Include="controls\Slider.cpp" />
     <ClCompile Include="controls\InfoBar.cpp" />
-    <ClCompile Include="controls\Metric.cpp" />
     <ClCompile Include="controls\DataGrid.cpp" />
     <ClCompile Include="controls\LogViewer.cpp" />
     <ClCompile Include="controls\RichTextBox.cpp" />
     <ClCompile Include="controls\RichTextDocument.cpp" />
-    <ClCompile Include="controls\Chart.cpp" />
-    <ClCompile Include="controls\Separator.cpp" />
     <ClCompile Include="controls\ProgressBar.cpp" />
     <ClCompile Include="controls\ProgressSweepVisual.cpp" />
     <ClCompile Include="controls\ComboBox.cpp" />
@@ -286,11 +275,8 @@
     <ClCompile Include="controls\MessageDialog.cpp" />
     <ClCompile Include="controls\TabControl.cpp" />
     <ClCompile Include="controls\Hyperlink.cpp" />
-    <ClCompile Include="controls\Calendar.cpp" />
-    <ClCompile Include="controls\DatePicker.cpp" />
     <ClCompile Include="controls\ToolBar.cpp" />
     <ClCompile Include="controls\StatusBar.cpp" />
-    <ClCompile Include="controls\Rating.cpp" />
     <ClCompile Include="controls\NumericUpDown.cpp" />
     <ClCompile Include="dialogs\FileDialog.cpp" />
     <ClCompile Include="window\NativeWindowHost.cpp" />
@@ -323,7 +309,6 @@
     <ClCompile Include="services\TooltipService.cpp" />
     <ClCompile Include="window\WindowAppearance.cpp" />
     <ClCompile Include="diagnostics\DisplaySyncScheduler.cpp" />
-    <ClCompile Include="diagnostics\LayoutCostProbe.cpp" />
     <ClCompile Include="diagnostics\PerformanceCounters.cpp" />
     <ClCompile Include="diagnostics\SessionLog.cpp" />
   </ItemGroup>

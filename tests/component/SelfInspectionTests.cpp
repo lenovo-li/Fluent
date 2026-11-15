@@ -15,7 +15,6 @@
 // hand-typed height smaller than its content needs, which silently shears the text.
 
 #include "../framework/Test.h"
-#include "../../FluentUI/controls/Metric.h"
 #include "../../FluentUI/controls/InfoBar.h"
 #include "../../FluentUI/controls/TextBlock.h"
 #include "../../FluentUI/controls/CheckBox.h"
@@ -72,6 +71,24 @@ struct Env {
         ctx.dpiScale = 1.0f;
     }
     bool Ready() { return host.DWrite().Valid(); }
+};
+
+// A three-line KPI tile (label, value, delta) built from TextBlocks. It stands in for the
+// Metric control the original defect was found in (that control has since been removed);
+// it is its own type so the detector test can check the flagged node by name.
+class MetricTile : public StackPanel {
+public:
+    MetricTile(const wchar_t* label, const wchar_t* value, const wchar_t* delta) {
+        auto* l = Add(std::make_unique<TextBlock>());
+        l->SetText(label);
+        l->SetDimmed(true);
+        auto* v = Add(std::make_unique<TextBlock>());
+        v->SetText(value);
+        v->SetFontSize(20.0f);
+        auto* d = Add(std::make_unique<TextBlock>());
+        d->SetText(delta);
+        d->SetDimmed(true);
+    }
 };
 
 // --- The inspector's core logic, duplicated here ON PURPOSE -----------------
@@ -191,11 +208,8 @@ TEST(SelfInspection, HealthyTreeReportsNoCompression) {
     strip->AddRow(GridLength::Auto());          // content-sized: the correct shape
     for (int i = 0; i < 3; ++i) strip->AddColumn(GridLength::Star(1.0f));
     for (int i = 0; i < 3; ++i) {
-        auto* m = strip->Add(std::make_unique<Metric>());
+        auto* m = strip->Add(std::make_unique<MetricTile>(L"指标", L"40.31", L"行业中位 31.2"));
         strip->SetCell(m, 0, i);
-        m->SetLabel(L"指标");
-        m->SetValue(L"40.31");
-        m->SetDelta(L"行业中位 31.2", Metric::Trend::Flat);
     }
 
     root.Measure(800.0f, 600.0f);
@@ -222,11 +236,8 @@ TEST(SelfInspection, DetectsTheHandTypedHeightThatShearedTheMetricText) {
     strip->AddColumn(GridLength::Star(1.0f));
     strip->SetHeight(58.0f);                     // the original bug
 
-    auto* m = strip->Add(std::make_unique<Metric>());
+    auto* m = strip->Add(std::make_unique<MetricTile>(L"市盈率 TTM", L"28.40", L"行业中位 31.2"));
     strip->SetCell(m, 0, 0);
-    m->SetLabel(L"市盈率 TTM");
-    m->SetValue(L"28.40");
-    m->SetDelta(L"行业中位 31.2", Metric::Trend::Flat);
 
     root.Measure(800.0f, 600.0f);
     root.Arrange(RectDip{0.0f, 0.0f, 800.0f, 600.0f});
@@ -266,11 +277,8 @@ TEST(SelfInspection, TheSameTreeIsCleanOnceTheRowSizesToContent) {
         strip->AddRow(pinHeight ? GridLength::Star(1.0f) : GridLength::Auto());
         strip->AddColumn(GridLength::Star(1.0f));
         if (pinHeight) strip->SetHeight(58.0f);
-        auto* m = strip->Add(std::make_unique<Metric>());
+        auto* m = strip->Add(std::make_unique<MetricTile>(L"市盈率 TTM", L"28.40", L"行业中位 31.2"));
         strip->SetCell(m, 0, 0);
-        m->SetLabel(L"市盈率 TTM");
-        m->SetValue(L"28.40");
-        m->SetDelta(L"行业中位 31.2", Metric::Trend::Flat);
         root->Measure(800.0f, 600.0f);
         root->Arrange(RectDip{0.0f, 0.0f, 800.0f, 600.0f});
         return root;

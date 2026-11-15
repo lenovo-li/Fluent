@@ -90,17 +90,17 @@ std::unique_ptr<Panel> GalleryApp::BuildContent() {
 void GalleryApp::BuildAllPages() {
     static constexpr int kPageIds[] = {
         // 输入 · Input
-        101, 102, 103, 104, 109, 201, 208, 202, 203, 204, 205, 206, 111, 107,
+        101, 102, 103, 104, 109, 201, 208, 202, 203,   206,  
         // 显示 · Display
-        301, 105, 106, 108,
+        301, 105, 106, 
         // 文本编辑 · Text Editing
         302, 409, 408,
         // 选择器 · Selectors
         401, 402,
         // 数据展示 · Data & Visualization
-        404, 405,
+        404, 403,
         // 状态与反馈 · Status & Feedback
-        403, 406, 407,
+        406,
         // 布局容器 · Layout
         501, 502, 503, 504, 505, 506, 507, 508, 509, 510, 511, 608, 512,
         // 窗口与导航 · Window & Navigation
@@ -112,7 +112,7 @@ void GalleryApp::BuildAllPages() {
         // 性能与诊断 · Performance
         701, 702, 703, 704, 705, 707,
         // 真实应用 · Real Apps
-        901, 902,
+        902,
     };
 
     for (int id : kPageIds) {
@@ -139,18 +139,13 @@ std::vector<TreeViewRow> GalleryApp::BuildNavigationTree() {
     rows.push_back({208, 1000, L"PasswordBox", 1, false, false, true, TreeViewIcon::None});
     rows.push_back({202, 1000, L"Slider", 1, false, false, true, TreeViewIcon::None});
     rows.push_back({203, 1000, L"ComboBox", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({204, 1000, L"DatePicker", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({205, 1000, L"Calendar", 1, false, false, true, TreeViewIcon::None});
     rows.push_back({206, 1000, L"NumericUpDown", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({111, 1000, L"Rating", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({107, 1000, L"RepeatButton", 1, false, false, true, TreeViewIcon::None});
 
     // 2000: 显示 · Display
     rows.push_back({2000, -1, L"显示 · Display", 0, false, true, true, TreeViewIcon::Folder});
     rows.push_back({301, 2000, L"TextBlock", 1, false, false, true, TreeViewIcon::None});
     rows.push_back({105, 2000, L"Hyperlink", 1, false, false, true, TreeViewIcon::None});
     rows.push_back({106, 2000, L"Image", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({108, 2000, L"Separator", 1, false, false, true, TreeViewIcon::None});
 
     // 3000: 文本编辑 · Text Editing
     rows.push_back({3000, -1, L"文本编辑 · Text Editing", 0, false, true, true, TreeViewIcon::Folder});
@@ -166,13 +161,11 @@ std::vector<TreeViewRow> GalleryApp::BuildNavigationTree() {
     // 5000: 数据展示 · Data & Visualization
     rows.push_back({5000, -1, L"数据展示 · Data & Visualization", 0, false, true, true, TreeViewIcon::Folder});
     rows.push_back({404, 5000, L"DataGrid", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({405, 5000, L"Chart", 1, false, false, true, TreeViewIcon::None});
 
     // 6000: 状态与反馈 · Status & Feedback
     rows.push_back({6000, -1, L"状态与反馈 · Status & Feedback", 0, false, true, true, TreeViewIcon::Folder});
     rows.push_back({403, 6000, L"ProgressBar", 1, false, false, true, TreeViewIcon::None});
     rows.push_back({406, 6000, L"InfoBar", 1, false, false, true, TreeViewIcon::None});
-    rows.push_back({407, 6000, L"Metric", 1, false, false, true, TreeViewIcon::None});
 
     // 7000: 布局容器 · Layout
     rows.push_back({7000, -1, L"布局容器 · Layout", 0, false, true, true, TreeViewIcon::Folder});
@@ -230,7 +223,6 @@ std::vector<TreeViewRow> GalleryApp::BuildNavigationTree() {
 
     // 12000: 真实应用 · Real Apps
     rows.push_back({12000, -1, L"真实应用 · Real Apps", 0, false, true, true, TreeViewIcon::Folder});
-    rows.push_back({901, 12000, L"A股分析工具", 1, false, false, true, TreeViewIcon::None});
     rows.push_back({902, 12000, L"自我调试 · Inspector", 1, false, false, true, TreeViewIcon::None});
 
     return rows;
@@ -257,14 +249,6 @@ void GalleryApp::OnNavigationChanged(TreeView& tree, const TreeSelection& sel) {
     if (it != pages_.end() && it->second) {
         it->second->SetVisible(true);
         currentPageId_ = newPageId;
-        // Label the resize traces with the page that is actually on screen. The
-        // TreeView row text IS the page name, so there is nothing to map — and
-        // nothing to keep in sync when a page is added.
-        if (ownerWindow_) {
-            if (NativeWindowHost* win = ownerWindow_()) {
-                win->SetResizeTraceLabel(sel.row->text);
-            }
-        }
     }
 }
 
@@ -276,10 +260,7 @@ std::unique_ptr<ScrollPanel> GalleryApp::CreatePageForId(int id) {
         case 104: return CreateToggleSwitchPage();
         case 105: return CreateHyperlinkPage();
         case 106: return CreateImagePage();
-        case 107: return CreateRepeatButtonPage();
-        case 108: return CreateSeparatorPage();
         case 109: return CreateToggleButtonPage();
-        case 111: return CreateRatingPage();
         case 112: return CreateCustomControlsPage();
         case 113: return CreateInstallerControlsPage();
 
@@ -287,8 +268,6 @@ std::unique_ptr<ScrollPanel> GalleryApp::CreatePageForId(int id) {
         case 208: return CreatePasswordBoxPage();
         case 202: return CreateSliderPage();
         case 203: return CreateComboBoxPage();
-        case 204: return CreateDatePickerPage();
-        case 205: return CreateCalendarPage();
         case 206: return CreateNumericUpDownPage();
 
         case 301: return CreateTextBlockPage();
@@ -298,9 +277,7 @@ std::unique_ptr<ScrollPanel> GalleryApp::CreatePageForId(int id) {
         case 402: return CreateTreeViewPage();
         case 403: return CreateProgressBarPage();
         case 404: return CreateDataGridPage();
-        case 405: return CreateChartPage();
         case 406: return CreateInfoBarPage();
-        case 407: return CreateMetricPage();
         case 408: return CreateLogViewerPage();
         case 409: return CreateRichTextBoxPage();
 
@@ -316,7 +293,6 @@ std::unique_ptr<ScrollPanel> GalleryApp::CreatePageForId(int id) {
         case 510: return CreateViewboxPage();
         case 511: return CreateGroupBoxPage();
         case 512: return CreateDynamicListPage();
-        case 901: return CreateStockAnalyzerPage();
         case 902: return CreateInspectorPage();
 
         case 801: return CreateTooltipFeaturePage();

@@ -3,7 +3,6 @@
 #include "TextBlock.h"
 #include "../styling/ThemeTokens.h"
 #include "../input/InputManager.h"
-#include "../diagnostics/LayoutCostProbe.h"
 #include <algorithm>
 
 namespace fluent {
@@ -23,7 +22,6 @@ float TextBlock::ResolveTypographySize() const
 
 void TextBlock::Measure(float availW, float availH)
 {
-    LayoutCostProbe::Scope probe(LayoutCostKey::TextBlockMeasure);
     UNREFERENCED_PARAMETER(availH);
     // Size to content: measure the text at the offered width and report its
     // natural height (honoring an explicit width/height override if set).
@@ -59,7 +57,6 @@ void TextBlock::Measure(float availW, float availH)
 
 void TextBlock::OnBoundsChanged()
 {
-    LayoutCostProbe::Scope probe(LayoutCostKey::TextBlockBoundsChanged);
     UpdateMetrics();
     SetScrollOffset(scrollOffset_);
 }

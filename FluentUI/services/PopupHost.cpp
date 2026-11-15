@@ -81,7 +81,6 @@ HRESULT PopupHost::Create(HINSTANCE hInstParent, HWND hwndOwner,
     int corner = DWMWCP_ROUND;
     DwmSetWindowAttribute(hwnd_, DWMWA_WINDOW_CORNER_PREFERENCE, &corner, sizeof(corner));
 
-    TraceMsg(kTag, "Create: window created (hidden)");
     return S_OK;
 }
 
@@ -89,7 +88,6 @@ HRESULT PopupHost::InitGraphics(UINT pixelW, UINT pixelH) {
     FL_RETURN_IF_FAILED(kTag, comp_.Initialize(d2d_, hwnd_, pixelW, pixelH));
     graphicsReady_ = true;
     graphicsDevice_ = d2d_->D2DDevice();
-    TraceMsg(kTag, "InitGraphics: DCompHost initialized");
     return S_OK;
 }
 
@@ -130,12 +128,6 @@ HRESULT PopupHost::Open(const RECT& anchorScreenRect, float wDip, float hDip) {
     if (x < mi.rcWork.left) x = mi.rcWork.left;
     if (w > mi.rcWork.right - mi.rcWork.left) w = mi.rcWork.right - mi.rcWork.left;
 
-    FL_TRACEF(kTag, "Open: anchor=(%d,%d,%dx%d) dpi=%u pos=(%d,%d) size=(%dx%d)",
-              anchorScreenRect.left, anchorScreenRect.top,
-              anchorScreenRect.right - anchorScreenRect.left,
-              anchorScreenRect.bottom - anchorScreenRect.top,
-              dpi_, x, y, w, h);
-
     // Resize and reposition the window (but don't show yet).
     SetWindowPos(hwnd_, HWND_TOP, x, y, w, h, SWP_NOACTIVATE | SWP_NOREDRAW);
 
@@ -147,7 +139,7 @@ HRESULT PopupHost::Open(const RECT& anchorScreenRect, float wDip, float hDip) {
 
     // Rebuild the composition target if the owner's device was replaced since it was
     // made. NativeWindowHost::RecoverDevice rebuilds the shared D2DContext IN PLACE,
-    // and resident popups (tooltip, ComboBox, DatePicker) are created once and reused,
+    // and resident popups (tooltip, ComboBox) are created once and reused,
     // so without this they kept a DComp device bound to the dead D2D device and never
     // drew again. Checked here because every popup passes through Open, so no owner
     // has to enumerate them after a device loss.
@@ -204,7 +196,6 @@ HRESULT PopupHost::Open(const RECT& anchorScreenRect, float wDip, float hDip) {
     // revokes it (WM_CAPTURECHANGED), causing the popup to close instantly.
     // Instead, the parent window implements light-dismiss by checking clicks
     // outside the popup via ContainsScreenPoint().
-    TraceMsg(kTag, "Open: popup shown (no capture, parent handles light-dismiss)");
 
     // Tell the owner a popup is now on screen so it can dismiss its hover tooltip
     // (which would otherwise sit on top of this popup's first row) and hold it off
@@ -233,11 +224,10 @@ void PopupHost::Close() {
     
     ShowWindow(hwnd_, SW_HIDE);
     state_ = PopupState::Closed;
-    TraceMsg(kTag, "Close: popup hidden");
     if (automation_) automation_->OnPopupHidden();  // MenuClosed, only with a listener
 
     // The owner's callback runs LAST, with the popup already Closed. ComboBox and
-    // DatePicker raise their public DropDownClosed / CalendarClosed from it, and a
+    // ComboBox raises its public DropDownClosed from it, and a
     // handler may reopen the popup, which CanOpen rejected while this callback still
     // ran in Closing. Nothing below the call touches a member and the callback runs
     // from a local copy, so THIS function survives the owner being destroyed inside
@@ -534,7 +524,6 @@ void PopupHost::RouteMouseDown(int px, int py) {
     POINT pt = {px, py};
     if (!PtInRect(&rc, pt)) {
         if (lightDismiss_) {
-            TraceMsg(kTag, "RouteMouseDown: outside client rect, closing");
             Close();
         }
         return;

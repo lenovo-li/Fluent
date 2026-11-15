@@ -416,8 +416,6 @@ void ComboBox::OnAttachedToTree() {
     popup_->SetContent(listView_.get());
     // Every close path, including the popup's own light dismiss, funnels here.
     popup_->SetOnClose([this]() { OnPopupClosed(); });
-
-    TraceMsg(kTag, "OnAttachedToTree: popup and list view created");
 }
 
 void ComboBox::OnDetachedFromTree() {
@@ -432,7 +430,7 @@ void ComboBox::OnDetachedFromTree() {
     // DetachFromContext -> here, all before the popup's WndProc and the list's
     // pointer handler have returned. Resetting them here freed the PopupHost (and
     // the InputManager mid-PointerPressed) and the list under their own frames.
-    // DatePicker had the same bug and keeps its popup the same way. Kept objects
+    // Kept objects
     // cost one hidden HWND; OnAttachedToTree reuses them on a re-attach to this
     // window, and ~ComboBox destroys them.
     window_ = nullptr;
@@ -719,7 +717,6 @@ void ComboBox::OpenPopup() {
                 return true;  // consumed
             });
         }
-        TraceMsg(kTag, "OpenPopup: popup shown");
         // Raised only on the success path: a failed Open left no dropdown, and
         // reporting one would have a deferred-loading handler fill a list nobody
         // can see.

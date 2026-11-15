@@ -328,7 +328,6 @@ void Image::LoadImage() {
         return;
     }
 
-    FL_TRACEF(kTag, "loaded %ux%u px (%.1fx%.1f DIP)", pw, ph, nativeSize_.w, nativeSize_.h);
     RaiseOpened();
 }
 
@@ -397,8 +396,6 @@ void Image::LoadFallback() {
         ClearImage();
         return;
     }
-
-    FL_TRACEF(kTag, "fallback loaded %ux%u px", pw, ph);
 }
 
 } // namespace fluent

@@ -46,9 +46,7 @@ class NativeWindowHost;
 class ContentDialog;
 class TextBox;
 class InfoBar;
-class Metric;
 class DataGrid;
-class Chart;
 class Hyperlink;
 class ProgressBar;
 class ToggleSwitch;
@@ -56,7 +54,6 @@ class CheckBox;
 class Slider;
 class ComboBox;
 class NumericUpDown;
-class Rating;
 class LogViewer;
 
 // 五个强调色样本，被所有 AccentColor 演示复用，放一处以免各页给出不同的五个。
@@ -128,18 +125,13 @@ private:
     std::unique_ptr<ScrollPanel> CreateTextBlockPage();
     std::unique_ptr<ScrollPanel> CreateHyperlinkPage();
     std::unique_ptr<ScrollPanel> CreateImagePage();
-    std::unique_ptr<ScrollPanel> CreateRepeatButtonPage();
-    std::unique_ptr<ScrollPanel> CreateSeparatorPage();
 
     std::unique_ptr<ScrollPanel> CreateTextAreaPage();
     std::unique_ptr<ScrollPanel> CreateTreeViewPage();
-    std::unique_ptr<ScrollPanel> CreateCalendarPage();
-    std::unique_ptr<ScrollPanel> CreateDatePickerPage();
     std::unique_ptr<ScrollPanel> CreateSliderPage();
     std::unique_ptr<ScrollPanel> CreateComboBoxPage();
     std::unique_ptr<ScrollPanel> CreateListBoxPage();
     std::unique_ptr<ScrollPanel> CreateNumericUpDownPage();
-    std::unique_ptr<ScrollPanel> CreateRatingPage();
 
     std::unique_ptr<ScrollPanel> CreateProgressBarPage();
     std::unique_ptr<ScrollPanel> CreateTabControlPage();
@@ -158,15 +150,11 @@ private:
     std::unique_ptr<ScrollPanel> CreateExpanderPage();
     // 新控件的独立展示页（pages/InfoBarMetricPages.cpp、pages/DataGridChartPages.cpp）。
     std::unique_ptr<ScrollPanel> CreateInfoBarPage();
-    std::unique_ptr<ScrollPanel> CreateMetricPage();
     std::unique_ptr<ScrollPanel> CreateLogViewerPage();
     std::unique_ptr<ScrollPanel> CreateRichTextBoxPage();
     std::unique_ptr<ScrollPanel> CreateDataGridPage();
-    std::unique_ptr<ScrollPanel> CreateChartPage();
     // 自我调试页：用本框架的控件检查本框架的运行状态（pages/InspectorPage.cpp）。
     std::unique_ptr<ScrollPanel> CreateInspectorPage();
-    // A-share analysis tool UI replica (see pages/StockAnalyzerPage.cpp).
-    std::unique_ptr<ScrollPanel> CreateStockAnalyzerPage();
     std::unique_ptr<ScrollPanel> CreateUniformGridPage();
     std::unique_ptr<ScrollPanel> CreateViewboxPage();
     std::unique_ptr<ScrollPanel> CreateGroupBoxPage();
@@ -338,11 +326,7 @@ private:
     NumericUpDown* numMixPrice_ = nullptr;
     CheckBox* numMixTax_ = nullptr;
     TextBlock* numMixTotal_ = nullptr;
-    // Rating 页「混合使用」的评价卡：一个评分值同时驱动结论文字和满意度条，
-    // 演示一个值源可以有多个消费者。
-    Rating* ratingMixStars_ = nullptr;
-    TextBlock* ratingMixText_ = nullptr;
-    ProgressBar* ratingMixBar_ = nullptr;
+    // Slider 页「绑定数据」演示：一个滑块值同时驱动多个控件。
     Slider* toggleGroupSlider_ = nullptr;
     CheckBox* toggleGroupCheck_ = nullptr;
     Button* toggleGroupButton_ = nullptr;
@@ -355,7 +339,6 @@ private:
     TextBox* formInput_ = nullptr;
     InfoBar* formFeedback_ = nullptr;
     Subscription formSubmitSub_;
-    Metric* metricLive_ = nullptr;
     Subscription metricLiveSub_;
     DataGrid* gridDemo_ = nullptr;
     TextBlock* gridStatus_ = nullptr;
@@ -367,9 +350,6 @@ private:
     DataGrid* multiGridDemo_ = nullptr;
     TextBlock* multiGridStatus_ = nullptr;
     SubscriptionBag gridSubs_;
-    Chart* chartDemo_ = nullptr;
-    TextBlock* chartStatus_ = nullptr;
-    SubscriptionBag chartSubs_;
     // 自我调试页
     TextBlock* inspectorOut_ = nullptr;
     Panel* inspectorTarget_ = nullptr;

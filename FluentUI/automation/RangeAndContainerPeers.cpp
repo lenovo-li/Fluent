@@ -6,10 +6,8 @@
 #include "../controls/Expander.h"
 #include "../controls/Hyperlink.h"
 #include "../controls/Image.h"
-#include "../controls/Metric.h"
 #include "../controls/NumericUpDown.h"
 #include "../controls/ProgressBar.h"
-#include "../controls/Rating.h"
 #include "../controls/Slider.h"
 #include "../controls/StatusBar.h"
 #include "../layout/ScrollPanel.h"
@@ -37,14 +35,6 @@ void RangeBasePeer::SetValue(double v) {
     if (!readOnly_) As<RangeBase>(*this).SetValue(static_cast<float>(v));
 }
 
-// --- Rating ---------------------------------------------------------------------
-RatingPeer::RatingPeer(Rating& o) : AutomationPeer(o) {}
-double RatingPeer::GetValue() const { return As<Rating>(*this).Value(); }
-double RatingPeer::GetMaximum() const { return As<Rating>(*this).MaxValue(); }
-bool RatingPeer::IsReadOnly() const { return As<Rating>(*this).IsReadOnly(); }
-void RatingPeer::SetValue(double v) {
-    if (!IsReadOnly()) As<Rating>(*this).SetValue(static_cast<float>(v));
-}
 
 // --- ScrollPanel ----------------------------------------------------------------
 // UIA's ScrollPattern speaks percent; -1 (UIA_ScrollPatternNoScroll) = axis cannot
@@ -132,9 +122,6 @@ std::unique_ptr<AutomationPeer> NumericUpDown::CreateAutomationPeer() {
 std::unique_ptr<AutomationPeer> ProgressBar::CreateAutomationPeer() {
     return std::make_unique<RangeBasePeer>(*this, ControlType::ProgressBar, 1.0f, true);
 }
-std::unique_ptr<AutomationPeer> Rating::CreateAutomationPeer() {
-    return std::make_unique<RatingPeer>(*this);
-}
 std::unique_ptr<AutomationPeer> ScrollPanel::CreateAutomationPeer() {
     return std::make_unique<ScrollPanelPeer>(*this);
 }
@@ -147,12 +134,6 @@ std::unique_ptr<AutomationPeer> Hyperlink::CreateAutomationPeer() {
 std::unique_ptr<AutomationPeer> StatusBar::CreateAutomationPeer() {
     return std::make_unique<LabelPeer>(*this, ControlType::StatusBar, [](const UIElement& e) {
         return static_cast<const StatusBar&>(e).Text();
-    });
-}
-std::unique_ptr<AutomationPeer> Metric::CreateAutomationPeer() {
-    return std::make_unique<LabelPeer>(*this, ControlType::Text, [](const UIElement& e) {
-        const auto& m = static_cast<const Metric&>(e);
-        return m.Value().empty() ? m.Label() : m.Label() + L" " + m.Value();
     });
 }
 std::unique_ptr<AutomationPeer> Image::CreateAutomationPeer() {

@@ -253,7 +253,7 @@ void NumericUpDown::OnPointerMoved(PointerEventArgs& e) {
         return;
     }
     // Held: dragging off the arrow suspends the repeat, dragging back resumes it.
-    // Matches RepeatButton, which stops on any exit from the Pressed state.
+    // Auto-repeat stops on any exit from the Pressed state.
     const bool stillOn = HitTestButton(e.position.x, e.position.y) == pressedButton_;
     if (stillOn && !repeating_) {
         StartRepeat(pressedButton_);
@@ -449,7 +449,7 @@ void NumericUpDown::OnAnimationTick(float dtSec) {
 
     // A while loop so a long frame does not swallow the repeats due during it,
     // capped so a multi-second stall cannot deliver hundreds at once. Same shape
-    // and same reasoning as RepeatButton::OnAnimationTick.
+    // and the tick unregisters when auto-repeat ends so idle costs nothing.
     int fired = 0;
     constexpr int kMaxPerFrame = 4;
     while (accumSec_ >= kInterval && fired < kMaxPerFrame) {

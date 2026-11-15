@@ -12,7 +12,7 @@
 //
 //   * Rounded rect, via DrawFocusRing / DrawRoundedRect(FocusRingRect(...)):
 //     Button, ComboBox, Expander header, Hyperlink, ListBox row, NumericUpDown,
-//     Rating, TabControl tab, TreeView row, ToggleSwitch.
+//     TabControl tab, TreeView row, ToggleSwitch.
 //   * CIRCLE, via DrawEllipse: RadioButton (ring around its dot at outerR +
 //     kFocusRingGap) and Slider (ring around the thumb). A circle's leftmost and
 //     rightmost ink sits at the vertical centre, and its topmost/bottommost at the
@@ -34,7 +34,6 @@
 #include "../../FluentUI/controls/ToggleSwitch.h"
 #include "../../FluentUI/controls/Slider.h"
 #include "../../FluentUI/controls/NumericUpDown.h"
-#include "../../FluentUI/controls/Rating.h"
 #include "../../FluentUI/controls/Hyperlink.h"
 #include "../../FluentUI/layout/ScrollPanel.h"
 #include "../../FluentUI/layout/StackPanel.h"
@@ -345,10 +344,10 @@ TEST(FocusRingClipMatrix, SliderThumbRingSurvivesClipAtItsOwnBounds) {
 // ============================================================================
 
 // Every rectangular-ring control behaves identically under a flush clip, because the
-// hazard belongs to the CONTAINER, not the control. Verified across four controls with
-// four different ring specs (Button 3.75 default, NumericUpDown 3.75 w/ custom corner,
-// Rating default, Hyperlink custom) so a future control-specific ring change cannot
-// quietly create an exception.
+// hazard belongs to the CONTAINER, not the control. Verified across three controls with
+// different ring specs (Button 3.75 default, NumericUpDown 3.75 w/ custom corner,
+// Hyperlink custom) so a future control-specific ring change cannot quietly create an
+// exception.
 TEST(FocusRingClipMatrix, FlushClipShearsEveryRectRingControlAlike) {
     PixelSurface s(420, 200);
     if (fltest::SkipIfNoDevice(s, "FocusRingClipMatrix.FlushClipShearsEveryRectRingControlAlike"))
@@ -368,14 +367,9 @@ TEST(FocusRingClipMatrix, FlushClipShearsEveryRectRingControlAlike) {
     num.AttachToContext(ctx);
     num.Measure(400.0f, 200.0f); num.Arrange(at); num.SetFocused(true);
 
-    Focusable<Rating> rat;
-    rat.AttachToContext(ctx);
-    rat.Measure(400.0f, 200.0f); rat.Arrange(at); rat.SetFocused(true);
-
     const Case cases[] = {
         {"Button",        [&](const DrawingContext& dc) { btn.Render(dc); }},
         {"NumericUpDown", [&](const DrawingContext& dc) { num.Render(dc); }},
-        {"Rating",        [&](const DrawingContext& dc) { rat.Render(dc); }},
     };
 
     for (const Case& c : cases) {

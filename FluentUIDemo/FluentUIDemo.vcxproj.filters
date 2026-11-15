@@ -68,7 +68,6 @@
     <ClCompile Include="pages\ShowcaseHelpers.cpp">
       <Filter>pages</Filter>
     </ClCompile>
-    <ClCompile Include="pages\StockAnalyzerPage.cpp">
       <Filter>pages</Filter>
     </ClCompile>
     <ClCompile Include="pages\LayoutPages.cpp">

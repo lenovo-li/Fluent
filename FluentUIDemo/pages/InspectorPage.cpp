@@ -30,7 +30,6 @@
 
 #include "../../FluentUI/controls/DataGrid.h"
 #include "../../FluentUI/controls/InfoBar.h"
-#include "../../FluentUI/controls/Metric.h"
 #include "../../FluentUI/controls/Button.h"
 #include "../../FluentUI/controls/TextBlock.h"
 #include "../../FluentUI/controls/CheckBox.h"
@@ -113,6 +112,22 @@ std::wstring Fmt1(float v) {
     return buf;
 }
 
+// A three-line KPI tile mimicking the Metric control that once existed.
+StackPanel* AddInspectorTile(Panel& parent, const std::wstring& label,
+                              const std::wstring& value, const std::wstring& delta) {
+    auto* tile = parent.Add(std::make_unique<StackPanel>());
+    auto* l = tile->Add(std::make_unique<TextBlock>());
+    l->SetText(label);
+    l->SetDimmed(true);
+    auto* v = tile->Add(std::make_unique<TextBlock>());
+    v->SetText(value);
+    v->SetFontSize(20.0f);
+    auto* d = tile->Add(std::make_unique<TextBlock>());
+    d->SetText(delta);
+    d->SetDimmed(true);
+    return tile;
+}
+
 }  // namespace
 
 std::unique_ptr<ScrollPanel> GalleryApp::CreateInspectorPage() {
@@ -155,17 +170,11 @@ std::unique_ptr<ScrollPanel> GalleryApp::CreateInspectorPage() {
         row->AddColumn(GridLength::Star(1.0f));
         row->AddColumn(GridLength::Star(1.0f));
 
-        auto* m1 = row->Add(std::make_unique<Metric>());
+        auto* m1 = AddInspectorTile(*row, L"示例 KPI", L"40.31", L"+0.61%");
         row->SetCell(m1, 0, 0);
-        m1->SetLabel(L"正常的 Metric");
-        m1->SetValue(L"40.31");
-        m1->SetDelta(L"+0.61%", Metric::Trend::Up);
 
-        auto* m2 = row->Add(std::make_unique<Metric>());
+        auto* m2 = AddInspectorTile(*row, L"另一个", L"28.40", L"行业中位 31.2");
         row->SetCell(m2, 0, 1);
-        m2->SetLabel(L"另一个");
-        m2->SetValue(L"28.40");
-        m2->SetDelta(L"行业中位 31.2", Metric::Trend::Flat);
 
         auto* check = stack->Add(std::make_unique<CheckBox>());
         check->SetText(L"我是一个 CheckBox");
@@ -324,25 +333,19 @@ std::unique_ptr<ScrollPanel> GalleryApp::CreateInspectorPage() {
             }
         }
 
-        auto* mHz = strip->Add(std::make_unique<Metric>());
+        auto* mHz = AddInspectorTile(*strip, L"显示器刷新率",
+                                      hz > 0 ? std::to_wstring(hz) + L" Hz" : L"未知",
+                                      hz > 0 ? (L"每帧预算 " + Fmt1(1000.0f / hz) + L" ms")
+                                             : L"查询失败，回落 60Hz");
         strip->SetCell(mHz, 0, 0);
-        mHz->SetLabel(L"显示器刷新率");
-        mHz->SetValue(hz > 0 ? std::to_wstring(hz) + L" Hz" : L"未知");
-        mHz->SetDelta(hz > 0 ? (L"每帧预算 " + Fmt1(1000.0f / hz) + L" ms")
-                             : L"查询失败，回落 60Hz",
-                      Metric::Trend::Flat);
 
-        auto* mBudget = strip->Add(std::make_unique<Metric>());
+        auto* mBudget = AddInspectorTile(*strip, L"卡顿阈值",
+                                          hz > 0 ? Fmt1(2000.0f / hz) + L" ms" : L"33.3 ms",
+                                          L"两帧，随刷新率缩放");
         strip->SetCell(mBudget, 0, 1);
-        mBudget->SetLabel(L"卡顿阈值");
-        mBudget->SetValue(hz > 0 ? Fmt1(2000.0f / hz) + L" ms" : L"33.3 ms");
-        mBudget->SetDelta(L"两帧，随刷新率缩放", Metric::Trend::Flat);
 
-        auto* mNodes = strip->Add(std::make_unique<Metric>());
+        auto* mNodes = AddInspectorTile(*strip, L"快照元素数", L"—", L"点上方「刷新快照」");
         strip->SetCell(mNodes, 0, 2);
-        mNodes->SetLabel(L"快照元素数");
-        mNodes->SetValue(L"—");
-        mNodes->SetDelta(L"点上方「刷新快照」", Metric::Trend::Flat);
     }
 
     // --- What this cannot do ----------------------------------------------
