@@ -86,7 +86,7 @@ Each control adds its peer from this library (`CreateAutomationPeer()` on the pu
   ProgressRing), named by `SetAutomationName` (default "Busy"). It is in the control view only
   while running.
 
-Tested in `tests/unit/AutomationExtensionPeerTests.cpp`; a mutation of each peer (dropping the subtitle, the lunar text, the step name, the dialog flag, ...) fails a test.
+Tested in `tests/unit/AutomationExtensionPeerTests.cpp`; a mutation of each peer (dropping the subtitle, the running state, the step name, the dialog flag, the current page) fails a test.
 
 ## Tests
 
@@ -137,6 +137,7 @@ no CMake build for this directory (see `INTEGRATION.md`).
 extensions/CustomControls/
 ├── README.md                  (this file)
 ├── INTEGRATION.md             (how the library is wired into the solution)
+├── CustomControls.h           (umbrella public header: BigButton, LogSlider, includes SpinnerControl.h)
 ├── SpinnerControl.h           (public header: SpinnerControl)
 ├── BigButton.cpp              (implementation)
 ├── LogSlider.cpp              (implementation)
@@ -148,6 +149,6 @@ extensions/CustomControls/
 
 ## Integration into FluentUIDemo
 
-The demo links `CustomControls.lib` and shows all four controls on its
+The demo links `CustomControls.lib` and shows all three controls on its
 **Custom Controls** page (`FluentUIDemo/pages/CustomControlsPage.cpp`): working
 examples of "how to extend FluentUI without forking it".

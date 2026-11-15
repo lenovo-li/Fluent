@@ -166,7 +166,7 @@ elements are not in the tree); during a transition both pages are visible for it
 `OverlayHost` is a Window with IsDialog = true while shown (WinUI's ContentDialog reports the
 same), Name = the title (or the message when there is no title), HelpText = the message; its
 children are the card's real TextBlocks, Buttons and ProgressBar. Hidden, it is not in the
-tree. Tested in `tests/unit/AutomationExtensionPeerTests.cpp`; a mutation of each peer (dropping the subtitle, the lunar text, the step name, the dialog flag, ...) fails a test.
+tree. Tested in `tests/unit/AutomationExtensionPeerTests.cpp`; a mutation of each peer (dropping the subtitle, the running state, the step name, the dialog flag, the current page) fails a test.
 
 ## Building
 

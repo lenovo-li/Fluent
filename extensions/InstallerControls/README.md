@@ -102,7 +102,7 @@ private:
 `SetAutomationName` when set); a page change raises the Name change. Its children are the
 current page only (hidden pages are not in the tree) and the Back / Next / Cancel Buttons,
 which are real Buttons with Invoke. `FolderPicker` shows the Windows folder dialog, which has
-its own UI Automation. Tested in `tests/unit/AutomationExtensionPeerTests.cpp`; a mutation of each peer (dropping the subtitle, the lunar text, the step name, the dialog flag, ...) fails a test.
+its own UI Automation. Tested in `tests/unit/AutomationExtensionPeerTests.cpp`; a mutation of each peer (dropping the subtitle, the running state, the step name, the dialog flag, the current page) fails a test.
 
 ## Building
 
