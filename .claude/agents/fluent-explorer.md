@@ -1,7 +1,7 @@
 ---
 name: fluent-explorer
 description: Read-only FluentUI researcher. Use before writing a new control or changing an existing one, to collect the real API (signatures, base classes, tokens, patterns) from the nearest existing controls and docs. Also for "where is X / how does Y work" questions spanning several files.
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob, Bash, mcp__microsoft-learn__microsoft_docs_search, mcp__microsoft-learn__microsoft_docs_fetch
 disallowedTools: NotebookEdit, Agent
 model: sonnet
 color: cyan
@@ -40,6 +40,12 @@ code before repeating it; they may have changed.
    `docs/controls/<Name>.md` if it exists and `docs/controls/inheritance-guide.md`
    for anything subclassed from `extensions/`.
 3. Read the matching `.claude/rules/*.md` for the area (rendering, text, theming...).
+4. When the task touches a Win32 / D2D / DirectWrite / DComp / WIC / UIA call the
+   repo does not already use the same way, look up its contract with
+   `microsoft_docs_search` (then `microsoft_docs_fetch` for the full page):
+   threading, HRESULTs that mean device loss, who owns the returned interface,
+   minimum Windows version. Quote the URL in the report. The repo's existing
+   usage is still the first source; the docs settle what the repo cannot.
 
 ## Report format
 

@@ -25,7 +25,11 @@ Writes stay serial: only one agent edits files or runs MSBuild at a time, becaus
 doc audit run in parallel. Skills in `.claude/skills/`: `/verify` (full
 verification via `fluent-builder`), `/new-control` (explore → implement → verify
 → review + audit → complete docs), `/doc-sync` (sync docs after code changes),
-and `task-state` (the checkpoint regimen below).
+`/demo-check` (after `/verify`: open the changed controls' gallery pages in the
+real demo through the cua-driver MCP, screenshot and read the UIA tree, as a
+pre-flight before asking the user to check on hardware), and `task-state` (the
+checkpoint regimen below). The microsoft-learn MCP is the reference for
+Win32/D2D/DComp/UIA contracts; `fluent-explorer` and `fluent-reviewer` can call it.
 
 ### Completion gate
 
@@ -132,7 +136,7 @@ needs the user to verify on real hardware. Say so rather than implying otherwise
 Custom controls are built by inheriting FluentUI controls in a **separate
 library** that links `FluentUI.lib` — never by adding them to the FluentUI source
 tree. Those libraries live under `extensions/`: `extensions/CustomControls/`
-(LunarCalendar, BigButton, LogSlider, SpinnerControl), `extensions/InstallerControls/`
+(BigButton, LogSlider, SpinnerControl), `extensions/InstallerControls/`
 and `extensions/NavigationControls/` are the working templates. The demo and the
 tests link all three.
 `examples/` is kept for something different — minimal consumer programs
@@ -157,7 +161,7 @@ renaming or changing them breaks downstream libraries.
 | `FluentUITests` | console | headless unit/component tests; count grows, so read it from a run rather than from here |
 | `FluentUIBench` | console | perf scenes; CPU-measurable ones run, GPU ones stub out |
 | `FluentSettings` | static lib | JSON config persistence (`nlohmann/json` vendored) |
-| `extensions/CustomControls` | static lib (template) | demonstrates user-library pattern: LunarCalendar, BigButton, LogSlider, SpinnerControl link FluentUI.lib |
+| `extensions/CustomControls` | static lib (template) | demonstrates user-library pattern: BigButton, LogSlider, SpinnerControl link FluentUI.lib |
 | `extensions/InstallerControls` | static lib | WizardControl + FolderPicker; linked by the demo and tests |
 | `extensions/NavigationControls` | static lib | NavRail, PageHost, OverlayHost; linked by the demo and tests |
 | `demos/TrayAppDemo` | GUI app | close-to-tray sample (window tray icon, `ShutdownMode::OnExplicitShutdown`) |
@@ -211,7 +215,11 @@ A control that works but stutters is not done.
 - **`OutputDebugStringA` on device paths.** Use the `Trace` / `TraceMsg` /
   `FL_RETURN_IF_FAILED` helpers in `fl_common.h`; tag format is
   `[FluentUI.Module]`. Every critical D3D/D2D/DComp/surface call prints its
-  HRESULT so a user's screenshot pinpoints the failure.
+  HRESULT so a user's screenshot pinpoints the failure. Trace failures,
+  fallbacks, device loss/rebuild, one-time initialization and DPI changes only.
+  Do not trace per-input or per-resize events (clicks, WM_SIZE, popup
+  open/close, selection, zoom) or success-path details: they bury the failures,
+  and with a debugger attached every `OutputDebugStringA` blocks the UI thread.
 - **Property setters go through `SetProperty(storage, value, flags)`.** It
   no-ops when unchanged (so a redundant set never schedules a frame), stores,
   and records the expanded dirty closure.

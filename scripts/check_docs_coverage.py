@@ -31,9 +31,7 @@ EXEMPT_CONTROLS = {
     "ToggleVisuals",      # internal helper for ToggleSwitch/CheckBox/RadioButton
     "ProgressSweepVisual",# internal compositor visual for ProgressBar
     "RichTextDocument",   # documented inside RichTextBox.md
-    "RepeatButton",       # primitive; no public construction
     "ContentDialog",      # base for MessageDialog; user doc is MessageDialog.md
-    "Separator",          # trivial; may merge into a "Primitives" doc later
     "Panel",              # abstract base; layout containers have their own docs
 }
 

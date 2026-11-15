@@ -1,4 +1,4 @@
-// InheritanceExamples.h — Concrete inheritance examples for Calendar, Button, Slider
+// InheritanceExamples.h — Concrete inheritance examples for Button, Slider
 //
 // These are WORKING, COMPILABLE examples demonstrating the protected inheritance APIs.
 // Lives under tests/ because only tests/unit/InheritanceExamplesTest.cpp includes it;
@@ -6,69 +6,12 @@
 // extensions/CustomControls/.
 #pragma once
 
-#include "../../FluentUI/controls/Calendar.h"
 #include "../../FluentUI/controls/Button.h"
 #include "../../FluentUI/controls/Slider.h"
 #include <cmath>
 
 namespace fluent {
 
-// =============================================================================
-// Example 1: LunarCalendar
-// =============================================================================
-// Adds lunar date display below each Gregorian day number. Demonstrates:
-// - Calling base RenderCell to reuse selection/today/day-number rendering
-// - Using CellInfo struct to get pre-computed cell state
-// - Using DWriteContext to draw additional text
-
-class LunarCalendar : public Calendar {
-protected:
-    void RenderCell(const DrawingContext& dc, const CellInfo& cell) override {
-        // First, call base to draw the standard cell (background, selection ring,
-        // today indicator, day number)
-        Calendar::RenderCell(dc, cell);
-        
-        // Then add lunar date below the day number (only for in-month, enabled dates)
-        if (!cell.inViewedMonth || !cell.isEnabled) return;
-        
-        std::wstring lunar = GetLunarDate(cell.year, cell.month, cell.day);
-        if (lunar.empty()) return;
-        
-        DWriteContext* dw = Dwrite();
-        if (!dw) return;
-        
-        // Small font, bottom half of the cell
-        if (auto* fmt = dw->Format(9.0f, DWRITE_FONT_WEIGHT_NORMAL,
-                                   DWRITE_TEXT_ALIGNMENT_CENTER,
-                                   DWRITE_PARAGRAPH_ALIGNMENT_CENTER)) {
-            D2D1_RECT_F lunarRect = D2D1::RectF(
-                cell.rect.x, cell.rect.y + cell.rect.h * 0.6f,
-                cell.rect.right(), cell.rect.bottom());
-            
-            // Use secondary text color, slightly faded
-            D2D1_COLOR_F lunarColor = Theme().colors.textSecondary;
-            lunarColor.a *= 0.8f;
-            
-            dc.DrawText(lunar.c_str(), static_cast<UINT32>(lunar.size()),
-                       fmt, lunarRect, lunarColor);
-        }
-    }
-
-private:
-    // Simplified lunar calendar conversion (real implementation would use a library)
-    std::wstring GetLunarDate(int year, int month, int day) const {
-        // Placeholder: just show "初N" for demo purposes
-        // Real implementation: call a lunar calendar library or lookup table
-        UNREFERENCED_PARAMETER(year);
-        UNREFERENCED_PARAMETER(month);
-        int lunarDay = (day % 30) + 1;  // fake
-        if (lunarDay == 1) return L"初一";
-        if (lunarDay < 11) return L"初" + std::to_wstring(lunarDay);
-        if (lunarDay < 20) return L"十" + std::to_wstring(lunarDay - 10);
-        if (lunarDay == 20) return L"二十";
-        return L"廿" + std::to_wstring(lunarDay - 20);
-    }
-};
 
 // =============================================================================
 // Example 2: BigButton

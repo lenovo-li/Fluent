@@ -30,7 +30,7 @@ namespace fluent {
 // Sent (synchronously) by PopupHost::Open to the owner window once the popup is
 // visible; wParam is the popup's HWND. NativeWindowHost uses it to dismiss the
 // hover tooltip and keep it from re-showing over the popup — the one point every
-// popup (ComboBox drop-down, DatePicker calendar, MenuFlyout / context menu, any
+// popup (ComboBox drop-down, MenuFlyout / context menu, any
 // future PopupHost user) passes through, so no control has to remember to do it.
 //
 // WM_APP+n is the documented range for application-private messages. WM_APP+17 is

@@ -58,8 +58,8 @@
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <PreprocessorDefinitions Condition="'$(Configuration)'=='Debug'">_DEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PreprocessorDefinitions Condition="'$(Configuration)'=='Release'">NDEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <RuntimeLibrary Condition="'$(Configuration)'=='Debug'">MultiThreadedDebug</RuntimeLibrary>
-      <RuntimeLibrary Condition="'$(Configuration)'=='Release'">MultiThreaded</RuntimeLibrary>
+      <RuntimeLibrary Condition="'$(Configuration)'=='Debug'">$(FluentRuntimeLibrary_Debug)</RuntimeLibrary>
+      <RuntimeLibrary Condition="'$(Configuration)'=='Release'">$(FluentRuntimeLibrary_Release)</RuntimeLibrary>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -109,7 +109,6 @@
     <ClCompile Include="pages\RichTextBoxPage.cpp" />
     <ClCompile Include="pages\InspectorPage.cpp" />
     <ClCompile Include="pages\ShowcaseHelpers.cpp" />
-    <ClCompile Include="pages\StockAnalyzerPage.cpp" />
     <ClCompile Include="pages\LayoutPages.cpp" />
     <ClCompile Include="pages\GroupBoxPage.cpp" />
     <ClCompile Include="pages\MenuPages.cpp" />

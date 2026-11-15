@@ -137,7 +137,6 @@ void NavRail::UserSelect(int index) {
     if (index == selectedIndex_) { Invalidate(); return; }
     selectedIndex_ = index;
     Invalidate();
-    NAV_TRACEF("[NavigationControls.NavRail] select %d\n", index);
     int payload = index;
     selectionChanged_.Raise(*this, payload);
 }
@@ -195,8 +194,6 @@ void NavRail::SetExpanded(bool expanded, bool animate) {
     } else if (WindowServices* w = Window()) {
         w->RequestAnimationUpdate();  // a programmatic change has no input to wake the tick
     }
-    NAV_TRACEF("[NavigationControls.NavRail] pane expanded=%d animate=%d\n",
-               expanded_ ? 1 : 0, animate ? 1 : 0);
     InvalidateDirty(DirtyFlags::Measure);
 }
 
@@ -322,7 +319,6 @@ std::vector<int> NavRail::PaneKeyStops() const {
 void NavRail::PaneActivate(int target) {
     if (target == kBackTarget) {
         if (!backVisible_ || !backEnabled_) return;
-        NAV_TRACEF("[NavigationControls.NavRail] back\n");
         int payload = 0;
         backRequested_.Raise(*this, payload);
     } else if (target == kToggleTarget) {

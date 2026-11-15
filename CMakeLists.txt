@@ -19,13 +19,10 @@ set(FLUENTUI_SOURCES
     FluentUI/animation/AnimationRegistry.cpp
     FluentUI/composition/DCompCompositionBackend.cpp
     FluentUI/controls/Button.cpp
-    FluentUI/controls/Calendar.cpp
-    FluentUI/controls/Chart.cpp
     FluentUI/controls/CheckBox.cpp
     FluentUI/controls/ComboBox.cpp
     FluentUI/controls/ContentDialog.cpp
     FluentUI/controls/DataGrid.cpp
-    FluentUI/controls/DatePicker.cpp
     FluentUI/controls/Expander.cpp
     FluentUI/controls/GridSplitter.cpp
     FluentUI/controls/Hyperlink.cpp
@@ -36,17 +33,13 @@ set(FLUENTUI_SOURCES
     FluentUI/controls/MenuBar.cpp
     FluentUI/controls/MenuFlyout.cpp
     FluentUI/controls/MessageDialog.cpp
-    FluentUI/controls/Metric.cpp
     FluentUI/controls/NumericUpDown.cpp
     FluentUI/controls/PasswordBox.cpp
     FluentUI/controls/ProgressBar.cpp
     FluentUI/controls/ProgressSweepVisual.cpp
     FluentUI/controls/RadioButton.cpp
-    FluentUI/controls/Rating.cpp
-    FluentUI/controls/RepeatButton.cpp
     FluentUI/controls/RichTextBox.cpp
     FluentUI/controls/RichTextDocument.cpp
-    FluentUI/controls/Separator.cpp
     FluentUI/controls/Slider.cpp
     FluentUI/controls/StatusBar.cpp
     FluentUI/controls/TabControl.cpp
@@ -62,7 +55,6 @@ set(FLUENTUI_SOURCES
     FluentUI/core/UIElement.cpp
     FluentUI/core/Visual.cpp
     FluentUI/diagnostics/DisplaySyncScheduler.cpp
-    FluentUI/diagnostics/LayoutCostProbe.cpp
     FluentUI/diagnostics/PerformanceCounters.cpp
     FluentUI/diagnostics/SessionLog.cpp
     FluentUI/dialogs/FileDialog.cpp

@@ -173,10 +173,33 @@ bool ScrollViewer::Tick(float dtSec)
     float oldOffset = offset_;
     if (animating_) {
         target_ = std::clamp(target_, 0.0f, MaxOffset());
-        float diff = target_ - offset_;
-        float t = 1.0f - std::exp(-dtSec / 0.045f);
-        if (std::abs(diff) <= 0.5f) { offset_ = target_; animating_ = false; }
-        else offset_ += diff * t;
+        const float diff = target_ - offset_;
+
+        // Exponential ease-out: approaches target_ at 1 - exp(-dt/tau) per frame.
+        // Problem: near the end, the step becomes sub-pixel and the displayed
+        // position holds for 4-7 frames before a final 1px jump — visible stutter
+        // at 150% and 175% DPI (measured: up to 7 stalled frames at DPI 1.5/120Hz).
+        //
+        // Fix: enforce a minimum step of kMinDipPerSec * dtSec. The exponential
+        // ease drives large distances; the floor kicks in only for the final ~5 DIP
+        // of travel (~45ms at 120 DIP/s), eliminating the pixel-hold without
+        // changing the feel of the animation for anything but the very end.
+        // Once the remaining distance is smaller than one minimum step, snap directly
+        // to the target so the final frame is never an overshoot.
+        constexpr float kMinDipPerSec = 120.0f;
+        const float expStep = diff * (1.0f - std::exp(-dtSec / 0.045f));
+        const float minStep = kMinDipPerSec * dtSec;
+        const float step = (std::abs(expStep) >= minStep)
+                           ? expStep
+                           : std::copysign(minStep, diff);
+
+        if (std::abs(diff) <= minStep) {
+            // Remaining distance fits in one minimum step: snap to target.
+            offset_ = target_;
+            animating_ = false;
+        } else {
+            offset_ += step;
+        }
     }
 
     // Idle countdown -> auto-hide (unless hovering, dragging, or autoscrolling).

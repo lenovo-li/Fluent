@@ -9,7 +9,6 @@
 #include "../text/VisibleLines.h"
 #include "../core/ScrollMath.h"         // EnsureVisibleOffset (shared with TreeView)
 #include "../graphics/PixelSnapping.h"
-#include "../diagnostics/LayoutCostProbe.h"
 #include <algorithm>
 #include <cmath>
 #include <vector>
@@ -248,7 +247,6 @@ float TextArea::SeedCharsPerLine() const {
 
 void TextArea::EnsureWrapExtent() const {
     if (wrapMode_ != TextWrapMode::Wrap) return;
-    LayoutCostProbe::Scope probe(LayoutCostKey::TextAreaWrapExtent);
     EnsureLineIndex();
 
     const float width = WrapLayoutWidth();
@@ -1084,7 +1082,6 @@ void TextArea::EnsureCaretVisible() {
 }
 
 void TextArea::OnBoundsChanged() {
-    LayoutCostProbe::Scope probe(LayoutCostKey::TextAreaBoundsChanged);
     InvalidateLayout();  // wrap width depends on bounds
     // The wrap width changed, which invalidates every measured paragraph height (a
     // paragraph breaks differently at a new width). EnsureWrapExtent detects the width

@@ -33,7 +33,6 @@
     <ClCompile Include="unit\WindowServicesSubscriptionTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\CompositionBackendTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ProgressBarCompositionTests.cpp"><Filter>unit</Filter></ClCompile>
-    <ClCompile Include="unit\RepeatButtonTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\TreeViewIncrementalApiTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\LineIndexTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\LineLayoutCacheTests.cpp"><Filter>unit</Filter></ClCompile>
@@ -108,7 +107,6 @@
     <ClCompile Include="component\FocusRingClipMatrixTests.cpp"><Filter>component</Filter></ClCompile>
     <ClCompile Include="component\LabelWeightMeasureTests.cpp"><Filter>component</Filter></ClCompile>
     <ClCompile Include="unit\PanelChildManagementTests.cpp"><Filter>unit</Filter></ClCompile>
-    <ClCompile Include="component\StockAnalyzerShapeTests.cpp"><Filter>component</Filter></ClCompile>
     <ClCompile Include="component\InitialStateNoAnimationTests.cpp"><Filter>component</Filter></ClCompile>
     <ClCompile Include="component\SelfInspectionTests.cpp"><Filter>component</Filter></ClCompile>
     <ClCompile Include="component\DisabledAndInteractionStateTests.cpp">
@@ -150,6 +148,7 @@
     <ClCompile Include="unit\RichTextBoxTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\RichTextBoxEventsTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ScrollViewerEventsTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\ScrollViewerSettleTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\GridSplitterEventsTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\GridSplitterTrackUnitTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\MenuItemEventsTests.cpp"><Filter>unit</Filter></ClCompile>
@@ -168,23 +167,15 @@
     <ClCompile Include="unit\NavRailKeyboardTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\DataGridTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ControlZoomTests.cpp"><Filter>unit</Filter></ClCompile>
-    <ClCompile Include="unit\ChartTests.cpp"><Filter>unit</Filter></ClCompile>
-    <ClCompile Include="unit\InfoBarMetricTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ExpanderTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ExpanderTransitionTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\GroupBoxTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\HyperlinkTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ImageEventsTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ComboBoxEventsTests.cpp"><Filter>unit</Filter></ClCompile>
-    <ClCompile Include="unit\CalendarEventsTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\textarealineheightprobe.cpp"><Filter>unit</Filter></ClCompile>
-    <ClCompile Include="unit\DatePickerEventsTests.cpp"><Filter>unit</Filter></ClCompile>
-    <ClCompile Include="unit\CalendarConstraintsTests.cpp"><Filter>unit</Filter></ClCompile>
-    <ClCompile Include="unit\CalendarTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\InheritanceExamplesTest.cpp"><Filter>unit</Filter></ClCompile>
-    <ClCompile Include="unit\DatePickerTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ScrollPanelTests.cpp"><Filter>unit</Filter></ClCompile>
-    <ClCompile Include="unit\SeparatorTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ToolBarTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\StatusBarTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\UniformGridTests.cpp"><Filter>unit</Filter></ClCompile>

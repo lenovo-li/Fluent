@@ -386,7 +386,6 @@ void TreeView::AddRangeToSelectionSet(int lo, int hi)
 
 void TreeView::OnBoundsChanged()
 {
-    LayoutCostProbe::Scope probe(LayoutCostKey::TreeViewBoundsChanged);
     scroll_.SetBounds(bounds_);
     // SetBounds re-clamps both offsets against the new viewport; whether the
     // horizontal rail is live may have flipped with the width, so the vertical

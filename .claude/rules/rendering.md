@@ -49,7 +49,7 @@ contracts feed it, and violating either produces on-screen ghosting:
   `bounds_` (focus ring, a stroke centered on the bounds edge, an oversized drag
   thumb) must override `VisualOverflowDip()`; `VisualBounds()` then inflates
   automatically. Current declarations: Button, ComboBox, DataGrid, Expander,
-  InfoBar, NumericUpDown and Rating 3.75 (the default `FocusRingPadDip`),
+  InfoBar and NumericUpDown 3.75 (the default `FocusRingPadDip`),
   CheckBox/RadioButton/ToggleSwitch 4.75, `TextEditBase` 1.75 (inherited by
   TextBox and TextArea), Hyperlink 3.5 (or the underline's overhang below a
   short explicit Height, whichever is larger), Slider ≈14.2.
@@ -108,3 +108,14 @@ Opacity is appearance-only: layout and hit-testing are unaffected (use
 `SetVisible(false)` to remove from layout). It carries a Render-only dirty flag —
 never Measure. Alpha is straight, not premultiplied; D2D premultiplies
 internally, and doing it by hand makes every faded control go dark.
+
+### Unfamiliar graphics APIs: check the docs first
+
+Before using a D3D / D2D / DirectWrite / DComp / DXGI call or flag that the repo
+does not already use the same way, look it up with the microsoft-learn MCP
+(`microsoft_docs_search`, then `microsoft_docs_fetch`). The details that have
+bitten this layer are exactly the ones easy to misremember: which HRESULTs mean
+device loss (`D2DERR_RECREATE_TARGET`, `DXGI_ERROR_DEVICE_REMOVED`), what
+`BeginDraw` offsets are relative to, when `Commit()` publishes, and whether a
+call is legal off the UI thread. Existing repo usage stays the first reference;
+the docs settle what the repo does not show.

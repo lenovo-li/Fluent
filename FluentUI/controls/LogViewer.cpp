@@ -178,8 +178,6 @@ void LogViewer::SetZoom(float factor) {
     const float clamped = std::clamp(factor, kMinZoom, kMaxZoom);
     if (clamped == zoom_) return;
 
-    FL_TRACEF("LogViewer", "SetZoom %.2f → %.2f", zoom_, clamped);
-
     // Keep the line at the top of the viewport anchored across the zoom, the way an
     // editor does: remember which line is there and how far into it the view sits
     // (as a fraction, since the line's height is about to change).

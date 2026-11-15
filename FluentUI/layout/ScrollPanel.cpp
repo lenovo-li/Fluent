@@ -167,7 +167,6 @@ void ScrollPanel::ArrangeOverride(const RectDip& content)
 
 void ScrollPanel::OnBoundsChanged()
 {
-    LayoutCostProbe::Scope probe(LayoutCostKey::ScrollPanelBoundsChanged);
     scroll_.SetBounds(bounds_);
     UpdateScrollExtent();
 }

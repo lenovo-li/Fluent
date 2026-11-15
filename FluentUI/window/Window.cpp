@@ -3,28 +3,6 @@
 #include <shellapi.h>  // Shell_NotifyIconW, NOTIFYICONDATAW
 
 namespace fluent {
-namespace {
-
-// Gate for the per-phase layout trace, read once from the environment.
-//
-// Off by default and env-gated rather than compiled in, for the reason stated in
-// CLAUDE.md's frame-pipeline notes: a trace on the layout path is itself a cost
-// (OutputDebugStringA serializes on a system-wide lock and a debugger makes it far
-// worse), so a diagnostic that is always on distorts exactly the numbers it reports.
-//
-// Set FLUENTUI_TRACE_LAYOUT=1 to enable. In Visual Studio that goes in the project's
-// Debugging → Environment (FluentUIDemo.vcxproj.user already carries it); a `set` in
-// a separate shell does not reach an F5 launch.
-bool LayoutPhaseTraceEnabled() {
-    static const bool enabled = [] {
-        char buf[8]{};
-        return GetEnvironmentVariableA("FLUENTUI_TRACE_LAYOUT", buf, sizeof(buf)) > 0 &&
-               buf[0] == '1';
-    }();
-    return enabled;
-}
-
-}  // namespace
 
 void Window::SetTitle(std::wstring title) {
     title_ = std::move(title);
@@ -147,7 +125,7 @@ void Window::OnCreated() {
 void Window::OnLayout() {
     if (!root_) return;
     // Per-pass, not per-session: the probe accumulates, so without this every
-    // reported total is the sum over every resize frame since launch.
+    // count read after a pass is the sum over every layout since launch.
     LayoutCostProbe::Reset();
     const float top = standardTitleBar_ ? titleBarHeightDip_ : 0.0f;
     const float height = std::max(0.0f, ClientHeightDip() - top);
@@ -196,22 +174,12 @@ void Window::OnLayout() {
     root_->Arrange(arrangeRect);
     const int64_t tArranged = QpcNow();
 
-    // Publish the split unconditionally. It is two QPC reads and two stores on a
-    // path that already costs milliseconds, and the numbers are what let the resize
-    // trace (NativeWindowHost::ApplyPendingResize) name the expensive half without a
-    // second trace line to correlate by hand. Only the TRACE below is gated — the
-    // measurement is not, because a diagnostic that requires an environment variable
-    // to be set correctly is a diagnostic that is missing exactly when it is needed.
+    // Publish the measure/arrange split. It is two QPC reads and two stores on a
+    // path that already costs milliseconds, and FrameStats is public API, so the
+    // numbers stay available to an app that wants them.
     FrameStats& stats = MutableFrameStats();
     stats.measureMs = QpcToMs(tMeasured - tMeasureStart);
     stats.arrangeMs = QpcToMs(tArranged - tMeasured);
-
-    if (LayoutPhaseTraceEnabled()) {
-        FL_TRACEF("Layout", "phases: measure=%.3f arrange=%.3f total=%.3fms",
-                  stats.measureMs, stats.arrangeMs,
-                  QpcToMs(tArranged - tMeasureStart));
-        LayoutCostProbe::Report("  ");
-    }
 }
 
 void Window::OnDestroying() {

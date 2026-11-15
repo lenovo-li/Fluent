@@ -947,17 +947,11 @@ private:
     // can never overshoot the panel.
     double modalGapMs_ = 0.0;
     int64_t modalLastOpportunityQpc_ = 0;
-    // Heartbeat ticks in the current drag that skipped their paint because input was
-    // queued (ModalTickShouldYieldToInput). Reset on WM_ENTERSIZEMOVE, traced on exit.
-    int modalTickYields_ = 0;
-    int64_t borderHitQpc_ = 0;        // Last WM_NCHITTEST that returned a resize border
-    int64_t lastSizeMsgQpc_ = 0;      // Last WM_SIZE arrival timestamp
     // Reset at WM_ENTERSIZEMOVE: the previous drag's estimate describes a mouse
     // rate and message mix that may no longer apply.
     void ResetModalGapEstimate() {
         modalGapMs_ = 0.0;
         modalLastOpportunityQpc_ = 0;
-        lastSizeMsgQpc_ = 0;  // First WM_SIZE will show gap from ENTERSIZEMOVE
     }
     // Fold this opportunity into the estimate and return the current gap estimate.
     double SampleModalGap();
@@ -981,27 +975,6 @@ private:
     // cpuFrameMs cannot see it. For a resize drag over a text-heavy control this is
     // the single largest number in the frame, and it used to appear nowhere.
     double pendingResizeMs_ = 0.0;
-
-    // Label for the per-resize trace line (the Gallery pushes the visible page's
-    // name). Empty = no trace, which is what keeps the instrumentation silent for
-    // any host that does not opt in. The cost split itself is unconditional and
-    // already lands in FrameStats::resizeMs; this only names it in the DebugView
-    // stream so a per-page comparison is possible. See ApplyPendingResize.
-    std::wstring resizeTraceLabel_;
-
-public:
-    // Setting a label opts this window into resize diagnostics, which is why it also
-    // arms LayoutCostProbe. Keeping the two on one switch is deliberate: the probe
-    // was previously gated on FLUENTUI_TRACE_LAYOUT alone and had NO caller for
-    // SetEnabled anywhere in the tree, so every per-control number it was written to
-    // produce silently came back empty. A host that asks to be traced gets all of the
-    // trace, from one call it already makes.
-    void SetResizeTraceLabel(const std::wstring& label) {
-        resizeTraceLabel_ = label;
-        LayoutCostProbe::SetEnabled(!label.empty());
-    }
-
-private:
 
     // Diagnostic subsystem. DiagnosticsHost encapsulates the
     // SessionLog (in-memory operation capture + per-frame stats for timeline/

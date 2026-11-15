@@ -176,13 +176,16 @@ Consuming it from another solution: see `INTEGRATION.md`.
 
 ### Tracing (`NavTrace.h`)
 
-The library's controls trace through `NAV_TRACEF(fmt, ...)`, a printf-style
-wrapper over `OutputDebugStringA` (256-byte buffer). It follows the same
+Failures are traced through `NAV_TRACEF(fmt, ...)`, a printf-style wrapper over
+`OutputDebugStringA` (256-byte buffer). Only failure paths trace (today: NavRail's
+icon text-format creation); selection, pane toggles, page transitions and overlay
+show/hide are deliberately silent, because a line per user action buries the
+failures this output exists to surface. It follows the same
 `FLUENTUI_ENABLE_TRACE` switch as FluentUI's `Trace` helpers: on in Debug, off
 in Release. When off, the call sits in an `if constexpr (false)` branch, so the
 arguments are still type-checked but never evaluated, and side effects in them
 do not run. The caller writes the full tag and the line ending, for example
-`NAV_TRACEF("[NavigationControls.PageHost] navigate %d\n", index)`, so the VS
+`NAV_TRACEF("[NavigationControls.NavRail] icon format failed hr=0x%08X\n", hr)`, so the VS
 Output window can be filtered by `[NavigationControls.`.
 
 ## UI Automation

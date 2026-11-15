@@ -78,8 +78,7 @@ struct FrameStats {
     // other, which is exactly the case a single number cannot distinguish.
     //
     // Assigned (not accumulated) per OnLayout call: a frame that lays out twice
-    // reports the last pass, matching how the resize trace reads them right after
-    // the OnLayout it just forced.
+    // reports the last pass, so a reader right after an OnLayout sees that pass.
     double measureMs = 0.0;
     double arrangeMs = 0.0;
 

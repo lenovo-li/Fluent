@@ -5,7 +5,6 @@
 
 #include "AutomationSite.h"
 #include "UiaProvider.h"
-#include "../controls/Calendar.h"
 #include "../controls/DataGrid.h"
 #include "../controls/InfoBar.h"
 #include "../controls/LogViewer.h"
@@ -254,60 +253,6 @@ void DataGridPeer::SetScrollPercent(double h, double v) {
         g.SetVerticalOffset(static_cast<float>(v / 100.0 * g.MaxVerticalOffset()));
 }
 
-// --- Calendar ---------------------------------------------------------------------
-
-namespace {
-size_t DateKey(int y, int m, int d) { return static_cast<size_t>(y) * 10000 + m * 100 + d; }
-}  // namespace
-
-CalendarPeer::CalendarPeer(Calendar& o) : SelectableContainerPeer(o) {}
-size_t CalendarPeer::KeyAt(size_t i) const {
-    int y = 0, m = 0, d = 0;
-    Ctl<Calendar>(*this).CellDate(static_cast<int>(i), y, m, d);
-    return DateKey(y, m, d);
-}
-size_t CalendarPeer::IndexOfKey(size_t key) const {
-    const int y = static_cast<int>(key / 10000), m = static_cast<int>(key / 100 % 100),
-              d = static_cast<int>(key % 100);
-    const int i = Ctl<Calendar>(*this).CellIndexOf(y, m, d);
-    return i < 0 ? ItemCount() : static_cast<size_t>(i);  // paged out: gone
-}
-std::wstring CalendarPeer::ItemName(size_t i) const {
-    int y = 0, m = 0, d = 0;
-    Ctl<Calendar>(*this).CellDate(static_cast<int>(i), y, m, d);
-    // The long date in the user's locale ("2026年11月1日" / "Sunday, November 1, 2026"),
-    // which is what Narrator should read for a day cell, not the bare "1".
-    SYSTEMTIME st{};
-    st.wYear = static_cast<WORD>(y);
-    st.wMonth = static_cast<WORD>(m);
-    st.wDay = static_cast<WORD>(d);
-    wchar_t buf[128];
-    if (GetDateFormatEx(LOCALE_NAME_USER_DEFAULT, DATE_LONGDATE, &st, nullptr, buf, 128, nullptr) > 0)
-        return buf;
-    return std::to_wstring(y) + L"-" + std::to_wstring(m) + L"-" + std::to_wstring(d);
-}
-RectDip CalendarPeer::ItemRect(size_t i) const { return Ctl<Calendar>(*this).CellRect(static_cast<int>(i)); }
-bool CalendarPeer::ItemEnabled(size_t i) const {
-    int y = 0, m = 0, d = 0;
-    Ctl<Calendar>(*this).CellDate(static_cast<int>(i), y, m, d);
-    return Ctl<Calendar>(*this).IsDateEnabled(y, m, d);
-}
-void CalendarPeer::SelectItem(size_t i) {
-    int y = 0, m = 0, d = 0;
-    Ctl<Calendar>(*this).CellDate(static_cast<int>(i), y, m, d);
-    Ctl<Calendar>(*this).PerformSelectDate(y, m, d);
-}
-size_t CalendarPeer::SelectedIndex() const {
-    const Calendar& c = Ctl<Calendar>(*this);
-    const int i = c.CellIndexOf(c.SelectedYear(), c.SelectedMonth(), c.SelectedDay());
-    return i < 0 ? ItemCount() : static_cast<size_t>(i);
-}
-AutomationPeer* CalendarPeer::ItemAtPoint(float x, float y) {
-    HostToOwner(x, y);
-    const RectDip b = Owner().Bounds();
-    const int i = Ctl<Calendar>(*this).HitTestCell(x - b.x, y - b.y);  // control-relative
-    return i >= 0 ? ItemAt(static_cast<size_t>(i)) : nullptr;
-}
 
 // --- LogViewer --------------------------------------------------------------------
 
@@ -395,9 +340,6 @@ std::unique_ptr<automation::AutomationPeer> InfoBar::CreateAutomationPeer() {
 }
 std::unique_ptr<automation::AutomationPeer> DataGrid::CreateAutomationPeer() {
     return std::make_unique<automation::DataGridPeer>(*this);
-}
-std::unique_ptr<automation::AutomationPeer> Calendar::CreateAutomationPeer() {
-    return std::make_unique<automation::CalendarPeer>(*this);
 }
 std::unique_ptr<automation::AutomationPeer> LogViewer::CreateAutomationPeer() {
     return std::make_unique<automation::LogViewerPeer>(*this);

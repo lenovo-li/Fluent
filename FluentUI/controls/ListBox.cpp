@@ -86,7 +86,6 @@ void ListBox::OnSelectionSetChanged()
 
 void ListBox::OnBoundsChanged()
 {
-    LayoutCostProbe::Scope probe(LayoutCostKey::ListBoxBoundsChanged);
     scroll_.SetBounds(bounds_);
     UpdateScrollExtent();
 }

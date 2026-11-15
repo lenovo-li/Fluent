@@ -5,7 +5,11 @@
 param(
     [Parameter(Mandatory=$false)]
     [ValidateSet("Debug", "Release")]
-    [string]$Configuration = "Debug"
+    [string]$Configuration = "Debug",
+
+    [Parameter(Mandatory=$false)]
+    [ValidateSet("Static", "Dynamic")]
+    [string]$CRTLinkage = "Static"
 )
 
 $ErrorActionPreference = "Stop"
@@ -46,5 +50,5 @@ if (-not $solution) {
 }
 
 # Execute build
-& $msbuild $solution.FullName -p:Configuration=$Configuration -p:Platform=x64 -verbosity:minimal
+& $msbuild $solution.FullName -p:Configuration=$Configuration -p:Platform=x64 -p:FluentCRTLinkage=$CRTLinkage -verbosity:minimal
 exit $LASTEXITCODE

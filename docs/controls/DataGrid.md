@@ -271,8 +271,6 @@ DataGrid 的 peer（`automation/DataPeers.h`）：
 
 ### 使用注意事项
 
-- **必须写显式高度**（或放进定高容器）。这与 `Metric` 相反，值得说清区别：
-  Metric 有自然高度（三行文字），写死会切字；DataGrid **没有**自然高度 —— 它的
   自然高度是全部行加起来（5 万行 × 28 = 140 万 DIP）。视口大小只能由调用者决定，
   这正是显式尺寸的正当用途。
 - **列宽不会自动适配。** 全量适配意味着为某列测量**每一行**的文字，是 O(rows)，
@@ -345,4 +343,3 @@ bool VerticalGridLineX(int boundary, float& x) const;
 ### 演示页
 
 demo 导航 → 数据控件 → DataGrid（nav id 404）。含 5 万行实况（屏幕上打印实时
-可见范围）、跳转按钮、外观开关、以及与 Metric 组合的涨跌着色表。

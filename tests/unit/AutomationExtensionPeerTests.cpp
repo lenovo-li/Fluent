@@ -64,21 +64,6 @@ TEST(AutomationExtension, BigButtonReportsItsSubtitleAsHelpText) {
     EXPECT_EQ(clicks, 1);
 }
 
-TEST(AutomationExtension, LunarCalendarDayNamesIncludeTheLunarText) {
-    UiaFixture fx;
-    auto* c = fx.root->Emplace<custom::LunarCalendar>();
-    c->SetSelectedDate(2026, 11, 15);
-    fx.Attach();
-    Layout(fx);
-    auto cal = First(fx);
-    EXPECT_EQ(PropInt(cal.Get(), UIA_ControlTypePropertyId), UIA_CalendarControlTypeId);
-    auto d = Nav(cal.Get(), NavigateDirection_FirstChild);
-    for (int i = 0; i < c->CellIndexOf(2026, 11, 15) && d; ++i) d = Nav(d.Get(), NavigateDirection_NextSibling);
-    const std::wstring name = PropString(d.Get(), UIA_NamePropertyId);
-    const std::wstring lunar = c->LunarText(2026, 11, 15);
-    EXPECT_TRUE(!lunar.empty() && name.size() > lunar.size() &&
-                name.compare(name.size() - lunar.size(), lunar.size(), lunar) == 0);
-}
 
 TEST(AutomationExtension, RunningSpinnerIsABusyProgressBarAndAStoppedOneLeavesTheControlView) {
     UiaFixture fx;

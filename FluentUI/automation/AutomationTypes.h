@@ -15,7 +15,6 @@ namespace fluent::automation {
 // UIA_*ControlTypeId values.
 enum class ControlType : int32_t {
     Button = 50000,
-    Calendar = 50001,
     CheckBox = 50002,
     ComboBox = 50003,
     Edit = 50004,

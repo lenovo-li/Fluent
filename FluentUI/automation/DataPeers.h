@@ -1,20 +1,17 @@
 // DataPeers.h — UI Automation for the controls that draw their own content rows:
 // InfoBar (a live region with a close button), DataGrid (rows as DataItems),
-// Calendar (day cells), LogViewer (lines).
+// LogViewer (lines).
 //
-// All four follow ItemPeers.h: the rows are not elements, so each row's peer is
+// All three follow ItemPeers.h: the rows are not elements, so each row's peer is
 // made on demand when a client reaches it and is cached under a key. The key choice
 // is what decides what a client sees when the content changes:
 //   * DataGrid: the row index (the grid itself is index-addressed; a re-sort
 //     re-numbers rows, and a count change releases every cached row).
-//   * Calendar: the date (yyyymmdd). Paging to another month makes the old days'
-//     keys vanish, so they are released and ChildrenInvalidated is raised; the
-//     spill-over days shared by both months keep their nodes.
 //   * LogViewer: the line serial (LogViewer::FirstLineSerial() + index), which
 //     survives the front trim of a capped log, so a client reading line 900 keeps
 //     it while older lines fall off the top.
 //
-// Actions take the user's path: Calendar::PerformSelectDate, DataGrid::SetSelectedRow
+// Actions take the user's path: DataGrid::SetSelectedRow
 // / PerformToggleRowSelection, InfoBar::PerformClose all raise the app-visible event a
 // click raises.
 #pragma once
@@ -24,7 +21,6 @@
 namespace fluent {
 class InfoBar;
 class DataGrid;
-class Calendar;
 class LogViewer;
 }  // namespace fluent
 
@@ -81,30 +77,6 @@ public:
     double HorizontalViewSize() const override;
     double VerticalViewSize() const override;
     void SetScrollPercent(double h, double v) override;
-};
-
-// Calendar: 42 day cells (DataItem, Name = the long date in the user's locale),
-// keyed by date; disabled dates (min/max, blackout) are not enabled.
-// Not final: a calendar subclass that draws extra text in a cell (LunarCalendar)
-// derives from it and appends that text to ItemName.
-class CalendarPeer : public SelectableContainerPeer {
-public:
-    explicit CalendarPeer(Calendar& o);
-    ControlType GetControlType() const override { return ControlType::Calendar; }
-    size_t ItemCount() const override { return 42; }
-    size_t KeyAt(size_t i) const override;
-    size_t IndexOfKey(size_t key) const override;
-    bool KeysAreStable() const override { return true; }
-    ControlType ItemType() const override { return ControlType::DataItem; }
-    std::wstring ItemName(size_t i) const override;
-    RectDip ItemRect(size_t i) const override;
-    bool ItemEnabled(size_t i) const override;
-    void SelectItem(size_t i) override;
-    bool CanSelectMultiple() const override { return false; }
-    size_t SelectedIndex() const override;
-    size_t SelectedCount() const override { return SelectedIndex() < ItemCount() ? 1 : 0; }
-    bool IsIndexSelected(size_t i) const override { return i == SelectedIndex(); }
-    AutomationPeer* ItemAtPoint(float x, float y) override;
 };
 
 // LogViewer: a List whose items are its lines (ListItem, Name = the line's text up

@@ -203,8 +203,8 @@ TEST(DirtyBoundsOverflow, CleanControlsReportNothing) {
 
 // --- Hyperlink / Expander: two controls that painted outside and declared nothing --
 // Both were found by auditing every control that references IsFocused() against the
-// list that overrides VisualOverflowDip(). The four other undeclared ones (ListBox,
-// TreeView, TabControl, DatePicker) are genuinely safe: each insets its ring INWARD by
+// list that overrides VisualOverflowDip(). The three other undeclared ones (ListBox,
+// TreeView, TabControl) are genuinely safe: each insets its ring INWARD by
 // exactly half its stroke, so the outer edge lands on the bounds edge. These two build
 // the ring OUTWARD from the bounds edge instead.
 

@@ -15,7 +15,6 @@
 ### 基础输入控件
 
 - [Button](Button.md) — 标准按钮
-- RepeatButton（文档待写） — 按住时重复触发的按钮
 - [CheckBox](CheckBox.md) — 复选框
 - [RadioButton](RadioButton.md) — 单选按钮
 - [ToggleSwitch](ToggleSwitch.md) — 开关
@@ -23,7 +22,6 @@
 - [TextBox](TextBox.md) — 单行文本输入
 - [PasswordBox](PasswordBox.md) — 密码输入
 - [NumericUpDown](NumericUpDown.md) — 数字微调器
-- [Rating](Rating.md) — 星级评分
 
 ### 选择控件
 
@@ -41,8 +39,6 @@
 ### 数据展示控件
 
 - [DataGrid](DataGrid.md) — 虚拟化只读表格（行列双向虚拟化）
-- [Chart](Chart.md) — 折线 / 柱状 / K 线图
-- [Metric](Metric.md) — 带涨跌方向的指标卡
 - [InfoBar](InfoBar.md) — 内联状态消息（四个严重级别）
 
 ### 布局容器
@@ -54,7 +50,6 @@
 - [WrapPanel](WrapPanel.md) — 自动换行布局
 - [Border](Border.md) — 边框容器
 - [ScrollPanel](ScrollPanel.md) — 通用滚动容器（双轴，不虚拟化）
-- Separator（文档待写） — 分隔线
 - [Viewbox](Viewbox.md) — 缩放容器（Uniform/Fill/None）
 - [GroupBox](GroupBox.md) — 分组框
 - [UniformGrid](UniformGrid.md) — 均匀网格
@@ -78,8 +73,6 @@
 
 ### 日期与时间
 
-- [DatePicker](DatePicker.md) — 日期选择器
-- [Calendar](Calendar.md) — 日历
 
 ### 其他
 

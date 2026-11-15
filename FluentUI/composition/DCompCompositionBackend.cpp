@@ -4,7 +4,6 @@
 #include "../animation/Animation.h"     // MakeOffsetSweep
 #include "../graphics/DCompHost.h"
 #include "../graphics/D2DContext.h"
-#include "../diagnostics/LayoutCostProbe.h"
 
 namespace fluent {
 
@@ -29,6 +28,7 @@ DCompCompositionVisual::~DCompCompositionVisual() {
     // is expected to have removed this child already; if not, releasing our ref
     // is still safe — DComp keeps the node alive until the parent's next commit.
     surface_.Reset();
+    rotateTransform_.Reset();
     visual3_.Reset();
     visual_.Reset();
 }
@@ -88,14 +88,43 @@ void DCompCompositionVisual::StartOpacityBlink(double halfPeriodSec) {
     }
 }
 
+void DCompCompositionVisual::StartRotationSweep(double rps) {
+    if (!visual_ || !device_) return;
+    // Create the rotate transform on first use; it persists across multiple sweeps.
+    if (!rotateTransform_) {
+        HRESULT hr = device_->CreateRotateTransform(rotateTransform_.GetAddressOf());
+        if (FAILED(hr)) {
+            Trace(kTag, "CreateRotateTransform FAILED", hr);
+            return;  // fallback: no rotation
+        }
+        // Center point: middle of the current surface (or 0,0 if no surface yet).
+        // Updated in DrawSurface whenever the size changes.
+        const float cx = surfaceW_ * 0.5f;
+        const float cy = surfaceH_ * 0.5f;
+        rotateTransform_->SetCenterX(cx);
+        rotateTransform_->SetCenterY(cy);
+        visual_->SetTransform(rotateTransform_.Get());
+    }
+
+    if (ComPtr<IDCompositionAnimation> anim = MakeRotationSweep(device_, rps)) {
+        rotateTransform_->SetAngle(anim.Get());  // compositor-thread continuous rotation
+    } else {
+        rotateTransform_->SetAngle(0.0f);        // fallback: freeze at 0°
+        TraceMsg(kTag, "StartRotationSweep: MakeRotationSweep null (frozen)");
+    }
+}
+
 void DCompCompositionVisual::StopAnimation(CompositionProperty property) {
     if (!visual_) return;
-    // Freeze the property at a static value (drops the animation). We only need
-    // OffsetX today; the others are here for interface completeness.
+    // Freeze the property at a static value (drops the animation). OffsetX and
+    // Rotation are the active cases; OffsetY and Opacity exist for interface completeness.
     switch (property) {
         case CompositionProperty::OffsetX: visual_->SetOffsetX(0.0f); break;
         case CompositionProperty::OffsetY: visual_->SetOffsetY(0.0f); break;
         case CompositionProperty::Opacity: if (visual3_) visual3_->SetOpacity(1.0f); break;
+        case CompositionProperty::Rotation:
+            if (rotateTransform_) rotateTransform_->SetAngle(0.0f);
+            break;
     }
 }
 
@@ -107,35 +136,33 @@ bool DCompCompositionVisual::DrawSurface(uint32_t pixelW, uint32_t pixelH,
     //
     // NOTE ON COST: during a resize drag the requested size changes every frame, so
     // this branch is taken every frame — a fresh VRAM allocation plus the release of
-    // the previous surface, per frame, per composited control. That is the suspected
-    // source of the drag's outlier frames, which is why the allocation is timed
-    // separately from the drawing below rather than as one DrawSurface number.
-    {
-        LayoutCostProbe::Scope probe(LayoutCostKey::DCompCreateSurface);
-        if (!surface_ || pixelW != surfaceW_ || pixelH != surfaceH_) {
-            HRESULT hr = device_->CreateSurface(
-                pixelW, pixelH, DXGI_FORMAT_B8G8R8A8_UNORM,
-                DXGI_ALPHA_MODE_PREMULTIPLIED, surface_.ReleaseAndGetAddressOf());
-            if (FAILED(hr)) {
-                Trace(kTag, "CreateSurface FAILED", hr);
-                surfaceW_ = surfaceH_ = 0;
-                return false;
-            }
-            surfaceW_ = pixelW;
-            surfaceH_ = pixelH;
+    // the previous surface, per frame, per composited control.
+    if (!surface_ || pixelW != surfaceW_ || pixelH != surfaceH_) {
+        HRESULT hr = device_->CreateSurface(
+            pixelW, pixelH, DXGI_FORMAT_B8G8R8A8_UNORM,
+            DXGI_ALPHA_MODE_PREMULTIPLIED, surface_.ReleaseAndGetAddressOf());
+        if (FAILED(hr)) {
+            Trace(kTag, "CreateSurface FAILED", hr);
+            surfaceW_ = surfaceH_ = 0;
+            return false;
+        }
+        surfaceW_ = pixelW;
+        surfaceH_ = pixelH;
+        // A rotation started before the first draw (or before a resize) was centered
+        // on the old surface; keep the pivot at the middle of the new one so the
+        // content spins in place instead of orbiting a corner.
+        if (rotateTransform_) {
+            rotateTransform_->SetCenterX(surfaceW_ * 0.5f);
+            rotateTransform_->SetCenterY(surfaceH_ * 0.5f);
         }
     }
 
     ComPtr<ID2D1DeviceContext> target;
     POINT off = {};
-    HRESULT hr;
-    {
-        // BeginDraw is where the CPU can be made to wait on the GPU: it maps a region
-        // of the surface for CPU writes, which cannot proceed while the compositor is
-        // still reading the previous contents.
-        LayoutCostProbe::Scope probe(LayoutCostKey::DCompBeginDraw);
-        hr = surface_->BeginDraw(nullptr, IID_PPV_ARGS(target.GetAddressOf()), &off);
-    }
+    // BeginDraw is where the CPU can be made to wait on the GPU: it maps a region of
+    // the surface for CPU writes, which cannot proceed while the compositor is still
+    // reading the previous contents.
+    HRESULT hr = surface_->BeginDraw(nullptr, IID_PPV_ARGS(target.GetAddressOf()), &off);
     if (FAILED(hr)) {
         Trace(kTag, "surface BeginDraw FAILED", hr);
         return false;
@@ -144,22 +171,9 @@ bool DCompCompositionVisual::DrawSurface(uint32_t pixelW, uint32_t pixelH,
     // let the caller draw. The caller clears/fills within [0,0,pixelW,pixelH].
     target->SetTransform(D2D1::Matrix3x2F::Translation(
         static_cast<float>(off.x), static_cast<float>(off.y)));
-    {
-        // Our own D2D work (text layout + glyph runs). Separated so "the surface
-        // refresh is slow" can be told apart from "our drawing is slow" — the fixes
-        // have nothing in common.
-        LayoutCostProbe::Scope probe(LayoutCostKey::DCompDrawCallback);
-        if (draw) draw(target.Get(), static_cast<float>(off.x),
-                       static_cast<float>(off.y));
-    }
-    {
-        LayoutCostProbe::Scope probe(LayoutCostKey::DCompEndDraw);
-        surface_->EndDraw();
-    }
-    {
-        LayoutCostProbe::Scope probe(LayoutCostKey::DCompSetContent);
-        hr = visual_->SetContent(surface_.Get());
-    }
+    if (draw) draw(target.Get(), static_cast<float>(off.x), static_cast<float>(off.y));
+    surface_->EndDraw();
+    hr = visual_->SetContent(surface_.Get());
     if (FAILED(hr)) { Trace(kTag, "SetContent FAILED", hr); return false; }
     return true;
 }

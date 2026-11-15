@@ -1,7 +1,7 @@
 // CustomControls.h — Public API for user-defined FluentUI extensions
 //
 // This is a SEPARATE LIBRARY that demonstrates how users can extend FluentUI
-// by inheriting Calendar, Button, Slider without modifying FluentUI source.
+// by inheriting Button, Slider without modifying FluentUI source.
 //
 // Integration:
 //   1. Build FluentUI.lib
@@ -11,39 +11,10 @@
 // Users can fork/modify this library freely — it is NOT part of FluentUI core.
 #pragma once
 
-#include "../../FluentUI/controls/Calendar.h"
 #include "../../FluentUI/controls/Button.h"
 #include "../../FluentUI/controls/Slider.h"
 
 namespace fluent::custom {
-
-// =============================================================================
-// LunarCalendar: Adds lunar date display below Gregorian day numbers
-// =============================================================================
-// Demonstrates:
-// - Calling base RenderCell to reuse standard cell rendering
-// - Reading CellInfo struct for pre-computed state
-// - Drawing additional text via DWriteContext
-//
-// Use case: Chinese lunar calendar, Islamic calendar, holiday markers, etc.
-
-class LunarCalendar : public Calendar {
-public:
-    // The extra text drawn under a day number (public: the UIA peer appends it to
-    // the cell's name, so Narrator reads what the cell shows).
-    std::wstring LunarText(int year, int month, int day) const { return GetLunarDate(year, month, day); }
-
-protected:
-    void RenderCell(const DrawingContext& dc, const CellInfo& cell) override;
-    // UI Automation peer (defined in this library's .cpp, on the public automation
-    // headers: the extension path for UIA, see inheritance-guide.md).
-    std::unique_ptr<automation::AutomationPeer> CreateAutomationPeer() override;
-
-private:
-    // Stub: returns "初一", "初二", etc. Real implementation would use a proper
-    // lunar calendar library (e.g., libastro, ChineseCalendar.cpp).
-    std::wstring GetLunarDate(int year, int month, int day) const;
-};
 
 // =============================================================================
 // BigButton: 64dp tall button with icon + two-line text

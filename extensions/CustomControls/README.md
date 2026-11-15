@@ -20,7 +20,6 @@ This is the **recommended pattern** for extending FluentUI:
 2. **Users create their own library** (like this `CustomControls` example) that:
    - `#include`s FluentUI headers
    - Links against `FluentUI.lib`
-   - Exports new controls (`LunarCalendar`, `BigButton`, `LogSlider`, `SpinnerControl`)
 3. **Demo or end-user app** links both libraries
 
 ---
@@ -35,14 +34,6 @@ This is the **recommended pattern** for extending FluentUI:
 ---
 
 ## What's Included
-
-### LunarCalendar
-Inherits `Calendar`, adds lunar date display below Gregorian days.
-
-**Demonstrates**:
-- Calling `Calendar::RenderCell()` to reuse base rendering
-- Reading `CellInfo` struct for pre-computed state
-- Drawing additional text via `DWriteContext`
 
 ### BigButton
 Inherits `Button`, draws a 64dp tall button with an icon, a title and a subtitle
@@ -66,7 +57,19 @@ keys step exactly one decade.
 
 ### SpinnerControl
 Derives `Control` directly: a fully custom animated control (`Start` / `Stop`, `SetSpeed`,
-`SetDiameter`). `WantsAnimationTick()` is `IsRunning()`, so a stopped spinner costs nothing.
+`SetDiameter`). Uses **DirectComposition rotation animation on the compositor thread** when
+available (the spinner keeps rotating even while the UI thread is busy), with a UI-thread
+fallback when no composition device is present. `WantsAnimationTick()` is `IsRunning()` only
+in fallback mode, so a stopped or compositor-driven spinner costs zero CPU.
+
+**Demonstrates**:
+- Compositor-thread animation via `ICompositionBackend::StartRotationSweep()` (smooth rotation
+  independent of UI-thread load)
+- Lifecycle hooks (`OnAttachedToTree`, `OnDeviceLost`, `OnBoundsChanged`) that keep the
+  composition visual in sync with the control's state
+- UI-thread fallback path when `Window()->Composition()` returns null
+- Drawing a static ring into a composition visual's surface (`DrawSurface` callback) and
+  rotating the whole visual rather than redrawing per frame
 
 ---
 
@@ -77,8 +80,6 @@ Each control adds its peer from this library (`CreateAutomationPeer()` on the pu
 
 - **BigButton** is a Button (Invoke goes through the click path). Its subtitle, which it
   draws but a plain Button peer does not know about, is the HelpText unless a tooltip is set.
-- **LunarCalendar** derives from `CalendarPeer`: a day cell's name is the long Gregorian date
-  followed by the lunar text drawn under it (`LunarText()`), so a reader hears what the cell shows.
 - **LogSlider** needs nothing: Slider's RangeValue peer reads and sets the value, and
   `CoerceValue` snaps a UIA SetValue to a decade like a drag.
 - **SpinnerControl** is a ProgressBar with no value (indeterminate, as WinUI reports
@@ -136,9 +137,7 @@ no CMake build for this directory (see `INTEGRATION.md`).
 extensions/CustomControls/
 ├── README.md                  (this file)
 ├── INTEGRATION.md             (how the library is wired into the solution)
-├── CustomControls.h           (public header: LunarCalendar, BigButton, LogSlider)
 ├── SpinnerControl.h           (public header: SpinnerControl)
-├── LunarCalendar.cpp          (implementation)
 ├── BigButton.cpp              (implementation)
 ├── LogSlider.cpp              (implementation)
 ├── SpinnerControl.cpp         (implementation)

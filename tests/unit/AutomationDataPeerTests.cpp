@@ -1,4 +1,4 @@
-// AutomationDataPeerTests.cpp — UIA for InfoBar, DataGrid, Calendar and LogViewer.
+// AutomationDataPeerTests.cpp — UIA for InfoBar, DataGrid and LogViewer.
 //
 // Each test checks what a client (or the app) actually receives: the event an action
 // must raise (Closed, SelectionChanged), the UIA event a change must produce
@@ -9,7 +9,6 @@
 #include "AutomationTestHelpers.h"
 
 #include "../../FluentUI/automation/AutomationPeer.h"
-#include "../../FluentUI/controls/Calendar.h"
 #include "../../FluentUI/controls/DataGrid.h"
 #include "../../FluentUI/controls/InfoBar.h"
 #include "../../FluentUI/controls/LogViewer.h"
@@ -178,51 +177,6 @@ TEST(AutomationData, DataGridHitTestAndScroll) {
     fx.host.OnFlush();
     EXPECT_NEAR(g->VerticalOffset(), g->MaxVerticalOffset(), 0.5f);
     EXPECT_TRUE(g->MaxVerticalOffset() > 0);
-}
-
-// --- Calendar ---------------------------------------------------------------------
-
-TEST(AutomationData, CalendarDaysAreDateKeyedCellsAndSelectTakesTheClickPath) {
-    UiaFixture fx;
-    auto* c = fx.root->Emplace<Calendar>();
-    c->SetSelectedDate(2026, 11, 15);
-    c->SetMaxDate(2026, 11, 20);
-    int changes = 0;
-    auto sub = c->SelectionChanged().Subscribe(&changes, [](void* o, Calendar&, RoutedEventArgs&) {
-        ++*static_cast<int*>(o);
-    });
-    fx.Attach();
-    Layout(fx);
-    auto cal = First(fx);
-    EXPECT_EQ(PropInt(cal.Get(), UIA_ControlTypePropertyId), UIA_CalendarControlTypeId);
-    auto d10 = Child(cal.Get(), c->CellIndexOf(2026, 11, 10));
-    EXPECT_EQ(PropInt(d10.Get(), UIA_ControlTypePropertyId), UIA_DataItemControlTypeId);
-    EXPECT_TRUE(PropString(d10.Get(), UIA_NamePropertyId).find(L"10") != std::wstring::npos);
-    auto d25 = Child(cal.Get(), c->CellIndexOf(2026, 11, 25));
-    EXPECT_EQ(PropBool(d25.Get(), UIA_IsEnabledPropertyId), 0);  // past the max date
-
-    ComPtr<ISelectionItemProvider> si;
-    if (d10) d10.As(&si);
-    if (!si) return;
-    si->Select();
-    fx.host.OnFlush();
-    EXPECT_EQ(c->SelectedDay(), 10);
-    EXPECT_EQ(changes, 1);
-    ComPtr<ISelectionItemProvider> off;
-    if (d25) d25.As(&off);
-    if (off) off->Select();
-    fx.host.OnFlush();
-    EXPECT_EQ(c->SelectedDay(), 10);  // refused
-    EXPECT_EQ(changes, 1);
-
-    // Paging to December: November's days (not shown as spill-over) are released,
-    // and the client is told the children changed.
-    fx.core.events.clear();
-    c->SetMaxDate(2027, 1, 1);
-    c->NextMonth();
-    FlushTwice(fx);
-    EXPECT_TRUE(Count(fx.core.events, RecordingCore::kChildrenInvalidated) >= 1);
-    EXPECT_TRUE(PropString(d10.Get(), UIA_NamePropertyId) == L"<error>");
 }
 
 // --- LogViewer --------------------------------------------------------------------

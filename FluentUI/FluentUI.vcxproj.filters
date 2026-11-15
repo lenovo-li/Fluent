@@ -62,12 +62,8 @@
     <ClInclude Include="controls\MessageDialog.h"><Filter>controls</Filter></ClInclude>
     <ClInclude Include="controls\TabControl.h"><Filter>controls</Filter></ClInclude>
     <ClInclude Include="controls\Hyperlink.h"><Filter>controls</Filter></ClInclude>
-    <ClInclude Include="controls\Calendar.h"><Filter>controls</Filter></ClInclude>
-    <ClInclude Include="controls\DatePicker.h"><Filter>controls</Filter></ClInclude>
     <ClInclude Include="controls\ToolBar.h"><Filter>controls</Filter></ClInclude>
     <ClInclude Include="controls\StatusBar.h"><Filter>controls</Filter></ClInclude>
-    <ClInclude Include="controls\Rating.h"><Filter>controls</Filter></ClInclude>
-    <ClInclude Include="controls\RepeatButton.h"><Filter>controls</Filter></ClInclude>
     <ClInclude Include="controls\NumericUpDown.h"><Filter>controls</Filter></ClInclude>
     <ClInclude Include="dialogs\FileDialog.h"><Filter>dialogs</Filter></ClInclude>
     <ClInclude Include="layout\Panel.h"><Filter>layout</Filter></ClInclude>
@@ -101,13 +97,10 @@
     <ClInclude Include="controls\ToggleVisuals.h"><Filter>controls</Filter></ClInclude>
     <ClInclude Include="controls\Slider.h"><Filter>controls</Filter></ClInclude>
     <ClInclude Include="controls\InfoBar.h"><Filter>controls</Filter></ClInclude>
-    <ClInclude Include="controls\Metric.h"><Filter>controls</Filter></ClInclude>
     <ClInclude Include="controls\DataGrid.h"><Filter>controls</Filter></ClInclude>
     <ClInclude Include="controls\LogViewer.h"><Filter>controls</Filter></ClInclude>
     <ClInclude Include="controls\RichTextBox.h"><Filter>controls</Filter></ClInclude>
     <ClInclude Include="controls\RichTextDocument.h"><Filter>controls</Filter></ClInclude>
-    <ClInclude Include="controls\Chart.h"><Filter>controls</Filter></ClInclude>
-    <ClInclude Include="controls\Separator.h"><Filter>controls</Filter></ClInclude>
     <ClInclude Include="controls\ProgressBar.h"><Filter>controls</Filter></ClInclude>
     <ClInclude Include="controls\ProgressSweepVisual.h"><Filter>controls</Filter></ClInclude>
     <ClInclude Include="controls\ComboBox.h"><Filter>controls</Filter></ClInclude>
@@ -188,12 +181,8 @@
     <ClCompile Include="controls\MessageDialog.cpp"><Filter>controls</Filter></ClCompile>
     <ClCompile Include="controls\TabControl.cpp"><Filter>controls</Filter></ClCompile>
     <ClCompile Include="controls\Hyperlink.cpp"><Filter>controls</Filter></ClCompile>
-    <ClCompile Include="controls\Calendar.cpp"><Filter>controls</Filter></ClCompile>
-    <ClCompile Include="controls\DatePicker.cpp"><Filter>controls</Filter></ClCompile>
     <ClCompile Include="controls\ToolBar.cpp"><Filter>controls</Filter></ClCompile>
     <ClCompile Include="controls\StatusBar.cpp"><Filter>controls</Filter></ClCompile>
-    <ClCompile Include="controls\Rating.cpp"><Filter>controls</Filter></ClCompile>
-    <ClCompile Include="controls\RepeatButton.cpp"><Filter>controls</Filter></ClCompile>
     <ClCompile Include="controls\NumericUpDown.cpp"><Filter>controls</Filter></ClCompile>
     <ClCompile Include="dialogs\FileDialog.cpp"><Filter>dialogs</Filter></ClCompile>
     <ClCompile Include="layout\Panel.cpp"><Filter>layout</Filter></ClCompile>
@@ -225,13 +214,10 @@
     <ClCompile Include="controls\ToggleSwitch.cpp"><Filter>controls</Filter></ClCompile>
     <ClCompile Include="controls\Slider.cpp"><Filter>controls</Filter></ClCompile>
     <ClCompile Include="controls\InfoBar.cpp"><Filter>controls</Filter></ClCompile>
-    <ClCompile Include="controls\Metric.cpp"><Filter>controls</Filter></ClCompile>
     <ClCompile Include="controls\DataGrid.cpp"><Filter>controls</Filter></ClCompile>
     <ClCompile Include="controls\LogViewer.cpp"><Filter>controls</Filter></ClCompile>
     <ClCompile Include="controls\RichTextBox.cpp"><Filter>controls</Filter></ClCompile>
     <ClCompile Include="controls\RichTextDocument.cpp"><Filter>controls</Filter></ClCompile>
-    <ClCompile Include="controls\Chart.cpp"><Filter>controls</Filter></ClCompile>
-    <ClCompile Include="controls\Separator.cpp"><Filter>controls</Filter></ClCompile>
     <ClCompile Include="controls\ProgressBar.cpp"><Filter>controls</Filter></ClCompile>
     <ClCompile Include="controls\ProgressSweepVisual.cpp"><Filter>controls</Filter></ClCompile>
     <ClCompile Include="controls\ComboBox.cpp"><Filter>controls</Filter></ClCompile>
@@ -273,7 +259,6 @@
     <ClCompile Include="window\WindowAppearance.cpp"><Filter>window</Filter></ClCompile>
     <ClCompile Include="services\TooltipService.cpp"><Filter>services</Filter></ClCompile>
     <ClCompile Include="diagnostics\DisplaySyncScheduler.cpp"><Filter>diagnostics</Filter></ClCompile>
-    <ClCompile Include="diagnostics\LayoutCostProbe.cpp"><Filter>diagnostics</Filter></ClCompile>
     <ClCompile Include="diagnostics\PerformanceCounters.cpp"><Filter>diagnostics</Filter></ClCompile>
     <ClCompile Include="diagnostics\SessionLog.cpp"><Filter>diagnostics</Filter></ClCompile>
   </ItemGroup>

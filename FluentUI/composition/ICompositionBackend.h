@@ -33,13 +33,15 @@ struct ID2D1DeviceContext;
 
 namespace fluent {
 
-// The animatable / settable properties: offset (the ProgressBar sweep) and opacity.
-// Scale and clip animation are not supported; clip is set immediately via SetClip,
-// not animated. Add a property here only together with a control that needs it.
+// The animatable / settable properties: offset (the ProgressBar sweep), opacity,
+// and rotation (SpinnerControl). Scale and clip animation are not supported; clip
+// is set immediately via SetClip, not animated. Add a property here only together
+// with a control that needs it.
 enum class CompositionProperty {
     OffsetX,
     OffsetY,
     Opacity,
+    Rotation,
 };
 
 // Parameters for an infinitely looping there-and-back offset sweep on the
@@ -92,6 +94,12 @@ public:
     // animation/static value. Restart it to make the caret solid again immediately
     // after a keystroke (the phase restarts at "solid").
     virtual void StartOpacityBlink(double halfPeriodSec) = 0;
+
+    // Start an INFINITE rotation sweep (SpinnerControl) on the compositor thread —
+    // a continuous clockwise rotation about the visual's center, at `rps` revolutions
+    // per second (Hz). Replaces any prior rotation/transform. Keeps rotating even
+    // while the UI thread is busy — the whole point of moving it off-thread.
+    virtual void StartRotationSweep(double rps) = 0;
 
     // Drop the animation on `property` (the value freezes at its current point;
     // pair with SetOffset to pin it somewhere specific).

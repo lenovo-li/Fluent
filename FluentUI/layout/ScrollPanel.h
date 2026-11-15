@@ -17,7 +17,7 @@
 //
 // Scrolling is two-axis. Vertical is the primary axis: children stack top-to-bottom
 // and the total height drives the vertical extent. Horizontal overflow (a child
-// whose desired width exceeds the viewport, e.g. a Grid of fixed-width Calendars in
+// whose desired width exceeds the viewport, e.g. a Grid of fixed-width controls in
 // a narrow window) gets the bottom rail: the child keeps its natural width and the
 // panel scrolls sideways. Both rails are overlays from the shared ScrollViewer, so
 // they coexist with a child's own scrollbars exactly the way the vertical one does

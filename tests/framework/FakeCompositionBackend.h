@@ -33,6 +33,9 @@ struct FakeAnimation {
     bool isBlink = false;
     double halfPeriodSec = 0.0;
     int blinkStarts = 0;   // restart count (ResetBlink makes the caret solid again)
+    // Infinite rotation sweep (valid when isRotation).
+    bool isRotation = false;
+    double rps = 0.0;
 };
 
 class FakeCompositionVisual : public fluent::ICompositionVisual {
@@ -45,6 +48,7 @@ public:
     std::optional<FakeAnimation> offsetXAnim;   // set by StartOffsetSweep
     std::optional<FakeAnimation> offsetYAnim;   // set by StartOffsetYTween
     std::optional<FakeAnimation> opacityAnim;   // set by StartOpacityBlink
+    std::optional<FakeAnimation> rotationAnim;  // set by StartRotationSweep
     int drawCount = 0;                          // DrawSurface calls
     uint32_t lastDrawW = 0, lastDrawH = 0;
     std::vector<fluent::ICompositionVisual*> children;
@@ -92,10 +96,18 @@ public:
         opacityAnim = a;
         opacity = 1.0f;  // fake "solid" phase, for a test that reads the value
     }
+    void StartRotationSweep(double rps) override {
+        FakeAnimation a;
+        a.property = fluent::CompositionProperty::Rotation;
+        a.isRotation = true;
+        a.rps = rps;
+        rotationAnim = a;
+    }
     void StopAnimation(fluent::CompositionProperty property) override {
         if (property == fluent::CompositionProperty::OffsetX) offsetXAnim.reset();
         if (property == fluent::CompositionProperty::OffsetY) offsetYAnim.reset();
         if (property == fluent::CompositionProperty::Opacity) opacityAnim.reset();
+        if (property == fluent::CompositionProperty::Rotation) rotationAnim.reset();
     }
 
     bool DrawSurface(uint32_t w, uint32_t h, const DrawCallback& draw) override {

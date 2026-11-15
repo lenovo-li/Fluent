@@ -279,4 +279,3 @@ Image 的 peer：
 ## 相关控件
 
 - [Border](Border.md) — 需要给图加边框/圆角/背景时包在外层
-- [Metric](Metric.md) — 同为纯展示控件，但画的是文字数值

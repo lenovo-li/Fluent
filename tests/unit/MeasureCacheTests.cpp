@@ -123,9 +123,9 @@ TEST(MeasureCache, PanelRemeasuresDirtyChildOnlySkipsCleanSibling) {
 }
 
 // The LayoutCostProbe counters must partition the traversal the same way the cache
-// does: every MeasureCached call lands in exactly one of measured/hit. This is the
-// property the resize trace's `measured=N hits=M` line is read against — if the two
-// counters could double-count or miss, a diagnosed hit rate would be fiction.
+// does: every MeasureCached call lands in exactly one of measured/hit. The cache
+// tests read a hit rate off these two counters — if they could double-count or
+// miss, that hit rate would be fiction.
 //
 // The probe is a process-global (it is read inside Measure, so it cannot afford
 // indirection), hence the explicit enable/reset here and the disable at the end: a

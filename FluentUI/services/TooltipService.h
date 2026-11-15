@@ -10,7 +10,7 @@
 // every tooltip.
 //
 // Opening any other popup (MenuFlyout from Button::SetFlyout, a context menu, a
-// ComboBox drop-down, the DatePicker calendar) hides the tooltip at once, as in
+// ComboBox drop-down) hides the tooltip at once, as in
 // WinUI. No tooltip arms anywhere in the window while such a popup is visible, and
 // the element that was under the pointer when it opened stays quiet until the
 // pointer moves to a different target — so closing a button's menu while still

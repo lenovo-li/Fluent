@@ -25,7 +25,7 @@ class TextBox;
 
 namespace fluent::automation {
 
-// Button / RepeatButton / BigButton: Button + Invoke. Name = the button's text.
+// Button / BigButton: Button + Invoke. Name = the button's text.
 class ButtonPeer : public AutomationPeer, public IInvokePeer {
 public:
     explicit ButtonPeer(ButtonBase& owner);

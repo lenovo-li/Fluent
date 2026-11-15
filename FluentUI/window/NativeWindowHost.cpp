@@ -331,7 +331,6 @@ HRESULT NativeWindowHost::Create(HINSTANCE hInst, const wchar_t* title,
     if (SUCCEEDED(OleInitialize(nullptr))) {
         if (SUCCEEDED(RegisterDragDrop(hwnd_, this))) {
             dragDropRegistered_ = true;
-            Trace(kTag, "RegisterDragDrop succeeded", S_OK);
         } else {
             TraceMsg(kTag, "RegisterDragDrop failed");
         }
@@ -1307,13 +1306,7 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
 
         case WM_NCHITTEST: {
             POINT pt = {GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
-            const LRESULT ht = HitTestNca(pt);
-            // Timestamp the moment the cursor was last reported over a resize
-            // border. The gap from here to WM_ENTERSIZEMOVE is time spent inside
-            // the SYSTEM (deciding drag vs click, DWM scheduling) and is invisible
-            // to every frame-pacing knob we own.
-            if (ht >= HTSIZEFIRST && ht <= HTSIZELAST) borderHitQpc_ = QpcNow();
-            return ht;
+            return HitTestNca(pt);
         }
 
         case WM_GETMINMAXINFO: {
@@ -1335,23 +1328,10 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
             if (wp == SIZE_MINIMIZED) {
                 // Window minimized: close any open popups (menus, tooltips, etc.)
                 // so they don't linger invisible and become unresponsive.
-                FL_TRACEF("Input", "WM_SIZE SIZE_MINIMIZED: closing popups");
                 if (popupDismiss_) {
                     DispatchPopupDismiss(PopupDismissReason::Move, nullptr, 0, 0);
                 }
             } else {
-                // Wall-clock gap since the previous WM_SIZE we were handed. A large
-                // value here means the STALL WAS BEFORE US: the system did not
-                // deliver a size for that long, so no amount of frame pacing on our
-                // side could have painted anything in between.
-                if (inModalLoop_) {
-                    const int64_t now = QpcNow();
-                    const double sinceLast =
-                        lastSizeMsgQpc_ ? QpcToMs(now - lastSizeMsgQpc_) : -1.0;
-                    lastSizeMsgQpc_ = now;
-                    FL_TRACEF("Modal", "WM_SIZE %dx%d  (+%.1fms since previous WM_SIZE)",
-                              LOWORD(lp), HIWORD(lp), sinceLast);
-                }
                 OnSize(LOWORD(lp), HIWORD(lp));
                 // Resize coalescing: WM_SIZE arrives densely inside the system modal resize
                 // loop where our main loop (and the low-priority WM_TIMER heartbeat)
@@ -1390,10 +1370,6 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
             // longer paints synchronously, so the heartbeat is now what applies the
             // coalesced resize and repaints the window during the drag. It also
             // keeps any active animation ticking. Disarmed on WM_EXITSIZEMOVE.
-            {
-                const double gapMs = borderHitQpc_ ? QpcToMs(QpcNow() - borderHitQpc_) : -1.0;
-                FL_TRACEF("Modal", "ENTERSIZEMOVE (+%.1fms since last border hit)", gapMs);
-            }
             inModalLoop_ = true;
             context_.inModalResize = true;
             // UIContext is stored BY VALUE on every element (UIElement::context_), so
@@ -1409,7 +1385,6 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
             // stale (possibly much wider) estimate would let the first frames
             // overshoot the panel before the smoothing pulls it back.
             ResetModalGapEstimate();
-            modalTickYields_ = 0;
             // Precise tick from a worker thread posting WM_FLUENT_MODAL_TICK. This
             // is the primary driver now, and the reason a held-but-motionless resize
             // border no longer drops to ~30fps: WM_TIMER could not deliver better
@@ -1423,10 +1398,6 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
                 // tick rate for no benefit — ServiceModalFrame would just skip the
                 // extra, but it is wasted wakeups.
                 const bool heartbeatOk = modalHeartbeat_.IsRunning();
-                FL_TRACEF("Modal", "heartbeat %s (%.2fms), fallback timer %s",
-                          heartbeatOk ? "started" : "FAILED",
-                          period,
-                          heartbeatOk ? "off" : "armed");
                 if (!heartbeatOk)
                     SetTimer(hwnd_, kAnimTimerId, kAnimIntervalMs, nullptr);
             }
@@ -1470,10 +1441,6 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
                 frame_.Scheduler().EndFrame();
             }
             KillTimer(hwnd_, kAnimTimerId);
-            // Once per drag: how many heartbeat ticks deferred to queued input. Nonzero
-            // means frames ran past the refresh interval at some point in the drag.
-            FL_TRACEF("Modal", "EXITSIZEMOVE (%d heartbeat tick(s) yielded to input)",
-                      modalTickYields_);
             if (sessionLogEnabled_) {
                 char buf[96];
                 _snprintf_s(buf, sizeof(buf), _TRUNCATE, "exit; final %ux%upx",
@@ -1567,7 +1534,6 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
             int px = GET_X_LPARAM(lp), py = GET_Y_LPARAM(lp);
             POINT pt = {px, py};
             ScreenToClient(hwnd_, &pt);
-            FL_TRACEF("Input", "WM_NCLBUTTONDOWN at client (%d,%d): light-dismiss", pt.x, pt.y);
             LightDismissAt(pt.x, pt.y);
             break;  // let DefWindowProc handle the drag
         }
@@ -1586,7 +1552,6 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
                 // A press on min/max/close is still a click outside the open popup, so it
                 // light-dismisses like any other press. This branch used to return before
                 // reaching LightDismissAt below, leaving a menu open across a minimize.
-                FL_TRACEF("Input", "caption button %d press: light-dismiss", caption);
                 LightDismissAt(px, py);
                 pressedCaption_ = caption;
                 SetCapture(hwnd_);
@@ -1601,16 +1566,6 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
                 static_cast<float>(px), static_cast<float>(py),
                 static_cast<uint32_t>(GetMessageTime()), GetDoubleClickTime(),
                 static_cast<float>(GetSystemMetrics(SM_CXDOUBLECLK)));
-            // Traced because "double-click does nothing" and "double-click was never
-            // delivered" look identical on screen. Seeing clickCount here separates
-            // a missing CS_DBLCLKS / routing problem from a control-logic problem,
-            // which is otherwise a long detour through the wrong layer.
-            //
-            // FL_TRACEF, not a local buffer + TraceMsg: this runs on EVERY mouse press,
-            // and with a debugger attached OutputDebugStringA blocks until the debugger
-            // drains it. The macro removes the formatting too, so a Release build costs
-            // literally nothing here.
-            FL_TRACEF("Input", "press clickCount=%d at (%d,%d)", clickCount, px, py);
             // Parent-window light-dismiss for no-activate popups first (the popup
             // decides whether to close), then route the press into the tree.
             LightDismissAt(px, py);
@@ -1836,7 +1791,6 @@ LRESULT NativeWindowHost::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
                     lastFrameQpc_ ? QpcToMs(QpcNow() - lastFrameQpc_) : 0.0;
                 if (ModalTickShouldYieldToInput(inputPending, lastFrameQpc_ != 0,
                                                 sinceFrameEnd, RefreshHz())) {
-                    ++modalTickYields_;
                     return 0;
                 }
             }
@@ -2133,8 +2087,6 @@ void NativeWindowHost::OnSize(UINT pixelW, UINT pixelH) {
 void NativeWindowHost::ApplyPendingResize() {
     if (!resizePending_ || !graphicsReady_) return;
 
-    const int64_t applyStart = QpcNow();
-
     // Time this and carry it to the next frame's stats. It runs BEFORE RenderNow
     // starts its own clock, so without this the whole cost of a resize — the surface
     // resize plus the OnLayout it forces, which for a text control means re-wrapping
@@ -2148,10 +2100,8 @@ void NativeWindowHost::ApplyPendingResize() {
     pixelW_ = pendingPixelW_;
     pixelH_ = pendingPixelH_;
 
-    const int64_t beforeCompResize = QpcNow();
     if (sizeChanged)
         graphics_.Comp().Resize(pixelW_, pixelH_);  // resize the surface in place, no rebuild
-    const int64_t afterCompResize = QpcNow();
 
     // A resized content surface has undefined pixels in the newly exposed
     // area — force a full clear for the next 2 frames so no partial redraw trusts them.
@@ -2165,33 +2115,7 @@ void NativeWindowHost::ApplyPendingResize() {
     // the DComp surface rasterization inside ScrollContentHost during the drag and
     // converges on WM_EXITSIZEMOVE. That kept the geometry exact at every frame and
     // took layout from 7-13ms to 2-3ms, so there is nothing left to trade away here.
-    const int64_t beforeLayout = QpcNow();
     OnLayout();
-    const int64_t afterLayout = QpcNow();
-
-    // 细分打印：graphics_.Comp().Resize 和 OnLayout 分别的耗时
-    const double compResizeMs = QpcToMs(afterCompResize - beforeCompResize);
-    const double layoutMs = QpcToMs(afterLayout - beforeLayout);
-    const double totalMs = QpcToMs(afterLayout - applyStart);
-
-    if (!resizeTraceLabel_.empty()) {
-        // measure/arrange come from Window::OnLayout via FrameStats — read them right
-        // after the OnLayout above so they describe THIS resize, not a later frame.
-        // Printed on the same line as the total so no manual correlation between two
-        // trace streams is needed: one line says how long, which half, and how many
-        // elements were actually re-measured.
-        const FrameStats& fs = lastFrameStats_;
-        FL_TRACEF("Resize",
-                  "Page=[%ls] size=%ux%u  total=%.3fms (surface=%.3f + layout=%.3f "
-                  "[measure=%.3f arrange=%.3f]) measured=%d hits=%d",
-                  resizeTraceLabel_.c_str(), pixelW_, pixelH_,
-                  totalMs, compResizeMs, layoutMs, fs.measureMs, fs.arrangeMs,
-                  LayoutCostProbe::GetCount(LayoutCountKey::MeasureCalls),
-                  LayoutCostProbe::GetCount(LayoutCountKey::MeasureCacheHits));
-        // Per-control breakdown for whichever suspects are instrumented. Silent when
-        // nothing recorded, so an uninstrumented page costs one loop over 6 ints.
-        LayoutCostProbe::Report("    ");
-    }
 }
 
 double NativeWindowHost::SampleModalGap() {
@@ -2416,7 +2340,6 @@ void NativeWindowHost::DrawCaptionButtons(ID2D1DeviceContext* dc, float) {
 void NativeWindowHost::SetIconResource(UINT resourceId) {
     if (iconResourceId_ == resourceId) return;
     iconResourceId_ = resourceId;
-    FL_TRACEF(kTag, "icon resource set id=%u hwnd=%p", resourceId, hwnd_);
     titleIconBitmap_.Reset();
     if (hwnd_) {
         RecreateWindowIcon();
@@ -2426,11 +2349,7 @@ void NativeWindowHost::SetIconResource(UINT resourceId) {
 
 void NativeWindowHost::RecreateWindowIcon() {
     titleIconBitmap_.Reset();
-    if (!hwnd_ || !hInst_) {
-        FL_TRACEF(kTag, "icon skipped id=%u hwnd=%p instance=%p",
-                  iconResourceId_, hwnd_, hInst_);
-        return;
-    }
+    if (!hwnd_ || !hInst_) return;
 
     // Load separate small (16px) and big (32px) icons at the current DPI so they
     // are crisp at any scale. LR_DEFAULTSIZE would pick only one size (usually 32px),
@@ -2446,8 +2365,9 @@ void NativeWindowHost::RecreateWindowIcon() {
         iconBig = static_cast<HICON>(LoadImageW(
             hInst_, MAKEINTRESOURCEW(iconResourceId_), IMAGE_ICON,
             bigPx, bigPx, LR_DEFAULTCOLOR));
-        FL_TRACEF(kTag, "icon id=%u dpi=%u small=%dpx(%p) big=%dpx(%p) err=%lu",
-                  iconResourceId_, dpi_, smallPx, iconSmall, bigPx, iconBig, GetLastError());
+        if (!iconSmall || !iconBig)
+            FL_TRACEF(kTag, "icon LoadImageW failed id=%u dpi=%u small=%p big=%p err=%lu",
+                      iconResourceId_, dpi_, iconSmall, iconBig, GetLastError());
     }
     SendMessageW(hwnd_, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(iconBig));
     SendMessageW(hwnd_, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(iconSmall));
@@ -2467,31 +2387,26 @@ void NativeWindowHost::RecreateWindowIcon() {
     HRESULT hr = CoCreateInstance(CLSID_WICImagingFactory, nullptr,
                                   CLSCTX_INPROC_SERVER,
                                   IID_PPV_ARGS(factory.GetAddressOf()));
-    Trace(kTag, "icon WIC factory", hr);
+    if (FAILED(hr)) Trace(kTag, "icon WIC factory FAILED", hr);
     if (SUCCEEDED(hr)) {
         hr = factory->CreateBitmapFromHICON(icon, bitmap.GetAddressOf());
-        Trace(kTag, "icon CreateBitmapFromHICON", hr);
+        if (FAILED(hr)) Trace(kTag, "icon CreateBitmapFromHICON FAILED", hr);
     }
     if (SUCCEEDED(hr)) {
-        UINT width = 0, height = 0;
-        bitmap->GetSize(&width, &height);
-        FL_TRACEF(kTag, "icon WIC size=%ux%u", width, height);
         hr = factory->CreateFormatConverter(converter.GetAddressOf());
-        Trace(kTag, "icon CreateFormatConverter", hr);
+        if (FAILED(hr)) Trace(kTag, "icon CreateFormatConverter FAILED", hr);
     }
     if (SUCCEEDED(hr)) {
         hr = converter->Initialize(bitmap.Get(), GUID_WICPixelFormat32bppPBGRA,
                                    WICBitmapDitherTypeNone, nullptr, 0.0,
                                    WICBitmapPaletteTypeMedianCut);
-        Trace(kTag, "icon converter Initialize(PBGRA)", hr);
+        if (FAILED(hr)) Trace(kTag, "icon converter Initialize(PBGRA) FAILED", hr);
     }
     if (SUCCEEDED(hr)) {
         hr = graphics_.D2D().DC()->CreateBitmapFromWicBitmap(converter.Get(), nullptr,
                                                   titleIconBitmap_.GetAddressOf());
-        Trace(kTag, "icon CreateBitmapFromWicBitmap", hr);
+        if (FAILED(hr)) Trace(kTag, "icon CreateBitmapFromWicBitmap FAILED", hr);
     }
-    FL_TRACEF(kTag, "icon ready=%d bitmap=%p", titleIconBitmap_ ? 1 : 0,
-              titleIconBitmap_.Get());
 }
 
 void NativeWindowHost::DrawWindowIcon(ID2D1DeviceContext* dc) {
@@ -2611,11 +2526,8 @@ void NativeWindowHost::OnPopupOpened(HWND popup) {
         openPopups_.push_back(popup);
     // Query the hit target now rather than trusting Armed(): a button's flyout
     // opens on release, and the press before it already cleared the armed target.
-    const bool wasVisible = tooltip_ && tooltip_->IsVisible();
     CancelTooltip();
     tooltipArming_.OnPopupOpened(input_.Input().Hot());
-    FL_TRACEF(kTag, "Tooltip: popup opened, tooltip %s, suppressed until pointer moves on",
-              wasVisible ? "dismissed" : "not visible");
 }
 
 bool NativeWindowHost::InteractivePopupOpen() {

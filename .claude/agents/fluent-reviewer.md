@@ -1,7 +1,7 @@
 ---
 name: fluent-reviewer
 description: Reviews a FluentUI diff it did not write, against the framework's non-negotiables and contracts. Use after implementing a change and after fluent-builder passes, before reporting the work complete. Pass the scope (branch, files, or "working tree").
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob, Bash, mcp__microsoft-learn__microsoft_docs_search, mcp__microsoft-learn__microsoft_docs_fetch
 disallowedTools: NotebookEdit, Agent
 model: opus
 color: red
@@ -54,6 +54,14 @@ API and structure
   `extensions/`; check `docs/controls/inheritance-guide.md`.
 - New custom controls belong in `extensions/`, not the FluentUI tree.
 - Text inputs: record undo before mutating, clear the stack on external `SetText`.
+
+Windows API use
+- A Win32 / D2D / DirectWrite / DComp / WIC / UIA call the diff introduces, or
+  uses with new arguments, is checked against Microsoft Learn
+  (`microsoft_docs_search`, then `microsoft_docs_fetch`) rather than memory:
+  required thread or apartment, device-loss HRESULTs that must trigger a rebuild,
+  reference ownership of out-parameters, Windows version floor. A finding based
+  on the docs cites the URL.
 
 Tests
 - New behavior has tests. Watch for tautologies (`EXPECT_EQ(x, x)`) and

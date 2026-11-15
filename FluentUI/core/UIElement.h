@@ -69,16 +69,12 @@ public:
         if (bounds_.x == r.x && bounds_.y == r.y && bounds_.w == r.w && bounds_.h == r.h)
             return;
         bounds_ = r;
-        // The single choke point for the arrange side, instrumented for the same
-        // reason MeasureCached is: OnBoundsChanged is a virtual whose subclass bodies
-        // do real work (DWrite layout rebuilds, compositor visual re-fits, scroll
-        // resyncs), and none of it was visible in `arrange=NNms`. The early return
-        // above is deliberately NOT counted — an unchanged rect does no work, and
-        // counting it would inflate the denominator with free calls.
+        // The single choke point for the arrange side, counted for the same reason
+        // MeasureCached is: OnBoundsChanged is a virtual whose subclass bodies do real
+        // work (DWrite layout rebuilds, compositor visual re-fits, scroll resyncs).
+        // The early return above is deliberately NOT counted — an unchanged rect does
+        // no work, and counting it would inflate the denominator with free calls.
         LayoutCostProbe::Bump(LayoutCountKey::BoundsChanged);
-        // NOTE: this scope NESTS around any subclass-specific key (TextBlock etc.),
-        // so BoundsChangedTotal is a superset, not a sibling, of those rows.
-        LayoutCostProbe::Scope probe(LayoutCostKey::BoundsChangedTotal);
         OnBoundsChanged();
         
         // Raise SizeChanged event

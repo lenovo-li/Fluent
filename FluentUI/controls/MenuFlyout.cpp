@@ -627,7 +627,6 @@ void MenuFlyout::OpenRoot(const RECT& anchor) {
     }
 
     RegisterWindowHooks();
-    TraceMsg(kTag, "OpenRoot: menu shown");
 }
 
 void MenuFlyout::OpenSubmenu(int levelIndex, int itemIndex) {
@@ -832,7 +831,6 @@ void MenuFlyout::Close() {
     closed_.Raise(*this, args);
 
     if (onClosed_) onClosed_();
-    TraceMsg(kTag, "Close: menu chain closed");
 }
 
 // ---------------------------------------------------------------------------
