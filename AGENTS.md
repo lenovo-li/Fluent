@@ -22,18 +22,16 @@
 - 断点恢复顺序：读 TASK_STATE.md → `git status --short` → 看相关 diff →
   从「Exact Next Actions」第一条继续。不要重做已完成步骤，不要在没有新
   证据时重复已记录的失败方案。
-- 设计/任务文档在 `docs/design/`，是临时文档：任务完成后删除。长期文档不得引用它们，
+- 设计/任务文档放在 `docs/design/`（目前没有进行中的任务，目录不存在），是临时文档：任务完成后删除。长期文档不得引用它们，
   也不得引用 git 历史（commit SHA、`git show` 等），见 CLAUDE.md「Documentation lifetime rule」。
 
 ## Hermes 特有的环境事实
 
 - **Shell 是 git-bash (MSYS)，不是 PowerShell。** CLAUDE.md 里的构建命令是
-  bash 语法，可直接用；但 `~/.claude/CLAUDE.md` 全局配置或
-  `.claude/settings.local.json` 里出现的 `pwsh -NoProfile -Command ...`
-  写法在 Hermes 的 terminal 工具里不适用——直接用 MSBuild 短命令即可：
+  bash 语法，可直接用。构建统一走 `scripts/build.ps1`，它用 `vswhere.exe`
+  定位 MSBuild，不要把某台机器的 VS 安装路径写进命令或文档：
   ```bash
-  MSBUILD="C:/Program Files/Microsoft Visual Studio/18/Community/MSBuild/Current/Bin/MSBuild.exe"
-  "$MSBUILD" Fluent.slnx -p:Configuration=Debug -p:Platform=x64 -verbosity:minimal
+  powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1 -Configuration Debug
   ```
 - 路径：MSYS 风格 `/d/project/Fluent` 和原生 `D:\project\Fluent` 都可用；
   仓库位置因机器而异，不要把某台机器的绝对路径写进文档或脚本。

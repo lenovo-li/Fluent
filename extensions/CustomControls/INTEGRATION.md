@@ -9,11 +9,11 @@ project references it too (`tests/unit/CustomControlsTests.cpp`).
 
 ## What This Is
 
-`extensions/CustomControls/` is a **separate library** demonstrating how end users should extend FluentUI by inheriting controls. It contains four working examples:
+`extensions/CustomControls/` is a **separate library** demonstrating how end users should extend FluentUI by inheriting controls. It contains three working examples:
 
-2. **BigButton**: 64dp tall button with icon + title + subtitle
-3. **LogSlider**: snaps to powers of ten (1, 10, 100, 1000); arrow keys step one decade
-4. **SpinnerControl**: a fully custom animated control (derives `Control`)
+1. **BigButton**: 64dp tall button with icon + title + subtitle
+2. **LogSlider**: snaps to powers of ten (1, 10, 100, 1000); arrow keys step one decade
+3. **SpinnerControl**: a fully custom animated control (derives `Control`)
 
 These are **real implementations** (`.h` + `.cpp` files), not header-only stubs.
 
@@ -57,7 +57,6 @@ Using the controls from an app:
 using namespace fluent::custom;
 
 // Panels own their children: Add takes std::unique_ptr and returns the raw pointer.
-lunarCal->SetSelectedDate(2026, 9, 27);
 
 auto* bigBtn = panel->Add(std::make_unique<BigButton>());
 bigBtn->SetText(L"Download");
@@ -89,5 +88,5 @@ files and `target_link_libraries(... PUBLIC FluentUI::FluentUI)` (or the in-tree
 - `tests/unit/InheritanceExamplesTest.cpp` compile-checks the protected extension
   points through `tests/unit/InheritanceExamples.h`, a separate header-only
   variant of similar controls.
-- What the controls look like (glyphs, colours, the lunar text) needs the demo on
+- What the controls look like (glyphs, colours, the spinner animation) needs the demo on
   a real display: open the **Custom Controls** page.
