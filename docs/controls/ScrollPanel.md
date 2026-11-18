@@ -125,6 +125,33 @@ SetRoot(std::move(scroll));     // 在 Window 子类的 OnInitialize 里
 未验证：需真机。在 demo 任一长页面上打开 F12 HUD，鼠标在页面上移动但不滚动，看脏区只覆盖
 右侧滚动条那一条，CPU Max 不再随鼠标移动升高；再把窗口拉大到内容不溢出，确认滚动条残影被擦掉。
 
+### 修过的 bug：Grid 多遍测量导致滚动到底后最后一张卡被截断
+
+ScrollPanel 嵌在 Grid 的 Star 列里，Grid 每帧会量两次：第一次按完整行宽估列（文字
+换行少，内容矮），第二次按解析出来的列宽正式量（文字更多换行，内容高）。旧代码在
+`MeasureChildren` 里立即把 `contentHeight_` 交给 `ScrollViewer::SetContentHeight`，
+后者遇到 `offset_ > newMax` 就会向下钳位。第一遍量完，`SetContentHeight` 用偏小的高度
+钳住了偏移；第二遍虽然量出正确高度，但 `SetContentHeight` 只往下钳，不往上恢复，于是
+偏移永远够不到真正的底部，最后一行内容被截掉。
+
+修复：`MeasureChildren` 不再调 `UpdateScrollExtent`，只更新 `contentHeight_` 和水平
+范围（水平偏移不会被竖向测量弄错，所以照常提交）。`UpdateScrollExtent` 仅在
+`ArrangeOverride` 末尾（所有重测完毕后）以及 `OnBoundsChanged`（视口尺寸改变时）调用。
+`ArrangeOverride` 计算竖向滚动条是否出现时，直接读 `contentHeight_` 而不再依赖
+`scroll_.MaxOffset()`，避免在当轮范围未提交前读到上一帧的旧值。
+
+证明（headless 单元测试，修复经过变异检验）：
+
+| 行为 | 测试 |
+| --- | --- |
+| 滚到底后改内容触发重测，偏移不被第一遍的矮值钳掉 | `ScrollPanel.BottomOffsetSurvivesSpeculativeFullWidthMeasure` |
+
+变异：在 `MeasureChildren` 里恢复 `UpdateScrollExtent()` 调用，上述测试立即失败，表现
+为 `VerticalOffset()` 被钳到第一遍的 `MaxOffset`，而不是保持在正确的底部。
+
+未验证：需真机。在含有多张换行文字卡片的 ScrollPanel 里滚到底，动态添加新卡后确认
+最后一张卡的按钮行完整可见，没有被截断。
+
 ### 性能特征
 
 - **测量、排列、绘制都是 O(子元素数)**，不虚拟化；绘制按视口裁剪，裁剪范围通过

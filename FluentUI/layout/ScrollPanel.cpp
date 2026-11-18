@@ -38,7 +38,11 @@ float ScrollPanel::MeasureChildren(float childAvailW)
     // The horizontal extent includes the padding, so a wide child can scroll until
     // its right edge AND the trailing padding are both visible.
     scroll_.SetContentWidth(maxW + padding_.horizontal());
-    UpdateScrollExtent();
+    // NOTE: Do NOT call UpdateScrollExtent here. Measure is speculative (Grid calls
+    // it twice per pass, once at full width then at column width), and committing
+    // contentHeight to ScrollViewer mid-measure would clamp offset_ against a stale
+    // value, causing scroll position to be lost when content grows. UpdateScrollExtent
+    // is called in ArrangeOverride after the final re-measure, and in OnBoundsChanged.
     return maxW;
 }
 
@@ -97,7 +101,13 @@ void ScrollPanel::ArrangeOverride(const RectDip& content)
     // Reserve a strip on the right for the vertical rail so a child with its own
     // scrollbar (ListBox, TreeView) does not draw its rail directly under ours.
     // When the content fits (no scroll) the strip is not needed.
-    float vRail = (scroll_.MaxOffset() > 0.0f) ? kRailStrip : 0.0f;
+    //
+    // Check overflow using the measured contentHeight_ directly rather than relying
+    // on scroll_.MaxOffset(), because UpdateScrollExtent hasn't been called yet in
+    // this Arrange pass (deferred until after any re-measure to avoid mid-layout
+    // offset clamping from Grid's multi-pass measurement).
+    const float overflow = contentHeight_ + padding_.vertical() - content.h;
+    float vRail = (overflow > 0.0f) ? kRailStrip : 0.0f;
     float fitW = std::max(0.0f, content.w - padding_.horizontal() - vRail);
 
     // Arrange's width must be the one the children were measured at, or wrapped
@@ -111,13 +121,22 @@ void ScrollPanel::ArrangeOverride(const RectDip& content)
     if (std::isfinite(measureConstraintW_) && std::fabs(fitW - measureConstraintW_) > 0.5f) {
         measureConstraintW_ = fitW;
         MeasureChildren(fitW);
-        if (vRail == 0.0f && scroll_.MaxOffset() > 0.0f) {
+        // Re-check overflow with the re-measured contentHeight_.
+        const float newOverflow = contentHeight_ + padding_.vertical() - content.h;
+        if (vRail == 0.0f && newOverflow > 0.0f) {
             vRail = kRailStrip;
             fitW = std::max(0.0f, fitW - kRailStrip);
             measureConstraintW_ = fitW;
             MeasureChildren(fitW);
         }
     }
+
+    // Commit the final contentHeight to ScrollViewer AFTER any re-measure above.
+    // This ensures offset_ is clamped against the correct extent, not a stale value
+    // from an earlier speculative Measure pass (Grid measures twice: once at full
+    // width, once at column width; committing mid-measure would clamp offset against
+    // the wrong max, clipping content at the bottom).
+    UpdateScrollExtent();
 
     // Arrange children in a vertical stack, APPLYING both scroll offsets to their
     // bounds. This moves compositor-backed children (TextArea, TreeView) along with

@@ -12,3 +12,6 @@
 - [UIA item changes only on removal](uia-item-changes-only-on-removal.md) — same-count shifts (capped log, re-sort) raise nothing; ItemAtPoint past last item
 - [Text unit boundary at document end](text-unit-boundary-at-document-end.md) — Expand/Move at pos == n give empty ranges or no move; CRLF splits
 - [Idle gate checked only at creation](idle-gate-checked-only-at-creation.md) — "zero without client" checked when a peer is made; its invalidation hook keeps costing after the client leaves
+- [Scroll extent tests tautological](scroll-extent-tests-tautological.md) — "last child visible at MaxOffset" via Bounds() is an identity; doesn't catch stale wrap heights
+- [Clamping side effects in speculative layout](clamping-side-effects-in-speculative-layout.md) — SetContentHeight clamps offset mid-layout; later taller pass can't recover; static tests miss it
+- [Offset-origin width recovery](offset-origin-width-recovery.md) — pen starts at origin-OffsetX; width = x - origin must add OffsetX back (LogViewer RenderLine)

@@ -78,7 +78,19 @@ size_t LineCount() const;
 ```cpp
 void SetAutoScrollToTail(bool enable);   // 默认 true
 bool AutoScrollToTail() const;
+
+float VerticalOffset() const;
+float MaxVerticalOffset() const;
+void  SetVerticalOffset(float dip);      // 立即跳转到指定位置
+
+float HorizontalOffset() const;
+float MaxHorizontalOffset() const;
+void  SetHorizontalOffset(float dip);
 ```
+
+垂直滚动支持平滑动画（滚轮 / PageUp / PageDown）；水平滚动无动画（同 `ScrollPanel` / `DataGrid`，
+见 `ScrollViewer` 设计备注）。水平滚动范围是迄今测量过的最宽行：`MaxHorizontalOffset()`
+会随宽行滚动到视口内或被追加而增长，直到 `Clear()` / `SetZoom()` 重置。
 
 只有视图本来就在底部时，新行才把它带到新的底部；用户向上滚动后尾随暂停，滚回底部恢复。
 
@@ -186,6 +198,68 @@ LogViewer 的 peer（`automation/DataPeers.h`）：
 未验证：每秒上万行时的 F12 HUD 帧成本和滚动平滑度需要在真机上看（demo 的 LogViewer 页，
 看 CPU Max）。headless 测试不覆盖像素与流畅度。
 
+### 水平滚动
+
+片段不换行（按无界宽度排版），以前比视口宽的行在右边被截掉，没有办法看到后半截。现在
+控件记录一个**只增不减的宽度标记**：迄今测量过的最宽一行的宽度。内容宽度 = 标记 + 左右
+各 8 DIP 内边距；超过视口宽度时，内嵌 `ScrollViewer` 的底部滚动条出现，Shift+滚轮、点击
+或拖动底部滚动条都能横向滚动。
+
+- **成本仍是 O(可见行)**：宽度只在测量行高的地方顺带累加，不为求最宽行扫整个文档。测量
+  一行的三处入口都喂这个标记：挂上树时的一次性测量、`LayoutVisibleLines`（绘制前的测量）
+  以及 `RenderLine` 的迟到测量兜底。少喂一处，那条路径测量过的行就永远不计入宽度，因为行被
+  标记为已测量后不会再测。
+- **宽度变了但高度没变也要推送**：同字体的长行高度和估计一致，不会触发 Y 重建，所以
+  `LayoutVisibleLines` 末尾单独比较宽度标记，变化时调用 `SyncScrollExtent`；不变的帧完全
+  不碰 `ScrollViewer`。
+- **重置时机**：`Clear()` 清零并把横向偏移归零；`SetZoom()` 清零（所有宽度都随缩放变化，
+  不清零的话缩小后会留下一条滚过空白的滚动条），并记下横向偏移占范围的比例，下一次测量出
+  新范围后按同一比例恢复。`TrimToMaxLines` **故意不清零**：缓冲满时
+  每次追加都会裁剪，清零会让滚动条每批闪一下、偏移被钳回 0。代价是最宽的行被裁掉后右边会
+  留一点空白。
+- **底部留出滚动条高度**：横向滚动条存在时，竖向范围额外加 16 DIP（和 `ScrollPanel` 相同），
+  最后一行可以滚到滚动条上方，而不是压在它下面。
+- **三处 X 原点同步**：`RenderLine`、`ColumnToX`（选区高亮）、`HitTestPosition` 都用
+  `bounds_.x + kPadding - OffsetX()`，所以任意横向偏移下点击都落在画在指针下的那个字符上。
+- 点击横向滚动条空白处跳转时按 `HTrackRect()` 换算（和 `DataGrid` 相同）：两条滚动条都在时
+  横向轨道比控件窄一个角落，按控件宽度换算会让滑块落不到指针下。
+- 鼠标在任一滚动条上时光标是箭头，不是 I 形。
+
+证明（headless 单元测试，`LogViewerHScroll.*`）：
+
+| 行为 | 测试 |
+| --- | --- |
+| 窄内容没有横向范围 | `NarrowContentHasNoHorizontalExtent` |
+| 挂树前追加的宽行计入范围 | `LineMeasuredAtAttachSetsExtent` |
+| 挂树后追加、高度不变的宽行也计入范围 | `WideLineAppendedAfterAttachGrowsExtent` |
+| 横向滚动条在竖向范围里留出 16 DIP | `HorizontalRailReservesVerticalSpace` |
+| 命中测试跟随横向偏移 | `HitTestFollowsHorizontalOffset` |
+| Shift+滚轮横向滚动，不动竖向 | `ShiftWheelScrollsHorizontally` |
+| 没有横向溢出时 Shift+滚轮冒泡 | `ShiftWheelBubblesWithoutOverflow` |
+| Clear 重置范围和偏移 | `ClearResetsHorizontalExtentAndOffset` |
+| 缩小后范围随之缩小 | `ZoomOutShrinksHorizontalExtent` |
+| 缩放后横向位置按比例保持 | `ZoomKeepsRelativeHorizontalPosition` |
+| 连续两次缩放（布局前）仍保持横向位置 | `TwoZoomsBeforeLayoutKeepHorizontalPosition` |
+| 尾随视图在横向滚动条出现时重新钉底 | `TailFollowStaysPinnedWhenRailAppears` |
+| “一次滚动一屏”设置下 Shift+滚轮方向正确 | `ShiftWheelPageModeKeepsDirection` |
+
+除标注外，修复都经过变异检验（破坏修复，对应测试失败）。两处没有被变异抓到：
+
+- 尾随视图的重新钉底：只在新行测量高度与估计相差不到 0.5 DIP 时才独立起作用（否则 Y 重建
+  里已有的钉底先处理了）；测试用的默认字体估计偏差更大，走的是后一条路。
+- `RenderLine` 迟到测量记录宽度：`Render` 在绘制前已经用 `LayoutVisibleLines` 测量了可见行，
+  这条兜底只在那一步达到 8 遍上限时才会走到，headless 测试构造不出来。它的画笔从滚动后的
+  原点（`bounds_.x + kPadding - OffsetX()`）起步，所以行宽是终点减去同一个原点；少减
+  `OffsetX()` 会让宽度少记一个横向偏移量。
+
+**已知限制**：缩放时横向位置按比例保持，不按列锚定；键盘（←/→）不横向滚动视图；拖选越过左右
+边缘不会横向自动滚动；中键自动滚动只在竖向有溢出时才能启动（只有横向溢出时按中键不启动，
+启动后两个方向都会滚）。
+
+未验证：需真机。在 demo 的 LogViewer 页追加一条很长的
+行，确认底部出现滚动条；拖动它和 Shift+滚轮时文字、选区高亮一起平移，左边缘没有残影；
+滚到最底时最后一行完整显示在滚动条上方。
+
 ### 使用注意事项
 
 - ⚠️ **必须给高度**（或放进定高容器）。它的自然尺寸是整个文档，没有意义；`Measure` 只尊重
@@ -207,6 +281,7 @@ LogViewer 的 peer（`automation/DataPeers.h`）：
 | ↑ / ↓ / PageUp / PageDown | 滚动视图，不动选区 |
 | Ctrl+Home / Ctrl+End | 滚到顶 / 底 |
 | 滚轮 | 平滑滚动 |
+| Shift+滚轮 | 有行比视口宽时横向滚动（立即，无动画）；否则冒泡给父容器 |
 
 ### 主题 Token
 

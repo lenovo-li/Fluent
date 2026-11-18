@@ -85,7 +85,7 @@ void LogViewer::AppendLine(std::vector<TextSpan> spans) {
     // TextArea::AppendText. An append grows the extent, so asking "is the view at
     // the bottom" after growing it always answers no, and following would switch
     // itself off on the first batch.
-    scroll_.SetContentHeight(GetContentExtent());
+    SyncScrollExtent();
     if (autoScrollToTail_)
         scroll_.SetOffset(scroll_.MaxOffset());
 
@@ -103,8 +103,11 @@ void LogViewer::Clear() {
     ResetLayoutCache();
     // The selection pointed into text that no longer exists.
     selAnchor_ = selCurrent_ = LogTextPos{};
-    scroll_.SetContentHeight(0.0f);
+    maxLineWidth_ = 0.0f;
+    pendingZoomFracX_ = -1.0f;
+    SyncScrollExtent();
     scroll_.SetOffset(0.0f);
+    scroll_.SetOffsetX(0.0f);
     Invalidate();
 }
 
@@ -156,7 +159,7 @@ void LogViewer::TrimToMaxLines() {
     // that silently copies different text is worse than none.
     selAnchor_ = selCurrent_ = LogTextPos{};
 
-    scroll_.SetContentHeight(GetContentExtent());
+    SyncScrollExtent();
     // Compensate the offset by exactly what was dropped, so a reader parked
     // mid-history sees the text stay put instead of jumping.
     scroll_.SetOffset(std::max(0.0f, std::min(scroll_.Offset() - droppedHeight,
@@ -190,6 +193,16 @@ void LogViewer::SetZoom(float factor) {
         if (h > 0.0f) anchorFrac = (scroll_.Offset() - LineTop(anchorLine)) / h;
     }
 
+    // Horizontal position as a fraction of the old range. The width mark is reset
+    // below, so the new range is unknown until the visible lines are measured again;
+    // LayoutVisibleLines applies the fraction then. Restoring it here instead would
+    // clamp against a zero range and snap the view back to column 0 on every zoom.
+    // A fraction still pending means an earlier zoom has not been laid out yet; the
+    // range is zero now only because that zoom reset the mark, so keep its fraction.
+    const float oldMaxX = scroll_.MaxOffsetX();
+    if (pendingZoomFracX_ < 0.0f)
+        pendingZoomFracX_ = (oldMaxX > 0.0f) ? (scroll_.OffsetX() / oldMaxX) : -1.0f;
+
     zoom_ = clamped;
 
     // Every cached span layout was built at the old size, and every row height (both
@@ -198,6 +211,7 @@ void LogViewer::SetZoom(float factor) {
     // on the next paint, just as after an append. O(lines) is acceptable here: zoom is a
     // discrete user gesture, not a per-frame or per-append path.
     layoutRows_.clear();
+    maxLineWidth_ = 0.0f;
     double y = yOrigin_;
     for (size_t i = 0; i < lines_.size(); ++i) {
         lines_[i].height = PredictLineHeight(lines_[i]);
@@ -205,7 +219,7 @@ void LogViewer::SetZoom(float factor) {
         lineY_[i] = y;
         y += lines_[i].height;
     }
-    scroll_.SetContentHeight(GetContentExtent());
+    SyncScrollExtent();
 
     if (!lines_.empty()) {
         // A reader parked at the bottom stays at the bottom (tail -f keeps following);
@@ -217,6 +231,19 @@ void LogViewer::SetZoom(float factor) {
     }
     Invalidate();
     zoomChanged_.Raise(*this, zoom_);
+}
+
+void LogViewer::SyncScrollExtent() {
+    // Width first: whether the horizontal rail exists decides the vertical extent.
+    // Same shape as ScrollPanel::UpdateScrollExtent. Content width is the widest line
+    // measured so far plus the left and right padding, so the last glyph scrolls clear
+    // of the edge instead of hard against it.
+    scroll_.SetContentWidth(maxLineWidth_ > 0.0f ? maxLineWidth_ + 2.0f * kPadding : 0.0f);
+    // While the horizontal rail is live it covers the bottom strip of the viewport;
+    // inflate the vertical extent by that strip so the last line can scroll fully
+    // above the rail instead of resting under it.
+    const float hRail = scroll_.HorizontallyScrollable() ? kHRailReserveDip : 0.0f;
+    scroll_.SetContentHeight(lines_.empty() ? 0.0f : GetContentExtent() + hRail);
 }
 
 float LogViewer::GetContentExtent() const {
@@ -253,6 +280,17 @@ void LogViewer::ScrollLineIntoView(size_t index) {
 
 float LogViewer::VerticalOffset() const { return scroll_.Offset(); }
 float LogViewer::MaxVerticalOffset() const { return scroll_.MaxOffset(); }
+
+// The horizontal extent is the widest line measured so far (see maxLineWidth_), so
+// MaxHorizontalOffset() can grow as new wide lines scroll into view or are appended.
+float LogViewer::HorizontalOffset() const { return scroll_.OffsetX(); }
+float LogViewer::MaxHorizontalOffset() const { return scroll_.MaxOffsetX(); }
+
+void LogViewer::SetHorizontalOffset(float dip) {
+    // ScrollViewer clamps to [0, MaxOffsetX()]; Render reads OffsetX on the next frame.
+    scroll_.SetOffsetX(dip);
+    Invalidate();
+}
 
 void LogViewer::SetVerticalOffset(float dip) {
     scroll_.SetOffset(dip);
@@ -312,7 +350,7 @@ void LogViewer::RebuildYPositions(size_t fromIndex) {
         lineY_[i] = y;
         y += lines_[i].height;
     }
-    scroll_.SetContentHeight(GetContentExtent());
+    SyncScrollExtent();
 }
 
 // ---------------------------------------------------------------------------
@@ -331,7 +369,7 @@ void LogViewer::Arrange(const RectDip& finalRect) {
     // The scrollbar model is an embedded member, not a tree node, so it is handed
     // the bounds directly rather than being arranged as a child.
     scroll_.SetBounds(bounds_);
-    scroll_.SetContentHeight(GetContentExtent());
+    SyncScrollExtent();
 }
 
 // ---------------------------------------------------------------------------
@@ -377,7 +415,7 @@ void LogViewer::RenderLine(const DrawingContext& dc, size_t lineIndex, float y) 
     const ColorTokens& pal = Theme().colors;
 
     LogLine& line = lines_[lineIndex];
-    float x = bounds_.x + kPadding;
+    float x = bounds_.x + kPadding - scroll_.OffsetX();
     float maxHeight = 0.0f;
 
     ComPtr<IDWriteTextLayout> scratch;
@@ -414,6 +452,12 @@ void LogViewer::RenderLine(const DrawingContext& dc, size_t lineIndex, float y) 
     if (!line.heightMeasured && maxHeight > 0.0f) {
         line.height = maxHeight;
         line.heightMeasured = true;
+        // Same reason as the attach pass: once marked measured, MeasureLineHeight
+        // skips this line, so its width is recorded here. The pen started at the
+        // scrolled origin (bounds_.x + kPadding - OffsetX), so the line's width is x
+        // minus that same origin; dropping the OffsetX term would under-record the
+        // width by the current horizontal offset.
+        maxLineWidth_ = std::max(maxLineWidth_, x - (bounds_.x + kPadding - scroll_.OffsetX()));
     }
 }
 
@@ -463,6 +507,7 @@ void LogViewer::Render(const DrawingContext& dc) {
     // to be applied after the loop — mutating lineY_ mid-walk would move
     // lines the loop has not reached yet.
     size_t firstCorrected = lines_.size();
+    const float widthBeforeDraw = maxLineWidth_;
 
     // The selection range, resolved once per frame rather than per line.
     LogTextPos selFrom, selTo;
@@ -497,6 +542,10 @@ void LogViewer::Render(const DrawingContext& dc) {
         FL_TRACEF("LogViewer", "Render: late height correction at line %zu", firstCorrected);
         RebuildYPositions(firstCorrected);
         Invalidate();
+    } else if (maxLineWidth_ != widthBeforeDraw) {
+        // Only the late-measure fallback in RenderLine gets here; the rail drawn
+        // below then already reflects the new width.
+        SyncScrollExtent();
     }
 
     scroll_.Render(dc);
@@ -512,6 +561,25 @@ void LogViewer::OnPointerWheelChanged(PointerEventArgs& e) {
         const float factor = (e.wheelDelta > 0) ? 1.1f : (1.0f / 1.1f);
         SetZoom(zoom_ * factor);
         e.handled = true;
+        return;
+    }
+
+    const bool shift = (e.modifiers & ModifierKeys::Shift) != ModifierKeys::None;
+    if (shift) {
+        if (scroll_.MaxOffsetX() <= 0.0f) return;  // nothing to scroll sideways: bubble
+        // Shift+Wheel scrolls horizontally, same sign as ScrollPanel / DataGrid. The
+        // horizontal axis has no tween (see ScrollViewer's horizontal-axis note), so it
+        // applies immediately. 0 lines = the "one screen at a time" system setting.
+        scroll_.Wake();
+        float lines = e.WheelScrollLines();
+        // WheelScrollLines() is 0 for page scrolling and carries no sign then, so the
+        // direction comes from the raw delta, with the same sign as the per-line case
+        // (WheelScrollLines() is negative for wheel-up).
+        if (lines == 0.0f)
+            lines = (e.wheelDelta > 0 ? -1.0f : 1.0f) * (bounds_.w / kWheelStepDip);
+        scroll_.SetOffsetX(scroll_.OffsetX() - lines * kWheelStepDip);
+        e.handled = true;
+        Invalidate();
         return;
     }
 
@@ -573,6 +641,27 @@ void LogViewer::OnPointerPressed(PointerEventArgs& e) {
         return;
     }
 
+    // Horizontal rail takes the same shape as the vertical one (click to jump, then drag).
+    // The jump maps through HTrackRect, the same track HThumbRect and HDragTo use: with
+    // both rails live the track is shorter than bounds_.w by the vertical rail's corner,
+    // and mapping through bounds_.w would land the thumb off the pointer and make the
+    // following drag move at a different rate than the jump. Same as DataGrid.
+    if (scroll_.HitHBarRegion(dipX, dipY)) {
+        if (!scroll_.HitHThumb(dipX, dipY)) {
+            const RectDip track = scroll_.HTrackRect();
+            const RectDip thumb = scroll_.HThumbRect();
+            const float trackRange = std::max(1.0f, track.w - thumb.w);
+            const float wantLeft = (dipX - track.x) - thumb.w * 0.5f;
+            scroll_.SetOffsetX(std::clamp(wantLeft, 0.0f, trackRange) / trackRange * scroll_.MaxOffsetX());
+        }
+        scroll_.BeginHDrag(dipX);
+        if (Context().input)
+            Context().input->CapturePointer(this);
+        e.handled = true;
+        Invalidate();
+        return;
+    }
+
     // Text drag starts here. Both ends are set to the same position, so the existing
     // selection vanishes — that is the 'click clears selection' behavior.
     if (selectionEnabled_) {
@@ -618,6 +707,13 @@ void LogViewer::OnPointerMoved(PointerEventArgs& e) {
         return;
     }
 
+    if (scroll_.IsHDragging()) {
+        scroll_.HDragTo(dipX);
+        e.handled = true;
+        Invalidate();
+        return;
+    }
+
     if (draggingSelection_) {
         const LogTextPos pos = HitTestPosition(dipX, dipY);
         ExtendDragSelection(pos);
@@ -651,8 +747,14 @@ void LogViewer::OnPointerMoved(PointerEventArgs& e) {
     }
 
     scroll_.Wake();
-    pointerOverBar_ = scroll_.HitBarRegion(dipX, dipY);
-    scroll_.SetBarHover(pointerOverBar_);
+    // Both rails, and the cursor flag covers either: the arrow (not the I-beam) is
+    // what says "this strip is a scrollbar", whichever axis it belongs to.
+    // HitHBarRegion answers false while content fits, so this is inert then.
+    const bool overV = scroll_.HitBarRegion(dipX, dipY);
+    const bool overH = scroll_.HitHBarRegion(dipX, dipY);
+    pointerOverBar_ = overV || overH;
+    scroll_.SetBarHover(overV);
+    scroll_.SetHBarHover(overH);
 }
 
 void LogViewer::OnPointerReleased(PointerEventArgs& e) {
@@ -662,6 +764,8 @@ void LogViewer::OnPointerReleased(PointerEventArgs& e) {
         scroll_.EndDrag();
         autoScrollToTail_ = scroll_.TargetOffset() >= scroll_.MaxOffset() - 1.0f;
     }
+    if (scroll_.IsHDragging())
+        scroll_.EndHDrag();
     if (draggingSelection_) {
         draggingSelection_ = false;
         dragOutsideEdge_ = false;
@@ -679,6 +783,7 @@ void LogViewer::OnPointerReleased(PointerEventArgs& e) {
 void LogViewer::OnPointerLeft() {
     pointerOverBar_ = false;
     scroll_.SetBarHover(false);
+    scroll_.SetHBarHover(false);
     Invalidate();
 }
 
@@ -771,16 +876,22 @@ void LogViewer::OnAttachedToTree() {
         if (!lines_[i].heightMeasured && !lines_[i].spans.empty()) {
             // Measure all spans in this line to find the tallest one
             float maxHeight = 0.0f;
+            float totalWidth = 0.0f;
             for (const auto& span : lines_[i].spans) {
                 if (span.text.empty()) continue;
                 ComPtr<IDWriteTextLayout> layout = MakeSpanLayout(span);
                 if (layout) {
                     DWRITE_TEXT_METRICS tm{};
-                    if (SUCCEEDED(layout->GetMetrics(&tm)) && tm.height > maxHeight) {
-                        maxHeight = tm.height;
+                    if (SUCCEEDED(layout->GetMetrics(&tm))) {
+                        maxHeight = std::max(maxHeight, tm.height);
+                        totalWidth += tm.widthIncludingTrailingWhitespace;
                     }
                 }
             }
+            // This pass marks the line measured, so MeasureLineHeight will skip it
+            // later: the width mark has to be fed here or lines appended before
+            // attach would never count towards the horizontal extent.
+            maxLineWidth_ = std::max(maxLineWidth_, totalWidth);
             if (maxHeight > 0.0f) {
                 lines_[i].height = maxHeight;
                 lines_[i].heightMeasured = true;
@@ -860,17 +971,27 @@ void LogViewer::PrepareVisibleLayouts(const VisibleRange& range) const {
 float LogViewer::MeasureLineHeight(size_t lineIndex) const {
     const LogLine& line = lines_[lineIndex];
     float maxHeight = 0.0f;
+    float totalWidth = 0.0f;
     ComPtr<IDWriteTextLayout> scratch;
     for (size_t s = 0; s < line.spans.size(); ++s) {
         IDWriteTextLayout* layout = SpanLayout(lineIndex, s, scratch);
         if (!layout) continue;
         DWRITE_TEXT_METRICS tm{};
-        if (SUCCEEDED(layout->GetMetrics(&tm))) maxHeight = std::max(maxHeight, tm.height);
+        if (SUCCEEDED(layout->GetMetrics(&tm))) {
+            maxHeight = std::max(maxHeight, tm.height);
+            totalWidth += tm.widthIncludingTrailingWhitespace;
+        }
     }
+    // Grow-only horizontal extent mark (see maxLineWidth_ in the header for when it resets).
+    if (totalWidth > maxLineWidth_) maxLineWidth_ = totalWidth;
     return maxHeight;
 }
 
 LogViewer::VisibleRange LogViewer::LayoutVisibleLines(float& scrollTop, float dpiScale) {
+    const float widthBefore = maxLineWidth_;
+    // Captured before any pass changes the extent, for the same reason as `pinned`
+    // inside the loop: after the extent grows, Offset() no longer equals MaxOffset().
+    const bool wasPinned = autoScrollToTail_ && scroll_.Offset() >= scroll_.MaxOffset() - 0.5f;
     VisibleRange range = CalculateVisibleRange(scrollTop, bounds_.h);
     // Each pass that changes anything measures at least one previously estimated
     // line, so this converges; the cap only bounds a pathological document whose
@@ -900,6 +1021,27 @@ LogViewer::VisibleRange LogViewer::LayoutVisibleLines(float& scrollTop, float dp
         if (pinned) scroll_.SetOffset(scroll_.MaxOffset());
         scrollTop = SnapToPixel(scroll_.Offset(), dpiScale);
         range = CalculateVisibleRange(scrollTop, bounds_.h);
+    }
+    // A newly measured line can be wider without being taller (same font, longer
+    // text), in which case no pass above rebuilt the extent. Push the width on its
+    // own; the comparison keeps an unchanged frame from touching scroll_ at all.
+    if (maxLineWidth_ != widthBefore) {
+        SyncScrollExtent();
+        // The first wide line brings the horizontal rail, and the rail's reserve grows
+        // the vertical extent by 16 DIP. A tail-following view has to re-pin, or the
+        // newest line sits under the rail until the next append.
+        if (wasPinned) {
+            scroll_.SetOffset(scroll_.MaxOffset());
+            scrollTop = SnapToPixel(scroll_.Offset(), dpiScale);
+            range = CalculateVisibleRange(scrollTop, bounds_.h);
+        }
+    }
+    // First measurement after a zoom: put the view back at the same fraction of the
+    // horizontal range. Consumed even when nothing overflows any more, so a later wide
+    // append does not jump to a stale position.
+    if (pendingZoomFracX_ >= 0.0f && maxLineWidth_ > 0.0f) {
+        scroll_.SetOffsetX(pendingZoomFracX_ * scroll_.MaxOffsetX());
+        pendingZoomFracX_ = -1.0f;
     }
     return range;
 }
@@ -1087,7 +1229,7 @@ bool LogViewer::CopySelectionToClipboard() const {
 // loop does — any disagreement here shows up as a highlight offset from the glyphs.
 float LogViewer::ColumnToX(size_t lineIndex, size_t column) const {
     const LogLine& line = lines_[lineIndex];
-    float x = bounds_.x + kPadding;
+    float x = bounds_.x + kPadding - scroll_.OffsetX();
     size_t consumed = 0;
 
     ComPtr<IDWriteTextLayout> scratch;
@@ -1138,7 +1280,9 @@ LogTextPos LogViewer::HitTestPosition(float dipX, float dipY) const {
     // Horizontal: walk the spans, and inside the containing span ask DWrite. The
     // trailing-side flag is what makes clicking the right half of a glyph put the
     // boundary after it, so a drag selects the character you dragged across.
-    float x = bounds_.x + kPadding;
+    // Same origin as RenderLine and ColumnToX: the horizontal offset shifts all three
+    // together, so a click resolves to the glyph drawn under it at any OffsetX.
+    float x = bounds_.x + kPadding - scroll_.OffsetX();
     if (dipX <= x) return LogTextPos{lineIdx, 0};
 
     // The hit line is almost always on screen, so its layouts come from the cache;

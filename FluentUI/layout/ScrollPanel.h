@@ -256,7 +256,9 @@ private:
     void UpdateScrollExtent();
 
     // Measure every child at `childAvailW` (minus its margin) x infinity, set
-    // contentHeight_ and both scroll extents. Returns the widest child + margin.
+    // contentHeight_ and the horizontal scroll extent. Returns the widest child + margin.
+    // The vertical extent (UpdateScrollExtent) is deferred to ArrangeOverride to avoid
+    // mid-measure offset clamping from Grid's multi-pass measurement.
     float MeasureChildren(float childAvailW);
 
     // Page step for PageUp/PageDown (viewport height minus one line).

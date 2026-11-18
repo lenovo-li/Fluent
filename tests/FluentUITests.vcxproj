@@ -147,6 +147,7 @@
     <ClCompile Include="unit\ComboBoxEventsTests.cpp" />
     <ClCompile Include="unit\InheritanceExamplesTest.cpp" />
     <ClCompile Include="unit\ScrollPanelTests.cpp" />
+    <ClCompile Include="unit\ScrollPanelDynamicCardTests.cpp" />
     <ClCompile Include="unit\ToolBarTests.cpp" />
     <ClCompile Include="unit\StatusBarTests.cpp" />
     <ClCompile Include="unit\UniformGridTests.cpp" />

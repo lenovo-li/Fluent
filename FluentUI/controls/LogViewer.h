@@ -140,6 +140,10 @@ public:
     float MaxVerticalOffset() const;
     void SetVerticalOffset(float dip);
 
+    float HorizontalOffset() const;
+    float MaxHorizontalOffset() const;
+    void SetHorizontalOffset(float dip);
+
     // Total document height in DIPs: the last line's top plus its height. Before a
     // line has been painted its height is the estimate (largest font size in the
     // row times the spacing factor), so this is usable from the first append —
@@ -179,9 +183,11 @@ public:
     // is in the layout window. A row attached to the wrong line shows up here as
     // the neighbour's width — the only headless-visible symptom, since the glyphs
     // themselves need a device to draw. 0 when out of range.
+    // When horizontal scroll is active, reports the logical width before OffsetX.
     float CachedLineWidthForTest(size_t index) const {
         if (index >= lines_.size()) return 0.0f;
-        return ColumnToX(index, lines_[index].PlainText().size()) - (bounds_.x + kPadding);
+        return ColumnToX(index, lines_[index].PlainText().size())
+               - (bounds_.x + kPadding) + scroll_.OffsetX();
     }
 
     // --- Scrolling --------------------------------------------------------
@@ -276,6 +282,10 @@ private:
 
     // Compute the total content height (last line Y + last line height).
     float GetContentExtent() const;
+    // Push the current vertical and horizontal extents into scroll_. Every site that
+    // changes the line table, the width mark or the bounds calls this, so the two
+    // axes can never disagree about whether the horizontal rail is present.
+    void SyncScrollExtent();
 
     // Find the range of visible lines via binary search on lineY_.
     struct VisibleRange { int first; int last; };
@@ -331,6 +341,9 @@ private:
 
     static constexpr float kLineSpacing = 1.2f;  // multiplier for predicted height
     static constexpr float kPadding = 8.0f;      // left/right content padding
+    // Height of the horizontal rail's hover strip, the same 16 DIP ScrollPanel reserves.
+    // Added to the vertical extent only while content is wider than the viewport.
+    static constexpr float kHRailReserveDip = 16.0f;
 
     // --- Selection ---------------------------------------------------------
     // The two ends are NOT normalized: the anchor is where the drag started and
@@ -354,6 +367,19 @@ private:
     // Whether the pointer is currently over the scrollbar's hover strip. Recorded by
     // OnPointerMoved because Cursor() is passed no coordinates and must not guess.
     bool pointerOverBar_ = false;
+
+    // Grow-only horizontal extent mark, same logic as TextArea::maxSeenLineWidth_. Updated
+    // whenever a line is measured (MeasureLineHeight, which LayoutVisibleLines and the
+    // attach pass call), so the cost stays O(lines measured) and never walks the document.
+    // Reset on Clear and SetZoom (every width changes with the zoom). Deliberately NOT
+    // reset by TrimToMaxLines: with a full buffer every append trims, and resetting there
+    // would make the rail flicker and snap OffsetX back to 0 on each batch. The cost is
+    // that a trimmed-away widest line leaves some slack at the right edge.
+    // Mutable because MeasureLineHeight is const (it only reads the layout cache).
+    mutable float maxLineWidth_ = 0.0f;
+    // Horizontal offset as a fraction of the range, saved by SetZoom and applied by the
+    // next LayoutVisibleLines that has measured a line; -1 when nothing is pending.
+    float pendingZoomFracX_ = -1.0f;
 
     // Drag-select auto-scroll: true when the pointer is being dragged outside the
     // control bounds during selection. WantsAnimationTick returns true while this

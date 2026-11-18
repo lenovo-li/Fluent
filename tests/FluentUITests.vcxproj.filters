@@ -176,6 +176,7 @@
     <ClCompile Include="unit\textarealineheightprobe.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\InheritanceExamplesTest.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ScrollPanelTests.cpp"><Filter>unit</Filter></ClCompile>
+    <ClCompile Include="unit\ScrollPanelDynamicCardTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\ToolBarTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\StatusBarTests.cpp"><Filter>unit</Filter></ClCompile>
     <ClCompile Include="unit\UniformGridTests.cpp"><Filter>unit</Filter></ClCompile>

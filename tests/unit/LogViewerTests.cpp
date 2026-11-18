@@ -780,3 +780,293 @@ TEST(LogViewer, TrimRenumbersTheLayoutWindowWithTheLines)
     ref.DetachFromContext();
     v.DetachFromContext();
 }
+
+// --- Horizontal scrolling ----------------------------------------------------
+//
+// Spans never wrap (they are laid out at an unbounded width), so a line longer than
+// the viewport used to be cut off at the right edge with no way to reach the rest.
+// The horizontal extent is a grow-only mark of the widest line measured so far, fed
+// by every path that measures a line: attach, LayoutVisibleLines and the late
+// measurement in RenderLine. These tests pin each feed and each consumer.
+
+namespace {
+// Duplicated from LogViewer.cpp / ScrollPanel on purpose (see kLineSpacing above).
+constexpr float kPad = 8.0f;
+constexpr float kHRail = 16.0f;
+
+PointerEventArgs Press(float x, float y) {
+    PointerEventArgs e;
+    e.position = {x, y};
+    e.button = PointerButton::Left;
+    return e;
+}
+} // namespace
+
+TEST(LogViewerHScroll, NarrowContentHasNoHorizontalExtent)
+{
+    DWriteContext dw;
+    LogViewer v;
+    v.Arrange(RectDip{0, 0, 300, 100});
+    v.AppendLine({{L"short", kWhite}});
+    if (!AttachWithDWrite(v, dw)) return;
+    v.PrepareVisibleLayoutsForTest();
+    EXPECT_EQ(v.MaxHorizontalOffset(), 0.0f);
+    v.DetachFromContext();
+}
+
+// Lines appended before attach are measured by the attach pass, which marks them
+// measured, so LayoutVisibleLines never revisits them. If attach did not feed the
+// width mark, these lines would never count.
+TEST(LogViewerHScroll, LineMeasuredAtAttachSetsExtent)
+{
+    DWriteContext dw;
+    LogViewer v;
+    v.Arrange(RectDip{0, 0, 300, 100});
+    v.AppendLine({{std::wstring(120, L'W'), kWhite}});
+    if (!AttachWithDWrite(v, dw)) return;
+    v.Arrange(RectDip{0, 0, 300, 100});
+
+    const float lineW = v.CachedLineWidthForTest(0);
+    EXPECT_TRUE(lineW > 300.0f);
+    // Extent = widest line + left and right padding; max offset = extent - viewport.
+    EXPECT_NEAR(v.MaxHorizontalOffset(), lineW + 2.0f * kPad - 300.0f, 0.5f);
+    v.DetachFromContext();
+}
+
+// A line appended while attached is measured by LayoutVisibleLines. It has the same
+// font as its neighbours, so its HEIGHT matches the estimate and no Y rebuild runs:
+// the width has to be pushed on its own or the rail would never appear.
+TEST(LogViewerHScroll, WideLineAppendedAfterAttachGrowsExtent)
+{
+    DWriteContext dw;
+    LogViewer v;
+    v.Arrange(RectDip{0, 0, 300, 100});
+    v.AppendLine({{L"short", kWhite}});
+    if (!AttachWithDWrite(v, dw)) return;
+    v.PrepareVisibleLayoutsForTest();
+    EXPECT_EQ(v.MaxHorizontalOffset(), 0.0f);
+
+    v.AppendLine({{std::wstring(120, L'W'), kWhite}});
+    v.PrepareVisibleLayoutsForTest();   // what Render does before drawing
+    const float lineW = v.CachedLineWidthForTest(1);
+    EXPECT_TRUE(lineW > 300.0f);
+    EXPECT_NEAR(v.MaxHorizontalOffset(), lineW + 2.0f * kPad - 300.0f, 0.5f);
+    v.DetachFromContext();
+}
+
+// While the horizontal rail is live it covers the bottom strip, so the vertical
+// extent grows by that strip and the last line can scroll clear of it.
+TEST(LogViewerHScroll, HorizontalRailReservesVerticalSpace)
+{
+    DWriteContext dw;
+    LogViewer v;
+    v.Arrange(RectDip{0, 0, 300, 100});
+    for (int i = 0; i < 40; ++i) v.AppendLine({{L"row", kWhite}});
+    v.AppendLine({{std::wstring(120, L'W'), kWhite}});
+    if (!AttachWithDWrite(v, dw)) return;
+    v.Arrange(RectDip{0, 0, 300, 100});
+
+    EXPECT_TRUE(v.MaxHorizontalOffset() > 0.0f);
+    EXPECT_NEAR(v.MaxVerticalOffset(), v.ContentExtentDip() + kHRail - 100.0f, 0.5f);
+    v.DetachFromContext();
+}
+
+// The offset moves the draw origin, the selection highlight and the hit test
+// together. Clicking the same CONTENT x at two offsets must resolve to the same
+// column: screen x 150 at offset 0 and screen x 50 at offset 100.
+TEST(LogViewerHScroll, HitTestFollowsHorizontalOffset)
+{
+    DWriteContext dw;
+    LogViewer v;
+    v.Arrange(RectDip{0, 0, 300, 100});
+    v.AppendLine({{std::wstring(120, L'W'), kWhite}});
+    if (!AttachWithDWrite(v, dw)) return;
+    v.Arrange(RectDip{0, 0, 300, 100});
+
+    auto a = Press(150.0f, 5.0f);
+    v.OnPointerPressed(a);
+    v.OnPointerReleased(a);
+    const size_t colAtZero = v.SelectionAnchor().column;
+    EXPECT_TRUE(colAtZero > size_t(0));
+
+    v.SetHorizontalOffset(100.0f);
+    EXPECT_NEAR(v.HorizontalOffset(), 100.0f, 0.01f);
+    auto b = Press(50.0f, 5.0f);
+    v.OnPointerPressed(b);
+    v.OnPointerReleased(b);
+    EXPECT_EQ(v.SelectionAnchor().column, colAtZero);
+    v.DetachFromContext();
+}
+
+TEST(LogViewerHScroll, ShiftWheelScrollsHorizontally)
+{
+    DWriteContext dw;
+    LogViewer v;
+    v.Arrange(RectDip{0, 0, 300, 100});
+    v.AppendLine({{std::wstring(120, L'W'), kWhite}});
+    if (!AttachWithDWrite(v, dw)) return;
+    v.Arrange(RectDip{0, 0, 300, 100});
+    v.SetHorizontalOffset(100.0f);
+
+    PointerEventArgs e;
+    e.modifiers = ModifierKeys::Shift;
+    e.wheelDelta = 120;
+    v.OnPointerWheelChanged(e);
+    EXPECT_TRUE(e.handled);
+    // Same sign as ScrollPanel / DataGrid: offset -= WheelScrollLines() * step.
+    EXPECT_TRUE(v.HorizontalOffset() > 100.0f);
+    EXPECT_EQ(v.VerticalOffset(), 0.0f);
+    v.DetachFromContext();
+}
+
+// Nothing to scroll sideways: Shift+wheel must bubble, like ScrollPanel's.
+TEST(LogViewerHScroll, ShiftWheelBubblesWithoutOverflow)
+{
+    LogViewer v;
+    v.Arrange(RectDip{0, 0, 300, 100});
+    v.AppendLine({{L"short", kWhite}});
+    PointerEventArgs e;
+    e.modifiers = ModifierKeys::Shift;
+    e.wheelDelta = 120;
+    v.OnPointerWheelChanged(e);
+    EXPECT_FALSE(e.handled);
+}
+
+TEST(LogViewerHScroll, ClearResetsHorizontalExtentAndOffset)
+{
+    DWriteContext dw;
+    LogViewer v;
+    v.Arrange(RectDip{0, 0, 300, 100});
+    v.AppendLine({{std::wstring(120, L'W'), kWhite}});
+    if (!AttachWithDWrite(v, dw)) return;
+    v.Arrange(RectDip{0, 0, 300, 100});
+    v.SetHorizontalOffset(100.0f);
+
+    v.Clear();
+    EXPECT_EQ(v.MaxHorizontalOffset(), 0.0f);
+    EXPECT_EQ(v.HorizontalOffset(), 0.0f);
+    v.DetachFromContext();
+}
+
+// The mark is grow-only, so zoom must reset it: zooming OUT shrinks every line, and
+// a mark kept from 100% would leave a scrollbar over empty space.
+TEST(LogViewerHScroll, ZoomOutShrinksHorizontalExtent)
+{
+    DWriteContext dw;
+    LogViewer v;
+    v.Arrange(RectDip{0, 0, 300, 100});
+    v.AppendLine({{std::wstring(120, L'W'), kWhite}});
+    if (!AttachWithDWrite(v, dw)) return;
+    v.Arrange(RectDip{0, 0, 300, 100});
+    const float maxAt1x = v.MaxHorizontalOffset();
+    EXPECT_TRUE(maxAt1x > 0.0f);
+
+    v.SetZoom(0.5f);
+    v.PrepareVisibleLayoutsForTest();
+    const float lineW = v.CachedLineWidthForTest(0);
+    EXPECT_NEAR(v.MaxHorizontalOffset(),
+                std::max(0.0f, lineW + 2.0f * kPad - 300.0f), 0.5f);
+    EXPECT_TRUE(v.MaxHorizontalOffset() < maxAt1x);
+    v.DetachFromContext();
+}
+
+// SetZoom resets the width mark, so the range is zero until the visible lines are
+// measured again. Restoring the offset inside SetZoom clamps it to 0; the fraction is
+// applied by the next LayoutVisibleLines instead.
+TEST(LogViewerHScroll, ZoomKeepsRelativeHorizontalPosition)
+{
+    DWriteContext dw;
+    LogViewer v;
+    v.Arrange(RectDip{0, 0, 300, 100});
+    v.AppendLine({{std::wstring(120, L'W'), kWhite}});
+    if (!AttachWithDWrite(v, dw)) return;
+    v.Arrange(RectDip{0, 0, 300, 100});
+    v.SetHorizontalOffset(v.MaxHorizontalOffset() * 0.5f);
+
+    v.SetZoom(1.5f);
+    v.PrepareVisibleLayoutsForTest();
+    EXPECT_TRUE(v.MaxHorizontalOffset() > 0.0f);
+    EXPECT_NEAR(v.HorizontalOffset() / v.MaxHorizontalOffset(), 0.5f, 0.01f);
+    v.DetachFromContext();
+}
+
+// The first wide line brings the rail, and the rail's reserve grows the vertical
+// extent after AppendLine already pinned the offset. A tail-following view re-pins.
+// The symptom: the view is pinned to MaxVerticalOffset, which equals ContentExtent
+// + kHRail - viewport, not ContentExtent + 0 - viewport.
+TEST(LogViewerHScroll, TailFollowStaysPinnedWhenRailAppears)
+{
+    DWriteContext dw;
+    LogViewer v;
+    v.Arrange(RectDip{0, 0, 300, 100});
+    for (int i = 0; i < 40; ++i) v.AppendLine({{L"row", kWhite}});
+    if (!AttachWithDWrite(v, dw)) return;
+    v.AppendLine({{L"row", kWhite}});
+    v.PrepareVisibleLayoutsForTest();
+    EXPECT_EQ(v.MaxHorizontalOffset(), 0.0f);
+    EXPECT_TRUE(v.AutoScrollToTail());
+
+    const float maxBefore = v.MaxVerticalOffset();
+    v.AppendLine({{std::wstring(120, L'W'), kWhite}});
+    v.PrepareVisibleLayoutsForTest();
+    EXPECT_TRUE(v.MaxHorizontalOffset() > 0.0f);
+    // The vertical extent grew by the rail reserve plus the new line's height. If the
+    // view did not re-pin, VerticalOffset() is still at the old max, which is now 16
+    // DIP short, and the last line sits under the rail.
+    EXPECT_NEAR(v.MaxVerticalOffset(), v.ContentExtentDip() + kHRail - 100.0f, 0.5f);
+    EXPECT_TRUE(v.MaxVerticalOffset() > maxBefore + kHRail);
+    EXPECT_NEAR(v.VerticalOffset(), v.MaxVerticalOffset(), 0.5f);
+    v.DetachFromContext();
+}
+
+// "One screen at a time" in the mouse settings makes WheelScrollLines() 0, which
+// carries no sign; the direction has to come from the raw delta.
+TEST(LogViewerHScroll, ShiftWheelPageModeKeepsDirection)
+{
+    DWriteContext dw;
+    LogViewer v;
+    v.Arrange(RectDip{0, 0, 300, 100});
+    v.AppendLine({{std::wstring(200, L'W'), kWhite}});
+    if (!AttachWithDWrite(v, dw)) return;
+    v.Arrange(RectDip{0, 0, 300, 100});
+    v.SetHorizontalOffset(500.0f);
+
+    PointerEventArgs down;
+    down.modifiers = ModifierKeys::Shift;
+    down.wheelDelta = -120;
+    down.wheelScrollLines = 0;
+    // Same direction as the per-line case (ShiftWheelScrollsHorizontally): wheel-up
+    // grows the offset, wheel-down shrinks it. Before the fix both shrank it.
+    v.OnPointerWheelChanged(down);
+    EXPECT_TRUE(v.HorizontalOffset() < 500.0f);
+
+    PointerEventArgs up = down;
+    up.wheelDelta = 120;
+    up.handled = false;
+    const float before = v.HorizontalOffset();
+    v.OnPointerWheelChanged(up);
+    EXPECT_TRUE(v.HorizontalOffset() > before);
+    v.DetachFromContext();
+}
+
+
+// Two zoom steps before a frame (two fast Ctrl+wheel notches): the first zoom resets
+// the width mark, so the second sees a zero range. It must keep the fraction the first
+// one saved instead of overwriting it with "nothing pending".
+TEST(LogViewerHScroll, TwoZoomsBeforeLayoutKeepHorizontalPosition)
+{
+    DWriteContext dw;
+    LogViewer v;
+    v.Arrange(RectDip{0, 0, 300, 100});
+    v.AppendLine({{std::wstring(120, L'W'), kWhite}});
+    if (!AttachWithDWrite(v, dw)) return;
+    v.Arrange(RectDip{0, 0, 300, 100});
+    v.SetHorizontalOffset(v.MaxHorizontalOffset() * 0.5f);
+
+    v.SetZoom(1.1f);
+    v.SetZoom(1.2f);
+    v.PrepareVisibleLayoutsForTest();
+    EXPECT_TRUE(v.MaxHorizontalOffset() > 0.0f);
+    EXPECT_NEAR(v.HorizontalOffset() / v.MaxHorizontalOffset(), 0.5f, 0.01f);
+    v.DetachFromContext();
+}
